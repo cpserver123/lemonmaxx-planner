@@ -17,6 +17,12 @@ export const NAV_DATA = [
         icon: LuTrendingUp,
         items: [],
       },
+      {
+        title: "Knowledge Bank",
+        url: "/knowledge_bank",
+        icon: LuTrendingUp,
+        items: [],
+      },
     ],
   },
 ];
