@@ -7,14 +7,14 @@ export type DashboardTabId =
   | "planning"
   | "promises"
   | "meetings"
-  | "mission-control";
+  | "performance";
 
 export const DASHBOARD_TABS: { id: DashboardTabId; label: string }[] = [
   { id: "dashboard",       label: "Dashboard"       },
   { id: "planning",        label: "Planning"        },
   { id: "promises",        label: "Promises"        },
   { id: "meetings",        label: "Meetings"        },
-  { id: "mission-control", label: "Mission Control" },
+  { id: "performance", label: "performance" },
 ];
 
 interface DashboardTabContextValue {

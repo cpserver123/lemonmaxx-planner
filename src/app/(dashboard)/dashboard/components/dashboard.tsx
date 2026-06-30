@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useMemo, useCallback } from "react";
 import {
@@ -14,6 +14,7 @@ import { LuClipboardCheck, LuUsers, LuShieldCheck, LuArrowUpDown, LuArrowUp, LuA
 import { RxDragHandleDots2 } from "react-icons/rx";
 import MyTeamPanel from "./my-team/MyTeamPanel";
 import ActionDrawer, { type DrawerRow } from "./ActionDrawer";
+import { useDashboardTab } from "@/context/DashboardTabContext";
 
 /* --- Types ----------------------------------------------------------- */
 interface CaptureRow {
@@ -37,7 +38,7 @@ const DUMMY_DATA: CaptureRow[] = [
   { id: "6", action: "Schedule mission debrief meeting",       intendedOutcome: "Lessons learned documented",       status: "Done",        due: "2026-06-18", accountable: "Chris M.",  linkTo: "Meetings",   completed: true  },
   { id: "7", action: "Update dashboard design tokens",         intendedOutcome: "Consistent UI across modules",     status: "In Progress", due: "2026-06-27", accountable: "Sarah K.",  linkTo: "Dashboard",  completed: false },
   { id: "8", action: "Create monthly promise summary report",  intendedOutcome: "Visibility into promise health",   status: "Todo",        due: "2026-07-10", accountable: "Raj P.",    linkTo: "Promises",   completed: false },
-  { id: "9", action: "Run first Mission Control session",       intendedOutcome: "Strategic alignment confirmed",   status: "Todo",        due: "2026-07-08", accountable: "Manish U.", linkTo: "Mission",    completed: false },
+  { id: "9", action: "Run first performance session",       intendedOutcome: "Strategic alignment confirmed",   status: "Todo",        due: "2026-07-08", accountable: "Manish U.", linkTo: "Mission",    completed: false },
   { id: "10", action: "Finalize meeting cadence schedule",     intendedOutcome: "Consistent team touchpoints",     status: "In Progress", due: "2026-06-29", accountable: "Lisa T.",   linkTo: "Meetings",   completed: false },
   { id: "11", action: "Write ADE onboarding guide",            intendedOutcome: "Self-serve onboarding for users", status: "Todo",        due: "2026-07-15", accountable: "Chris M.",  linkTo: "Planning",   completed: false },
   { id: "12", action: "Validate resizable table behavior",     intendedOutcome: "Smooth UX for power users",       status: "In Progress", due: "2026-06-26", accountable: "Sarah K.",  linkTo: "Dashboard",  completed: false },
@@ -164,6 +165,7 @@ export default function DashboardSection() {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [showMyTeam, setShowMyTeam] = useState(false);
   const [selectedRow, setSelectedRow] = useState<DrawerRow | null>(null);
+  const { setActiveTab } = useDashboardTab();
 
   // Provide the open-drawer callback to the module-level column definition
   openDrawerCb = setSelectedRow;
@@ -227,7 +229,18 @@ export default function DashboardSection() {
             <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-0.5 truncate">View your team</p>
           </div>
         </button>
-        <QuickCard icon={<LuShieldCheck   size={20} className="text-[#5750F1]" />} title="Promises" subtitle="View and manage performance promises" />
+        <button
+          onClick={() => setActiveTab("promises")}
+          className="flex items-center gap-3 rounded-lg border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#1a2332] p-4 text-left w-full hover:border-[#5750F1]/40 transition-all duration-200 group"
+        >
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[#E6EBF1] dark:border-[#1F2A37] bg-[#F3F4F6] dark:bg-[#0d1520] group-hover:border-[#5750F1]/30 transition-colors duration-200">
+            <LuShieldCheck size={20} className="text-[#5750F1]" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold leading-tight text-[#111928] dark:text-white">Promises</p>
+            <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-0.5 truncate">View and manage performance promises</p>
+          </div>
+        </button>
       </div>
 
       {/* Capture Tool */}

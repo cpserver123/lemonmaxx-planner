@@ -93,34 +93,80 @@ function NumCell({
   );
 }
 
-/* --- Editable text cell ---------------------------------------------- */
-function TextCell({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const [editing, setEditing] = useState(false);
-  const [raw, setRaw]         = useState(value);
+/* --- Resource multi-select dropdown cell ----------------------------- */
+const TEAM_MEMBERS = [
+  "Arun", "Satish", "Kapil", "Nityashish", "Yash", "Sahil", "Komal", "Chris", "Sarah", "Lisa", "Raj", "Manish",
+];
 
-  if (editing) {
-    return (
-      <input
-        autoFocus
-        value={raw}
-        onChange={e => setRaw(e.target.value)}
-        onBlur={() => { onChange(raw); setEditing(false); }}
-        onKeyDown={e => {
-          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-          if (e.key === "Escape") setEditing(false);
-        }}
-        className="w-full rounded border border-[#5750F1] bg-[#EEF2FF] dark:bg-[#1a1f4e] px-1 py-0.5 text-xs text-[#111928] dark:text-white outline-none"
-      />
-    );
-  }
+function ResourceCell({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Parse comma-separated string into a Set
+  const selected = new Set(
+    value.split(",").map(s => s.trim()).filter(Boolean)
+  );
+
+  const toggle = (name: string) => {
+    const next = new Set(selected);
+    next.has(name) ? next.delete(name) : next.add(name);
+    onChange([...next].join(", "));
+  };
+
+  // Close on outside click — use 'click' so item clicks fire before close
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    // small delay so the item's onClick fires first
+    const tid = setTimeout(() => document.addEventListener("click", handler), 0);
+    return () => { clearTimeout(tid); document.removeEventListener("click", handler); };
+  }, [open]);
+
+  const label = selected.size === 0
+    ? <span className="text-[#9CA3AF] text-[10px]">Select...</span>
+    : <span className="text-[10px] text-[#5750F1] font-medium">{[...selected].join(", ")}</span>;
 
   return (
-    <button
-      onClick={() => { setRaw(value); setEditing(true); }}
-      className="text-xs text-left text-[#6B7280] dark:text-[#9CA3AF] hover:text-[#5750F1] transition-colors truncate max-w-[120px]"
-    >
-      {value || <span className="text-[#9CA3AF]">-</span>}
-    </button>
+    <div ref={ref} className="relative">
+      {/* Trigger */}
+      <button
+        onClick={() => setOpen(p => !p)}
+        className="flex items-center gap-1 rounded border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] px-2 py-1 text-left w-36 hover:border-[#5750F1]/50 transition-colors"
+      >
+        <span className="flex-1 truncate leading-none">{label}</span>
+        <LuChevronDown size={11} className="shrink-0 text-[#9CA3AF]" />
+      </button>
+
+      {/* Dropdown */}
+      {open && (
+        <div className="absolute left-0 top-full mt-1 z-50 w-44 rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] shadow-xl py-1 max-h-52 overflow-y-auto">
+          {TEAM_MEMBERS.map(name => (
+            <label
+              key={name}
+              onClick={() => toggle(name)}
+              className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"
+            >
+              <span
+                className={`flex h-3.5 w-3.5 items-center justify-center rounded border transition-colors ${
+                  selected.has(name)
+                    ? "border-[#5750F1] bg-[#5750F1]"
+                    : "border-[#D1D5DB] dark:border-[#374151]"
+                }`}
+              >
+                {selected.has(name) && (
+                  <svg width="8" height="6" viewBox="0 0 8 6" fill="none">
+                    <path d="M1 3L3 5L7 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </span>
+              <span className="text-xs text-[#111928] dark:text-[#D1D5DB]">{name}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -141,7 +187,6 @@ export default function PlanSubmissionDrawer({
   const categories = Array.from(new Set(rows.map(r => r.category)));
 
   const COLS: { key: keyof PlanRow; label: string; readOnly?: boolean; w?: string }[] = [
-    { key: "actuals",     label: "Actuals",            readOnly: true,  w: "w-24" },
     { key: "promise",     label: "Promise",                             w: "w-24" },
     { key: "perfCeiling", label: "Perf. Ceiling",                       w: "w-28" },
     { key: "perfDelta",   label: "Perf. Delta",                         w: "w-24" },
@@ -274,7 +319,7 @@ export default function PlanSubmissionDrawer({
           </div>
 
           {/* Actuals from month picker */}
-          <div className="relative flex items-center gap-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+          {/* <div className="relative flex items-center gap-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
             <span>Actuals from</span>
             <button
               onClick={() => { setShowActPicker(p => !p); setShowPlanPicker(false); setShowVerticalDrop(false); }}
@@ -303,7 +348,7 @@ export default function PlanSubmissionDrawer({
                 </div>
               </>
             )}
-          </div>
+          </div> */}
 
           <div className="flex-1" />
 
@@ -391,7 +436,7 @@ export default function PlanSubmissionDrawer({
                           {COLS.map(c => (
                             <td key={String(c.key)} className={`px-3 py-2 ${c.key === "actuals" ? "bg-[#F3F4F6]/50 dark:bg-[#060a10]" : ""}`}>
                               {c.key === "resources" ? (
-                                <TextCell
+                                <ResourceCell
                                   value={row.resources}
                                   onChange={v => update(row.id, "resources", v)}
                                 />

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useRef, useEffect } from "react";
 import type { VerticalData } from "./VerticalCard";
@@ -151,9 +151,11 @@ function VerticalTree({
 }) {
   const offers = vertical.offers ?? [];
 
-  // Track which offer ids are expanded
-  const [expandedOffers, setExpandedOffers] = useState<Set<string>>(new Set());
-  const [rootExpanded, setRootExpanded] = useState(false);
+  // All nodes expanded by default
+  const [expandedOffers, setExpandedOffers] = useState<Set<string>>(
+    new Set((vertical.offers ?? []).map(o => o.id))
+  );
+  const [rootExpanded, setRootExpanded] = useState(true);
 
   const toggleOffer = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
