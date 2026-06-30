@@ -1,0 +1,124 @@
+@import "tailwindcss";
+
+/* ─── Dark mode via .dark class ──────────────────────────────────────── */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ─── Custom Colors (matching lemonmaxx_fe tailwind.config) ──────────── */
+@theme {
+  --color-primary: #5750F1;
+  --color-stroke: #E6EBF1;
+  --color-stroke-dark: #27303E;
+  --color-gray-dark: #122031;
+  /* inner component bg color */
+  --color-gray-2: #F3F4F6;
+  --color-dark: #111928;
+  --color-dark-2: #1F2A37;
+  --color-dark-3: #374151;
+  --color-dark-4: #4B5563;
+  --color-dark-5: #6B7280;
+  --color-dark-6: #9CA3AF;
+  --color-dark-7: #D1D5DB;
+  --color-dark-8: #E5E7EB;
+  --font-sans: "Poppins", system-ui, sans-serif;
+}
+
+/* ─── Base body ──────────────────────────────────────────────────────── */
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Scrollbar (from lemonmaxx_fe) ──────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(120, 130, 150, 0.4);
+  backdrop-filter: blur(6px);
+  border-radius: 20px;
+  transition: 0.3s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(120, 130, 150, 0.7);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(120, 130, 150, 0.6) transparent;
+}
+
+/* Utility: hide scrollbar while keeping scroll functionality */
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* ─── react-date-range overrides ─────────────────────────────────── */
+.rdrDateRangePickerWrapper {
+  display: flex;
+  flex-direction: row-reverse;
+}
+
+.dark .rdrCalendarWrapper,
+.dark .rdrDateDisplayWrapper,
+.dark .rdrMonthAndYearWrapper,
+.dark .rdrMonthPicker select,
+.dark .rdrYearPicker select {
+  background: #122031;
+  color: #D1D5DB;
+}
+
+.dark .rdrDayNumber span {
+  color: #D1D5DB;
+}
+
+.dark .rdrDayPassive .rdrDayNumber span {
+  color: #4B5563;
+}
+
+.dark .rdrMonthAndYearPickers select {
+  background: #0d1520;
+  color: #D1D5DB;
+}
+
+.dark .rdrDefinedRangesWrapper {
+  background: #0d1520;
+  border-color: #1F2A37;
+}
+
+.dark .rdrStaticRange {
+  background: #0d1520;
+  color: #9CA3AF;
+  border-color: #1F2A37;
+}
+
+.dark .rdrStaticRange:hover .rdrStaticRangeLabel {
+  background: #1a2332;
+}
+
+.dark .rdrInputRange {
+  color: #9CA3AF;
+}
+
+.dark .rdrDateDisplayItem {
+  background: #0d1520;
+  border-color: #1F2A37;
+}
+
+.dark .rdrDateDisplayItem input {
+  color: #D1D5DB;
+}
+
+.dark .rdrDayToday .rdrDayNumber span::after {
+  background: #5750F1;
+}

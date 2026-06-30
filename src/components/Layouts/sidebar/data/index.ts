@@ -1,0 +1,23 @@
+import { RxDashboard } from "react-icons/rx";
+import { LuTrendingUp } from "react-icons/lu";
+
+export const NAV_DATA = [
+  {
+    label: "MAIN MENU",
+    items: [
+      {
+        title: "Dashboard",
+        url: "/dashboard",
+        icon: RxDashboard,
+        items: [],
+      },
+      {
+        title: "Performance Tracking",
+        url: "/performance_tracking",
+        icon: LuTrendingUp,
+        items: [],
+      },
+    ],
+  },
+];
+

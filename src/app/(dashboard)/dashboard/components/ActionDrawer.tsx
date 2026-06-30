@@ -1,0 +1,449 @@
+"use client";
+
+import { useState, useEffect, useRef, useCallback } from "react";
+import {
+  LuZap, LuX, LuChevronDown, LuCheck, LuLink2, LuEye,
+  LuLink, LuTrash2, LuSave, LuUser, LuPlus,
+  LuHeading1, LuHeading2, LuBold, LuItalic, LuList, LuListOrdered,
+  LuQuote, LuTable, LuUndo2, LuRedo2,
+} from "react-icons/lu";
+
+/* --- Types ----------------------------------------------------------- */
+export interface DrawerRow {
+  id:              string;
+  action:          string;
+  intendedOutcome: string;
+  status:          string;
+  due:             string;
+  accountable:     string;
+  linkTo:          string;
+}
+
+/* --- Status option --------------------------------------------------- */
+const STATUS_OPTIONS = [
+  { label: "Planned",        color: "bg-[#9CA3AF]/20 text-[#9CA3AF]" },
+  { label: "Done",           color: "bg-green-500/20 text-green-500" },
+  { label: "Not Done",       color: "bg-red-500/20 text-red-400" },
+  { label: "Partially Done", color: "bg-orange-500/20 text-orange-400" },
+  { label: "Cancelled",      color: "bg-[#6B7280]/20 text-[#6B7280]" },
+  { label: "On Hold",        color: "bg-[#5750F1]/20 text-[#5750F1]" },
+];
+
+function statusColor(status: string) {
+  return STATUS_OPTIONS.find(s => s.label === status)?.color ?? STATUS_OPTIONS[0].color;
+}
+
+/* --- StatusDropdown -------------------------------------------------- */
+function StatusDropdown({
+  value, onChange,
+}: { value: string; onChange: (s: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${statusColor(value)}`}
+      >
+        {value || "Planned"}
+        <LuChevronDown size={11} />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full mt-1 z-50 w-44 rounded-xl border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] shadow-xl py-1 overflow-hidden">
+          {STATUS_OPTIONS.map(opt => (
+            <button
+              key={opt.label}
+              onClick={() => { onChange(opt.label); setOpen(false); }}
+              className="flex items-center justify-between gap-2 w-full px-3 py-2 text-xs hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"
+            >
+              <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold ${opt.color}`}>
+                {opt.label}
+              </span>
+              {value === opt.label && <LuCheck size={12} className="text-[#5750F1] shrink-0" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* --- Section row ----------------------------------------------------- */
+function SectionRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-3 py-2.5 border-b border-[#E6EBF1] dark:border-[#1F2A37]">
+      <span className="w-28 shrink-0 text-[11px] text-[#9CA3AF] font-medium flex items-center gap-1.5">{label}</span>
+      <div className="flex-1 min-w-0">{children}</div>
+    </div>
+  );
+}
+
+/* --- Rich Text Editor ------------------------------------------------ */
+function RichEditor() {
+  const editorRef  = useRef<HTMLDivElement>(null);
+  const [activeFormats, setActiveFormats] = useState<Set<string>>(new Set());
+
+  /* Keep toolbar active-state in sync with cursor position */
+  const syncFormats = useCallback(() => {
+    const formats = new Set<string>();
+    if (document.queryCommandState("bold"))         formats.add("bold");
+    if (document.queryCommandState("italic"))       formats.add("italic");
+    if (document.queryCommandState("insertUnorderedList")) formats.add("ul");
+    if (document.queryCommandState("insertOrderedList"))   formats.add("ol");
+    const block = document.queryCommandValue("formatBlock").toLowerCase();
+    if (block === "h1")         formats.add("h1");
+    if (block === "h2")         formats.add("h2");
+    if (block === "blockquote") formats.add("quote");
+    setActiveFormats(formats);
+  }, []);
+
+  /* Focus the contentEditable area before running a command */
+  const exec = useCallback((cmd: string, value?: string) => {
+    editorRef.current?.focus();
+
+    if (cmd === "formatBlock" && value) {
+      // Toggle off: if we're already in this block type, revert to paragraph
+      const currentBlock = document.queryCommandValue("formatBlock").toLowerCase();
+      const target = value.replace(/[<>]/g, "").toLowerCase();
+      if (currentBlock === target) {
+        document.execCommand("formatBlock", false, "<P>");
+      } else {
+        document.execCommand("formatBlock", false, value);
+      }
+    } else {
+      // bold / italic / UL / OL toggle natively; pass empty string as fallback
+      document.execCommand(cmd, false, value ?? "");
+    }
+
+    syncFormats();
+  }, [syncFormats]);
+
+  /* Insert a basic 2x2 HTML table */
+  const insertTable = useCallback(() => {
+    editorRef.current?.focus();
+    const table = `
+      <table style="border-collapse:collapse;width:100%;margin:4px 0">
+        <tbody>
+          <tr>
+            <td style="border:1px solid #374151;padding:4px 8px;min-width:60px">&ZeroWidthSpace;</td>
+            <td style="border:1px solid #374151;padding:4px 8px;min-width:60px">&ZeroWidthSpace;</td>
+          </tr>
+          <tr>
+            <td style="border:1px solid #374151;padding:4px 8px">&ZeroWidthSpace;</td>
+            <td style="border:1px solid #374151;padding:4px 8px">&ZeroWidthSpace;</td>
+          </tr>
+        </tbody>
+      </table><br/>`;
+    document.execCommand("insertHTML", false, table);
+    syncFormats();
+  }, [syncFormats]);
+
+  interface ToolbarBtn {
+    id:     string;
+    label:  React.ReactNode;
+    action: () => void;
+  }
+
+  const TOOLBAR: ToolbarBtn[] = [
+    { id: "h1",    label: <LuHeading1    size={13} />, action: () => exec("formatBlock", "<H1>") },
+    { id: "h2",    label: <LuHeading2    size={13} />, action: () => exec("formatBlock", "<H2>") },
+    { id: "bold",  label: <LuBold        size={13} />, action: () => exec("bold") },
+    { id: "italic",label: <LuItalic      size={13} />, action: () => exec("italic") },
+    { id: "ul",    label: <LuList        size={13} />, action: () => exec("insertUnorderedList") },
+    { id: "ol",    label: <LuListOrdered size={13} />, action: () => exec("insertOrderedList") },
+    { id: "quote", label: <LuQuote       size={13} />, action: () => exec("formatBlock", "<BLOCKQUOTE>") },
+    { id: "table", label: <LuTable       size={13} />, action: insertTable },
+  ];
+
+  return (
+    <div className="rounded-lg border border-[#E6EBF1] dark:border-[#1F2A37] mb-5 overflow-hidden">
+      {/* Toolbar */}
+      <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-[#E6EBF1] dark:border-[#1F2A37] flex-wrap bg-[#F9FAFB] dark:bg-[#0a1018]">
+        {TOOLBAR.map(btn => (
+          <button
+            key={btn.id}
+            onMouseDown={e => { e.preventDefault(); btn.action(); }}
+            title={btn.id.toUpperCase()}
+            className={`p-1.5 rounded transition-colors ${
+              activeFormats.has(btn.id)
+                ? "bg-[#5750F1]/20 text-[#5750F1] dark:text-[#818CF8]"
+                : "text-[#6B7280] dark:text-[#9CA3AF] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] hover:text-[#111928] dark:hover:text-white"
+            }`}
+          >
+            {btn.label}
+          </button>
+        ))}
+
+        <span className="mx-1 h-4 w-px bg-[#E6EBF1] dark:bg-[#374151]" />
+
+        {/* Undo */}
+        <button
+          onMouseDown={e => { e.preventDefault(); exec("undo"); }}
+          title="Undo"
+          className="p-1.5 rounded text-[#6B7280] dark:text-[#9CA3AF] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] hover:text-[#111928] dark:hover:text-white transition-colors"
+        >
+          <LuUndo2 size={13} />
+        </button>
+        {/* Redo */}
+        <button
+          onMouseDown={e => { e.preventDefault(); exec("redo"); }}
+          title="Redo"
+          className="p-1.5 rounded text-[#6B7280] dark:text-[#9CA3AF] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] hover:text-[#111928] dark:hover:text-white transition-colors"
+        >
+          <LuRedo2 size={13} />
+        </button>
+      </div>
+
+      {/* Content area */}
+      <div
+        ref={editorRef}
+        contentEditable
+        suppressContentEditableWarning
+        onKeyUp={syncFormats}
+        onMouseUp={syncFormats}
+        onSelect={syncFormats}
+        data-placeholder="Add more detail..."
+        className={[
+          "min-h-[100px] px-3 py-2 text-sm text-[#111928] dark:text-[#D1D5DB] outline-none",
+          "focus:ring-0",
+          "[&_h1]:text-xl [&_h1]:font-bold [&_h1]:mb-1",
+          "[&_h2]:text-base [&_h2]:font-semibold [&_h2]:mb-1",
+          "[&_ul]:list-disc [&_ul]:pl-4 [&_ul]:mb-1",
+          "[&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:mb-1",
+          "[&_blockquote]:border-l-4 [&_blockquote]:border-[#5750F1] [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-[#6B7280]",
+          "[&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-[#374151] [&_td]:p-1",
+          "empty:before:content-[attr(data-placeholder)] empty:before:text-[#9CA3AF] empty:before:pointer-events-none",
+        ].join(" ")}
+      />
+    </div>
+  );
+}
+
+/* --- ActionDrawer ---------------------------------------------------- */
+export default function ActionDrawer({
+  row,
+  onClose,
+  onSave,
+  onDelete,
+}: {
+  row:      DrawerRow | null;
+  onClose:  () => void;
+  onSave:   (updated: DrawerRow) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [draft, setDraft] = useState<DrawerRow | null>(null);
+  const [checklist, setChecklist] = useState<string[]>([]);
+  const [checkInput, setCheckInput] = useState("");
+
+  // Sync draft when row changes
+  useEffect(() => {
+    setDraft(row ? { ...row } : null);
+    setChecklist([]);
+    setCheckInput("");
+  }, [row]);
+
+  const isOpen = !!row;
+
+  const addCheckItem = () => {
+    if (!checkInput.trim()) return;
+    setChecklist(c => [...c, checkInput.trim()]);
+    setCheckInput("");
+  };
+
+  if (!draft) return null;
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className={`fixed inset-0 z-40 bg-black/30 transition-opacity duration-300 ${isOpen ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+        onClick={onClose}
+      />
+
+      {/* Drawer panel */}
+      <div
+        className={`fixed top-0 right-0 z-50 h-full w-full max-w-[600px] bg-white dark:bg-[#0d1520] border-l border-[#E6EBF1] dark:border-[#1F2A37] flex flex-col shadow-2xl transition-transform duration-300 ${
+          isOpen ? "translate-x-0" : "translate-x-full"
+        }`}
+      >
+        {/* Drawer header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#E6EBF1] dark:border-[#1F2A37]">
+          <div className="flex items-center gap-2">
+            <LuZap size={16} className="text-[#2563eb]" />
+            <span className="text-sm font-semibold text-[#111928] dark:text-white">Edit Action</span>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-md text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"
+          >
+            <LuX size={15} />
+          </button>
+        </div>
+
+        {/* Scrollable content */}
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          {/* Title */}
+          <textarea
+            value={draft.action}
+            onChange={e => setDraft(d => d ? { ...d, action: e.target.value } : d)}
+            placeholder="Action title..."
+            rows={2}
+            className="w-full resize-none text-base font-semibold text-[#111928] dark:text-white bg-transparent border-none outline-none placeholder:text-[#9CA3AF] leading-snug mb-1"
+          />
+          {/* Intended outcome */}
+          <p className="text-xs text-[#9CA3AF] mb-4">
+            {draft.intendedOutcome || "Intended outcome"}
+          </p>
+
+          {/* Fields */}
+          <div className="mb-4">
+            <SectionRow label="● Status">
+              <StatusDropdown
+                value={draft.status}
+                onChange={s => setDraft(d => d ? { ...d, status: s } : d)}
+              />
+            </SectionRow>
+
+            <SectionRow label="📅 Dates">
+              <input
+                type="date"
+                value={draft.due}
+                onChange={e => setDraft(d => d ? { ...d, due: e.target.value } : d)}
+                className="text-xs text-[#111928] dark:text-white bg-transparent border-none outline-none"
+              />
+            </SectionRow>
+
+            <SectionRow label="👤 Accountable">
+              <div className="flex items-center gap-1.5 text-xs text-[#111928] dark:text-white">
+                <div className="h-5 w-5 rounded-full bg-[#2563eb] flex items-center justify-center text-[9px] font-bold text-[#111928]">
+                  {draft.accountable?.[0] ?? "?"}
+                </div>
+                {draft.accountable || "—"}
+              </div>
+            </SectionRow>
+
+            <SectionRow label="👤 To Whom">
+              <div className="flex items-center gap-1.5 text-xs text-[#9CA3AF]">
+                <LuUser size={13} />
+                <span>Not assigned</span>
+              </div>
+            </SectionRow>
+          </div>
+
+          {/* Rich text editor */}
+          <RichEditor />
+
+          {/* Checklist */}
+          <div className="mb-5">
+            <p className="text-xs font-semibold text-[#111928] dark:text-white mb-2">Checklist</p>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={checkInput}
+                onChange={e => setCheckInput(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && addCheckItem()}
+                placeholder="Add checklist item..."
+                className="flex-1 rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0a1018] px-3 py-1.5 text-xs text-[#111928] dark:text-white placeholder:text-[#9CA3AF] outline-none focus:border-[#5750F1]"
+              />
+              <button
+                onClick={addCheckItem}
+                className="h-7 w-7 shrink-0 rounded-lg bg-[#2563eb] flex items-center justify-center hover:opacity-90 transition-opacity"
+              >
+                <LuPlus size={13} className="text-[#111928]" />
+              </button>
+            </div>
+            {checklist.length > 0 && (
+              <div className="mt-2 flex flex-col gap-1">
+                {checklist.map((item, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                    <LuCheck size={11} className="text-[#2563eb] shrink-0" />
+                    {item}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Links */}
+          <div className="border-t border-[#E6EBF1] dark:border-[#1F2A37] pt-4 mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-[#111928] dark:text-white">
+                <LuLink2 size={13} /> Links
+              </span>
+              <button className="flex items-center gap-1 text-[11px] text-[#5750F1] hover:opacity-80">
+                <LuPlus size={12} /> Add
+              </button>
+            </div>
+            <p className="text-[11px] text-[#9CA3AF]">No links added yet</p>
+          </div>
+
+          {/* Watchers */}
+          <div className="border-t border-[#E6EBF1] dark:border-[#1F2A37] pt-4 mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-[#111928] dark:text-white">
+                <LuEye size={13} /> Watchers
+              </span>
+              <button className="flex items-center gap-1 text-[11px] text-[#5750F1] hover:opacity-80">
+                <LuPlus size={12} /> Add
+              </button>
+            </div>
+            <p className="text-[11px] text-[#9CA3AF]">No watchers yet</p>
+          </div>
+
+          {/* Dependencies */}
+          <div className="border-t border-[#E6EBF1] dark:border-[#1F2A37] pt-4 mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-[#111928] dark:text-white">
+                <LuLink size={13} /> Dependencies
+              </span>
+              <button className="flex items-center gap-1 text-[11px] text-[#5750F1] hover:opacity-80">
+                <LuPlus size={12} /> Add
+              </button>
+            </div>
+            <p className="text-[11px] text-[#9CA3AF]">No dependencies defined</p>
+          </div>
+
+          {/* Attachments */}
+          <div className="border-t border-[#E6EBF1] dark:border-[#1F2A37] pt-4 mb-4">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-[#111928] dark:text-white">
+                📎 Attachments
+              </span>
+              <button className="text-[11px] text-[#5750F1] hover:opacity-80">Upload</button>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer buttons */}
+        <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520]">
+             <button
+            onClick={() => { onSave(draft); onClose(); }}
+            className="flex items-center gap-1.5 rounded-lg bg-[#5750F1] text-white px-5 py-2 text-xs font-semibold hover:bg-[#4742d4] transition-colors"
+          >
+            <LuSave size={13} />
+            Save changes
+          </button>
+          
+          <button
+            onClick={() => { onDelete(draft.id); onClose(); }}
+            className="flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 text-red-500 px-4 py-2 text-xs font-semibold hover:bg-red-500/20 transition-colors"
+          >
+            <LuTrash2 size={13} />
+            Delete
+          </button>
+       
+        </div>
+      </div>
+    </>
+  );
+}
