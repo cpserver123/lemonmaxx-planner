@@ -5,7 +5,7 @@ import {
   LuZap, LuX, LuChevronDown, LuCheck, LuLink2, LuEye,
   LuLink, LuTrash2, LuSave, LuUser, LuPlus,
   LuHeading1, LuHeading2, LuBold, LuItalic, LuList, LuListOrdered,
-  LuQuote, LuTable, LuUndo2, LuRedo2,
+  LuQuote, LuTable, LuUndo2, LuRedo2, LuPaperclip, LuFile,
 } from "react-icons/lu";
 
 /* --- Types ----------------------------------------------------------- */
@@ -18,6 +18,20 @@ export interface DrawerRow {
   accountable:     string;
   linkTo:          string;
 }
+
+/* --- Team Members ---------------------------------------------------- */
+const TEAM_MEMBERS = [
+  "Manish U.",
+  "Sarah K.",
+  "Raj P.",
+  "Lisa T.",
+  "Chris M.",
+  "Yash Poonia",
+  "Mukesh Kumar",
+  "Arun S.",
+  "Kapil N.",
+  "Komal T.",
+];
 
 /* --- Status option --------------------------------------------------- */
 const STATUS_OPTIONS = [
@@ -78,12 +92,184 @@ function StatusDropdown({
   );
 }
 
+/* --- AccountableDropdown --------------------------------------------- */
+function AccountableDropdown({
+  value, onChange,
+}: { value: string; onChange: (s: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const initials = (name: string) =>
+    name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-1.5 text-xs text-[#111928] dark:text-white hover:text-[#5750F1] dark:hover:text-[#7c78f3] transition-colors"
+      >
+        {value ? (
+          <>
+            <div className="h-5 w-5 rounded-full bg-[#2563eb] flex items-center justify-center text-[9px] font-bold text-white shrink-0">
+              {initials(value)}
+            </div>
+            <span>{value}</span>
+          </>
+        ) : (
+          <>
+            <LuUser size={13} className="text-[#9CA3AF]" />
+            <span className="text-[#9CA3AF]">Select person</span>
+          </>
+        )}
+        <LuChevronDown size={11} className="text-[#9CA3AF]" />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full mt-1 z-50 w-52 max-h-[240px] overflow-y-auto rounded-xl border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] shadow-xl py-1">
+          {/* Unassign option */}
+          <button
+            onClick={() => { onChange(""); setOpen(false); }}
+            className="flex items-center gap-2 w-full px-3 py-2 text-xs text-[#9CA3AF] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"
+          >
+            <LuUser size={13} />
+            <span>Unassigned</span>
+            {!value && <LuCheck size={12} className="text-[#5750F1] ml-auto shrink-0" />}
+          </button>
+          {TEAM_MEMBERS.map(name => (
+            <button
+              key={name}
+              onClick={() => { onChange(name); setOpen(false); }}
+              className="flex items-center gap-2 w-full px-3 py-2 text-xs hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"
+            >
+              <div className="h-5 w-5 rounded-full bg-[#2563eb] flex items-center justify-center text-[8px] font-bold text-white shrink-0">
+                {initials(name)}
+              </div>
+              <span className="text-[#111928] dark:text-[#D1D5DB]">{name}</span>
+              {value === name && <LuCheck size={12} className="text-[#5750F1] ml-auto shrink-0" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* --- Section row ----------------------------------------------------- */
 function SectionRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-3 py-2.5 border-b border-[#E6EBF1] dark:border-[#1F2A37]">
       <span className="w-28 shrink-0 text-[11px] text-[#9CA3AF] font-medium flex items-center gap-1.5">{label}</span>
       <div className="flex-1 min-w-0">{children}</div>
+    </div>
+  );
+}
+
+/* --- Inline list section (Links / Watchers / Dependencies) ----------- */
+function ListSection({
+  icon,
+  title,
+  items,
+  onAdd,
+  onRemove,
+  placeholder,
+  emptyText,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  items: string[];
+  onAdd: (value: string) => void;
+  onRemove: (index: number) => void;
+  placeholder: string;
+  emptyText: string;
+}) {
+  const [showInput, setShowInput] = useState(false);
+  const [inputValue, setInputValue] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleAdd = () => {
+    if (!inputValue.trim()) return;
+    onAdd(inputValue.trim());
+    setInputValue("");
+    setShowInput(false);
+  };
+
+  useEffect(() => {
+    if (showInput) inputRef.current?.focus();
+  }, [showInput]);
+
+  return (
+    <div className="border-t border-[#E6EBF1] dark:border-[#1F2A37] pt-4 mb-4">
+      <div className="flex items-center justify-between mb-2">
+        <span className="flex items-center gap-1.5 text-xs font-semibold text-[#111928] dark:text-white">
+          {icon} {title}
+        </span>
+        <button
+          onClick={() => setShowInput(true)}
+          className="flex items-center gap-1 text-[11px] text-[#5750F1] hover:opacity-80"
+        >
+          <LuPlus size={12} /> Add
+        </button>
+      </div>
+
+      {/* Existing items */}
+      {items.length > 0 && (
+        <div className="flex flex-col gap-1.5 mb-2">
+          {items.map((item, i) => (
+            <div key={i} className="flex items-center gap-2 group">
+              <span className="text-[11px] text-[#111928] dark:text-[#D1D5DB] flex-1 truncate">{item}</span>
+              <button
+                onClick={() => onRemove(i)}
+                className="opacity-0 group-hover:opacity-100 text-[#9CA3AF] hover:text-red-400 transition-all"
+              >
+                <LuX size={11} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add input */}
+      {showInput && (
+        <div className="flex items-center gap-2 mt-1">
+          <input
+            ref={inputRef}
+            type="text"
+            value={inputValue}
+            onChange={e => setInputValue(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === "Enter") handleAdd();
+              if (e.key === "Escape") { setShowInput(false); setInputValue(""); }
+            }}
+            placeholder={placeholder}
+            className="flex-1 rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0a1018] px-2.5 py-1.5 text-[11px] text-[#111928] dark:text-white placeholder:text-[#9CA3AF] outline-none focus:border-[#5750F1]"
+          />
+          <button
+            onClick={handleAdd}
+            className="h-6 w-6 shrink-0 rounded-md bg-[#5750F1] flex items-center justify-center hover:opacity-90 transition-opacity"
+          >
+            <LuCheck size={11} className="text-white" />
+          </button>
+          <button
+            onClick={() => { setShowInput(false); setInputValue(""); }}
+            className="h-6 w-6 shrink-0 rounded-md border border-[#E6EBF1] dark:border-[#374151] flex items-center justify-center text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white transition-colors"
+          >
+            <LuX size={11} />
+          </button>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {items.length === 0 && !showInput && (
+        <p className="text-[11px] text-[#9CA3AF]">{emptyText}</p>
+      )}
     </div>
   );
 }
@@ -245,11 +431,24 @@ export default function ActionDrawer({
   const [checklist, setChecklist] = useState<string[]>([]);
   const [checkInput, setCheckInput] = useState("");
 
+  // Links, Watchers, Dependencies
+  const [links, setLinks] = useState<string[]>([]);
+  const [watchers, setWatchers] = useState<string[]>([]);
+  const [dependencies, setDependencies] = useState<string[]>([]);
+
+  // Attachments
+  const [attachments, setAttachments] = useState<{ name: string; size: number }[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // Sync draft when row changes
   useEffect(() => {
     setDraft(row ? { ...row } : null);
     setChecklist([]);
     setCheckInput("");
+    setLinks([]);
+    setWatchers([]);
+    setDependencies([]);
+    setAttachments([]);
   }, [row]);
 
   const isOpen = !!row;
@@ -258,6 +457,21 @@ export default function ActionDrawer({
     if (!checkInput.trim()) return;
     setChecklist(c => [...c, checkInput.trim()]);
     setCheckInput("");
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    const newFiles = Array.from(files).map(f => ({ name: f.name, size: f.size }));
+    setAttachments(prev => [...prev, ...newFiles]);
+    // Reset the input so the same file can be selected again
+    e.target.value = "";
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
   if (!draft) return null;
@@ -300,10 +514,14 @@ export default function ActionDrawer({
             rows={2}
             className="w-full resize-none text-base font-semibold text-[#111928] dark:text-white bg-transparent border-none outline-none placeholder:text-[#9CA3AF] leading-snug mb-1"
           />
-          {/* Intended outcome */}
-          <p className="text-xs text-[#9CA3AF] mb-4">
-            {draft.intendedOutcome || "Intended outcome"}
-          </p>
+          {/* Intended outcome — editable */}
+          <input
+            type="text"
+            value={draft.intendedOutcome}
+            onChange={e => setDraft(d => d ? { ...d, intendedOutcome: e.target.value } : d)}
+            placeholder="Click to add intended outcome..."
+            className="w-full text-xs text-[#111928] dark:text-[#D1D5DB] bg-transparent border-none outline-none placeholder:text-[#9CA3AF] mb-4 py-1 hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] rounded px-1 -ml-1 transition-colors focus:bg-[#F3F4F6] dark:focus:bg-[#1a2332]"
+          />
 
           {/* Fields */}
           <div className="mb-4">
@@ -324,19 +542,17 @@ export default function ActionDrawer({
             </SectionRow>
 
             <SectionRow label="👤 Accountable">
-              <div className="flex items-center gap-1.5 text-xs text-[#111928] dark:text-white">
-                <div className="h-5 w-5 rounded-full bg-[#2563eb] flex items-center justify-center text-[9px] font-bold text-[#111928]">
-                  {draft.accountable?.[0] ?? "?"}
-                </div>
-                {draft.accountable || "—"}
-              </div>
+              <AccountableDropdown
+                value={draft.accountable}
+                onChange={name => setDraft(d => d ? { ...d, accountable: name } : d)}
+              />
             </SectionRow>
 
             <SectionRow label="👤 To Whom">
-              <div className="flex items-center gap-1.5 text-xs text-[#9CA3AF]">
-                <LuUser size={13} />
-                <span>Not assigned</span>
-              </div>
+              <AccountableDropdown
+                value={draft.linkTo}
+                onChange={name => setDraft(d => d ? { ...d, linkTo: name } : d)}
+              />
             </SectionRow>
           </div>
 
@@ -359,15 +575,21 @@ export default function ActionDrawer({
                 onClick={addCheckItem}
                 className="h-7 w-7 shrink-0 rounded-lg bg-[#2563eb] flex items-center justify-center hover:opacity-90 transition-opacity"
               >
-                <LuPlus size={13} className="text-[#111928]" />
+                <LuPlus size={13} className="text-white" />
               </button>
             </div>
             {checklist.length > 0 && (
               <div className="mt-2 flex flex-col gap-1">
                 {checklist.map((item, i) => (
-                  <div key={i} className="flex items-center gap-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                  <div key={i} className="flex items-center gap-2 text-xs text-[#6B7280] dark:text-[#9CA3AF] group">
                     <LuCheck size={11} className="text-[#2563eb] shrink-0" />
-                    {item}
+                    <span className="flex-1">{item}</span>
+                    <button
+                      onClick={() => setChecklist(c => c.filter((_, idx) => idx !== i))}
+                      className="opacity-0 group-hover:opacity-100 text-[#9CA3AF] hover:text-red-400 transition-all"
+                    >
+                      <LuX size={11} />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -375,52 +597,78 @@ export default function ActionDrawer({
           </div>
 
           {/* Links */}
-          <div className="border-t border-[#E6EBF1] dark:border-[#1F2A37] pt-4 mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="flex items-center gap-1.5 text-xs font-semibold text-[#111928] dark:text-white">
-                <LuLink2 size={13} /> Links
-              </span>
-              <button className="flex items-center gap-1 text-[11px] text-[#5750F1] hover:opacity-80">
-                <LuPlus size={12} /> Add
-              </button>
-            </div>
-            <p className="text-[11px] text-[#9CA3AF]">No links added yet</p>
-          </div>
+          <ListSection
+            icon={<LuLink2 size={13} />}
+            title="Links"
+            items={links}
+            onAdd={v => setLinks(prev => [...prev, v])}
+            onRemove={i => setLinks(prev => prev.filter((_, idx) => idx !== i))}
+            placeholder="Paste a URL or type a link..."
+            emptyText="No links added yet"
+          />
 
           {/* Watchers */}
-          <div className="border-t border-[#E6EBF1] dark:border-[#1F2A37] pt-4 mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="flex items-center gap-1.5 text-xs font-semibold text-[#111928] dark:text-white">
-                <LuEye size={13} /> Watchers
-              </span>
-              <button className="flex items-center gap-1 text-[11px] text-[#5750F1] hover:opacity-80">
-                <LuPlus size={12} /> Add
-              </button>
-            </div>
-            <p className="text-[11px] text-[#9CA3AF]">No watchers yet</p>
-          </div>
+          <ListSection
+            icon={<LuEye size={13} />}
+            title="Watchers"
+            items={watchers}
+            onAdd={v => setWatchers(prev => [...prev, v])}
+            onRemove={i => setWatchers(prev => prev.filter((_, idx) => idx !== i))}
+            placeholder="Add a watcher name..."
+            emptyText="No watchers yet"
+          />
 
           {/* Dependencies */}
-          <div className="border-t border-[#E6EBF1] dark:border-[#1F2A37] pt-4 mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="flex items-center gap-1.5 text-xs font-semibold text-[#111928] dark:text-white">
-                <LuLink size={13} /> Dependencies
-              </span>
-              <button className="flex items-center gap-1 text-[11px] text-[#5750F1] hover:opacity-80">
-                <LuPlus size={12} /> Add
-              </button>
-            </div>
-            <p className="text-[11px] text-[#9CA3AF]">No dependencies defined</p>
-          </div>
+          <ListSection
+            icon={<LuLink size={13} />}
+            title="Dependencies"
+            items={dependencies}
+            onAdd={v => setDependencies(prev => [...prev, v])}
+            onRemove={i => setDependencies(prev => prev.filter((_, idx) => idx !== i))}
+            placeholder="Describe a dependency..."
+            emptyText="No dependencies defined"
+          />
 
           {/* Attachments */}
           <div className="border-t border-[#E6EBF1] dark:border-[#1F2A37] pt-4 mb-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between mb-2">
               <span className="flex items-center gap-1.5 text-xs font-semibold text-[#111928] dark:text-white">
-                📎 Attachments
+                <LuPaperclip size={13} /> Attachments
               </span>
-              <button className="text-[11px] text-[#5750F1] hover:opacity-80">Upload</button>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="text-[11px] text-[#5750F1] hover:opacity-80"
+              >
+                Upload
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                onChange={handleFileSelect}
+                className="hidden"
+              />
             </div>
+
+            {attachments.length > 0 ? (
+              <div className="flex flex-col gap-1.5">
+                {attachments.map((file, i) => (
+                  <div key={i} className="flex items-center gap-2 group rounded-md bg-[#F3F4F6] dark:bg-[#0a1018] px-2.5 py-1.5">
+                    <LuFile size={12} className="text-[#5750F1] shrink-0" />
+                    <span className="text-[11px] text-[#111928] dark:text-[#D1D5DB] flex-1 truncate">{file.name}</span>
+                    <span className="text-[10px] text-[#9CA3AF] shrink-0">{formatFileSize(file.size)}</span>
+                    <button
+                      onClick={() => setAttachments(prev => prev.filter((_, idx) => idx !== i))}
+                      className="opacity-0 group-hover:opacity-100 text-[#9CA3AF] hover:text-red-400 transition-all"
+                    >
+                      <LuX size={11} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[11px] text-[#9CA3AF]">No attachments yet</p>
+            )}
           </div>
         </div>
 

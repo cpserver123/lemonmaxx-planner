@@ -98,8 +98,8 @@ function SidebarNav({
 }
 
 /* --- Main panel ------------------------------------------------------ */
-export default function MyTeamPanel({ onClose }: { onClose: () => void }) {
-  const [activeTab, setActiveTab]     = useState<Tab>("dashboard");
+export default function MyTeamPanel({ onClose, initialTab = "dashboard" }: { onClose: () => void; initialTab?: Tab }) {
+  const [activeTab, setActiveTab]     = useState<Tab>(initialTab);
   const [drawerOpen, setDrawerOpen]   = useState(false);
 
   const handleSelect = (tab: Tab) => {

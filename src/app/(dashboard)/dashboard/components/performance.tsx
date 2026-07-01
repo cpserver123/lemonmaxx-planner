@@ -1,9 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { LuCalendar, LuChevronLeft, LuChevronRight } from "react-icons/lu";
+import { LuCalendar, LuChevronLeft, LuChevronRight, LuStar } from "react-icons/lu";
+import MyTeamPanel from "./my-team/MyTeamPanel";
 
 const TIME_FILTERS = ["Yest", "7D", "MTD", "LM"];
+
+const TEAM_LEADERS = ["All Leaders", "Gagan Brar", "Devinder", "Pankhuri Sharma", "Arun Kumar", "Riya Singh"];
+const MEDIA_BUYERS = ["All Buyers", "Bruno", "Alex M.", "Sara K.", "Ravi P.", "Naina T."];
 
 /* --- KPI Stat cards -------------------------------------------------- */
 const STATS = [
@@ -34,6 +38,8 @@ function FilterBar() {
   const [showPicker, setShowPicker] = useState(false);
   const [selectedYear,  setSelectedYear]  = useState(2026);
   const [selectedMonth, setSelectedMonth] = useState(5); // 0-indexed, June
+  const [teamLeader, setTeamLeader] = useState("All Leaders");
+  const [mediaBuyer, setMediaBuyer] = useState("All Buyers");
 
   const label = `${MONTHS[selectedMonth]} ${selectedYear}`;
 
@@ -44,6 +50,34 @@ function FilterBar() {
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
+
+      {/* Team Leader dropdown */}
+      <div className="relative">
+        <select
+          value={teamLeader}
+          onChange={e => setTeamLeader(e.target.value)}
+          className="appearance-none rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] pl-2.5 pr-7 py-1.5 text-[11px] font-medium text-[#111928] dark:text-white outline-none cursor-pointer hover:border-[#5750F1]/40 transition-colors"
+        >
+          {TEAM_LEADERS.map(l => <option key={l} value={l}>{l}</option>)}
+        </select>
+        <LuChevronRight size={11} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rotate-90 text-[#9CA3AF]" />
+      </div>
+
+      {/* Media Buyer dropdown */}
+      <div className="relative">
+        <select
+          value={mediaBuyer}
+          onChange={e => setMediaBuyer(e.target.value)}
+          className="appearance-none rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] pl-2.5 pr-7 py-1.5 text-[11px] font-medium text-[#111928] dark:text-white outline-none cursor-pointer hover:border-[#5750F1]/40 transition-colors"
+        >
+          {MEDIA_BUYERS.map(b => <option key={b} value={b}>{b}</option>)}
+        </select>
+        <LuChevronRight size={11} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rotate-90 text-[#9CA3AF]" />
+      </div>
+
+      {/* Divider */}
+      <span className="h-4 w-px bg-[#E6EBF1] dark:bg-[#374151]" />
+
       {/* Time pills */}
       <div className="flex items-center gap-1 bg-[#F3F4F6] dark:bg-[#122031] rounded-lg p-0.5">
         {TIME_FILTERS.map((f, i) => (
@@ -118,8 +152,42 @@ function FilterBar() {
   );
 }
 
+/* --- Review Score Card ----------------------------------------------- */
+function ReviewScoreCard() {
+  const score = 74;
+
+  const scoreColor = score >= 70 ? "text-green-500" : score >= 40 ? "text-orange-400" : "text-red-500";
+  const barColor   = score >= 70 ? "bg-green-500"   : score >= 40 ? "bg-orange-400"   : "bg-red-500";
+
+  return (
+    <div className="rounded-lg border border-[#E6EBF1] dark:border-[#1F2A37] bg-[#F9FAFB] dark:bg-[#0a1018] p-3 flex flex-col gap-1.5">
+      <div className="flex items-center gap-1">
+        <LuStar size={11} className="text-[#9CA3AF] shrink-0" />
+        <span className="text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">Review Score</span>
+      </div>
+      <p className={`text-2xl font-bold mt-0.5 ${scoreColor}`}>
+        {score}
+        <span className="text-sm font-normal text-[#9CA3AF] ml-0.5">/100</span>
+      </p>
+      <div className="h-1.5 rounded-full bg-[#E6EBF1] dark:bg-[#1F2A37] overflow-hidden">
+        <div className={`h-full rounded-full ${barColor}`} style={{ width: `${score}%` }} />
+      </div>
+    </div>
+  );
+}
+
 /* --- Performance Dashboard ------------------------------------------- */
 export default function PerformanceSection() {
+  const [showBreakdowns, setShowBreakdowns] = useState(false);
+
+  if (showBreakdowns) {
+    return (
+      <div className="fixed inset-0 z-50 bg-[#F3F4F6] dark:bg-[#020d1a]">
+        <MyTeamPanel initialTab="breakdown" onClose={() => setShowBreakdowns(false)} />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-5">
 
@@ -161,8 +229,8 @@ export default function PerformanceSection() {
             </div>
           </div>
 
-          {/* On track / At risk / Breaking */}
-          <div className="grid grid-cols-3 gap-3 mt-4">
+          {/* On track / At risk / Breaking / Review Score */}
+          <div className="grid grid-cols-4 gap-3 mt-4">
             {[
               { label: "On track", value: "36", color: "text-[#2563eb]" },
               { label: "At risk",  value: "0",  color: "text-orange-400" },
@@ -173,6 +241,9 @@ export default function PerformanceSection() {
                 <p className={`text-2xl font-bold mt-0.5 ${item.color}`}>{item.value}</p>
               </div>
             ))}
+
+            {/* Review Score KPI */}
+            <ReviewScoreCard />
           </div>
 
           <p className="text-[11px] text-[#2563eb] mt-4">21 active promises have no pathway yet.</p>
@@ -218,7 +289,12 @@ export default function PerformanceSection() {
         <div className="rounded-xl border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] p-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-[#111928] dark:text-white">Breakdowns</h3>
-            <button className="text-[11px] text-[#5750F1] hover:underline">View all</button>
+            <button
+              onClick={() => setShowBreakdowns(true)}
+              className="text-[11px] text-[#5750F1] hover:underline"
+            >
+              View all
+            </button>
           </div>
           <div className="flex flex-col gap-2">
             {BREAKDOWNS.map((b, i) => (

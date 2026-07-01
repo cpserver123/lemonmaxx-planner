@@ -143,7 +143,7 @@ const columns = [
     ),
   }),
   columnHelper.accessor("linkTo", {
-    header: "Link to",
+    header: "To Whom",
     size: 110,
     minSize: 80,
     cell: (info) => (
@@ -186,10 +186,16 @@ export default function DashboardSection() {
   }, []);
 
   const addRow = useCallback(() => {
-    setData((prev) => [
-      ...prev,
-      { id: crypto.randomUUID(), action: "", intendedOutcome: "", status: "Todo", due: "", accountable: "", linkTo: "", completed: false },
-    ]);
+    const newRow: DrawerRow = {
+      id: crypto.randomUUID(),
+      action: "",
+      intendedOutcome: "",
+      status: "Todo",
+      due: "",
+      accountable: "",
+      linkTo: "",
+    };
+    setSelectedRow(newRow);
   }, []);
 
   const table = useReactTable({
@@ -384,7 +390,14 @@ export default function DashboardSection() {
         row={selectedRow}
         onClose={() => setSelectedRow(null)}
         onSave={(updated) => {
-          setData(prev => prev.map(r => r.id === updated.id ? { ...r, ...updated } : r));
+          setData(prev => {
+            const exists = prev.some(r => r.id === updated.id);
+            if (exists) {
+              return prev.map(r => r.id === updated.id ? { ...r, ...updated } : r);
+            }
+            // New row — only add to table on save
+            return [...prev, { ...updated, completed: false }];
+          });
         }}
         onDelete={(id) => {
           setData(prev => prev.filter(r => r.id !== id));
