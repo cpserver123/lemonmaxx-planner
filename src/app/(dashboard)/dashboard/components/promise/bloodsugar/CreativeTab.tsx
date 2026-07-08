@@ -420,6 +420,7 @@ export default function CreativeTab() {
       {/* Action Drawer */}
       <ActionDrawer
         row={selectedAction}
+        performance="creatives"
         onClose={() => { setSelectedAction(null); setPendingPathwayId(null); }}
         onSave={(updated) => {
           if (pendingPathwayId) {

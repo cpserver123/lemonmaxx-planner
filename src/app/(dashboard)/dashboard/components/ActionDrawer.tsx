@@ -19,6 +19,20 @@ export interface DrawerRow {
   linkTo:          string;
 }
 
+export type PerformanceTab = "numbers" | "creatives" | "experiments";
+
+const PERFORMANCE_OPTIONS: { value: PerformanceTab; label: string }[] = [
+  { value: "numbers",     label: "Numbers" },
+  { value: "creatives",   label: "Creatives" },
+  { value: "experiments", label: "Experiments" },
+];
+
+const CATEGORY_OPTIONS = ["Breakdowns", "Escalations", "Requests"] as const;
+type Category = typeof CATEGORY_OPTIONS[number];
+
+const PLATFORM_OPTIONS = ["Meta", "Taboola"] as const;
+type Platform = typeof PLATFORM_OPTIONS[number];
+
 /* --- Team Members ---------------------------------------------------- */
 const TEAM_MEMBERS = [
   "Manish U.",
@@ -415,17 +429,77 @@ function RichEditor() {
   );
 }
 
+/* --- SimpleDropdown -------------------------------------------------- */
+function SimpleDropdown<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  options: readonly { value: T; label: string }[] | readonly T[];
+  onChange: (v: T) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const normalised = (options as (string | { value: T; label: string })[]).map(o =>
+    typeof o === "string" ? { value: o as T, label: o } : o
+  );
+
+  const currentLabel = normalised.find(o => o.value === value)?.label ?? value;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="inline-flex items-center gap-1.5 rounded-md border border-[#E6EBF1] dark:border-[#374151] bg-[#F9FAFB] dark:bg-[#0a1018] px-2.5 py-1 text-xs font-medium text-[#111928] dark:text-[#D1D5DB] hover:border-[#5750F1]/50 transition-colors"
+      >
+        {currentLabel}
+        <LuChevronDown size={11} className="text-[#9CA3AF]" />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full mt-1 z-50 min-w-[140px] rounded-xl border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] shadow-xl py-1 overflow-hidden">
+          {normalised.map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+              className="flex items-center justify-between gap-2 w-full px-3 py-2 text-xs hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"
+            >
+              <span className="text-[#111928] dark:text-[#D1D5DB]">{opt.label}</span>
+              {value === opt.value && <LuCheck size={12} className="text-[#5750F1] shrink-0" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* --- ActionDrawer ---------------------------------------------------- */
 export default function ActionDrawer({
   row,
   onClose,
   onSave,
   onDelete,
+  performance: initialPerformance,
 }: {
-  row:      DrawerRow | null;
-  onClose:  () => void;
-  onSave:   (updated: DrawerRow) => void;
-  onDelete: (id: string) => void;
+  row:          DrawerRow | null;
+  onClose:      () => void;
+  onSave:       (updated: DrawerRow) => void;
+  onDelete:     (id: string) => void;
+  /** When provided, shows the Performance / Category / Platform dropdowns */
+  performance?: PerformanceTab | null;
 }) {
   const [draft, setDraft] = useState<DrawerRow | null>(null);
   const [checklist, setChecklist] = useState<string[]>([]);
@@ -440,6 +514,11 @@ export default function ActionDrawer({
   const [attachments, setAttachments] = useState<{ name: string; size: number }[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Performance / Category / Platform state
+  const [perfTab, setPerfTab] = useState<PerformanceTab>(initialPerformance ?? "numbers");
+  const [category, setCategory] = useState<Category>("Breakdowns");
+  const [platform, setPlatform] = useState<Platform>("Meta");
+
   // Sync draft when row changes
   useEffect(() => {
     setDraft(row ? { ...row } : null);
@@ -449,7 +528,11 @@ export default function ActionDrawer({
     setWatchers([]);
     setDependencies([]);
     setAttachments([]);
-  }, [row]);
+    // Reset perf dropdowns to the caller's default
+    if (initialPerformance) setPerfTab(initialPerformance);
+    setCategory("Breakdowns");
+    setPlatform("Meta");
+  }, [row]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isOpen = !!row;
 
@@ -522,6 +605,39 @@ export default function ActionDrawer({
             placeholder="Click to add intended outcome..."
             className="w-full text-xs text-[#111928] dark:text-[#D1D5DB] bg-transparent border-none outline-none placeholder:text-[#9CA3AF] mb-4 py-1 hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] rounded px-1 -ml-1 transition-colors focus:bg-[#F3F4F6] dark:focus:bg-[#1a2332]"
           />
+
+          {/* Performance / Category / Platform — only when opened from a bloodsugar tab */}
+          {initialPerformance != null && (
+            <div className="flex flex-wrap items-center gap-3 mb-4 pb-4 border-b border-[#E6EBF1] dark:border-[#1F2A37]">
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-medium text-[#9CA3AF] uppercase tracking-wide">Performance</span>
+                <SimpleDropdown<PerformanceTab>
+                  label="Performance"
+                  value={perfTab}
+                  options={PERFORMANCE_OPTIONS}
+                  onChange={setPerfTab}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-medium text-[#9CA3AF] uppercase tracking-wide">Category</span>
+                <SimpleDropdown<Category>
+                  label="Category"
+                  value={category}
+                  options={CATEGORY_OPTIONS}
+                  onChange={setCategory}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-medium text-[#9CA3AF] uppercase tracking-wide">Platform</span>
+                <SimpleDropdown<Platform>
+                  label="Platform"
+                  value={platform}
+                  options={PLATFORM_OPTIONS}
+                  onChange={setPlatform}
+                />
+              </div>
+            </div>
+          )}
 
           {/* Fields */}
           <div className="mb-4">

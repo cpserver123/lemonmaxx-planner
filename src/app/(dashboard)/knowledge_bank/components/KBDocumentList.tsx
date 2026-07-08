@@ -1,15 +1,17 @@
 "use client";
 
-import { LuPlus, LuFileText } from "react-icons/lu";
+import { LuPlus, LuFileText, LuLock } from "react-icons/lu";
 import type { KBDocument } from "./kb-data";
 
 interface KBDocumentListProps {
   documents: KBDocument[];
   activeDocId: string | null;
   onSelect: (doc: KBDocument) => void;
+  /** When true, only the first document is enabled; the rest are locked/disabled */
+  lockAfterFirst?: boolean;
 }
 
-export default function KBDocumentList({ documents, activeDocId, onSelect }: KBDocumentListProps) {
+export default function KBDocumentList({ documents, activeDocId, onSelect, lockAfterFirst = false }: KBDocumentListProps) {
   return (
     <div className="w-52 shrink-0 flex flex-col border-r border-[#E6EBF1] dark:border-[#1F2A37] bg-[#F9FAFB] dark:bg-[#080f1a] overflow-y-auto">
       {/* New document button */}
@@ -25,20 +27,35 @@ export default function KBDocumentList({ documents, activeDocId, onSelect }: KBD
         {documents.length === 0 ? (
           <p className="px-4 py-6 text-xs text-[#9CA3AF] text-center">No documents yet</p>
         ) : (
-          documents.map((doc) => {
+          documents.map((doc, idx) => {
             const active = doc.id === activeDocId;
+            const locked = lockAfterFirst && idx > 0;
             return (
               <button
                 key={doc.id}
-                onClick={() => onSelect(doc)}
+                onClick={() => !locked && onSelect(doc)}
+                disabled={locked}
+                title={locked ? "Complete the first document to unlock" : undefined}
                 className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors ${
-                  active
+                  locked
+                    ? "opacity-40 cursor-not-allowed"
+                    : active
                     ? "bg-[#EEF2FF] dark:bg-[#1a1f4e]"
                     : "hover:bg-[#F3F4F6] dark:hover:bg-[#0a1628]"
                 }`}
               >
-                <LuFileText size={13} className={active ? "text-[#5750F1] shrink-0" : "text-[#9CA3AF] shrink-0"} />
-                <span className={`text-xs truncate ${active ? "text-[#5750F1] font-semibold" : "text-[#374151] dark:text-[#D1D5DB]"}`}>
+                {locked ? (
+                  <LuLock size={13} className="text-[#9CA3AF] shrink-0" />
+                ) : (
+                  <LuFileText size={13} className={active ? "text-[#5750F1] shrink-0" : "text-[#9CA3AF] shrink-0"} />
+                )}
+                <span className={`text-xs truncate ${
+                  locked
+                    ? "text-[#9CA3AF]"
+                    : active
+                    ? "text-[#5750F1] font-semibold"
+                    : "text-[#374151] dark:text-[#D1D5DB]"
+                }`}>
                   {doc.title}
                 </span>
               </button>

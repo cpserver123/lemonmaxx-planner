@@ -458,6 +458,7 @@ export default function NumbersTab() {
       {/* Action Drawer */}
       <ActionDrawer
         row={selectedAction}
+        performance="numbers"
         onClose={() => setSelectedAction(null)}
         onSave={(updated) => {
           setActions(prev => {

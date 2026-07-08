@@ -39,20 +39,23 @@ interface PlanningRow {
 /* --- Dummy Data ------------------------------------------------------ */
 const PLANNING_DATA: PlanningRow[] = [
   // Blood Sugar
-  { id: "bs-meta",    category: "Blood Sugar", platform: "Meta",     actuals: 34185,   promise: 30000,  perfCeiling: 20000,  perfDelta: 10000,  deltaLoss: 10000,  netPromise: 40000,  resources: "Arun, Satish, Kapil, Nityashish, Yash, Sahil..." },
-  { id: "bs-sub",     category: "Blood Sugar", platform: "Sub Total", actuals: 34185,  promise: 30000,  perfCeiling: 20000,  perfDelta: 10000,  deltaLoss: 10000,  netPromise: 40000,  resources: "", isSubTotal: true },
+  { id: "bs-meta",    category: "Blood Sugar", platform: "Meta",      actuals: 34185,   promise: 30000,  perfCeiling: 20000,  perfDelta: 10000,  deltaLoss: 10000,  netPromise: 40000,  resources: "Arun, Satish, Kapil, Nityashish, Yash, Sahil...", hasExpand: true, expandCount: 1 },
+  { id: "bs-meta-note", category: "Blood Sugar", platform: "",        actuals: null,    promise: null,   perfCeiling: null,   perfDelta: null,   deltaLoss: null,   netPromise: null,   resources: "", isPromiseNote: true, promiseNote: "Drive Blood Sugar revenue on Meta by scaling the top 2 proven angles across 10 hook/visual/script variants, hitting ≥$20K spend at ≥30% ROI with 5-day consistency by Jun 30, 2026.", promiseDate: "Jun 30, 2026" },
+  { id: "bs-sub",     category: "Blood Sugar", platform: "Sub Total",  actuals: 34185,  promise: 30000,  perfCeiling: 20000,  perfDelta: 10000,  deltaLoss: 10000,  netPromise: 40000,  resources: "", isSubTotal: true },
 
   // Memory
-  { id: "mem-tab",    category: "Memory",      platform: "Taboola",  actuals: 1744,    promise: 10000,  perfCeiling: null,   perfDelta: 10000,  deltaLoss: 5000,   netPromise: 15000,  resources: "komal", hasExpand: true, expandCount: 1 },
-  { id: "mem-note",   category: "Memory",      platform: "",         actuals: null,    promise: null,   perfCeiling: null,   perfDelta: null,   deltaLoss: null,   netPromise: null,   resources: "", isPromiseNote: true, promiseNote: "I will establish \"MediaGo\" as a validated platform by completing testing → platform setup → baseline test campaign → Go/No-Go decision, with documented learnings to inform July scale-or-kill decision, by June 30, 2026.", promiseDate: "Jun 29, 2026" },
-  { id: "mem-meta",   category: "Memory",      platform: "Meta",     actuals: 101182,  promise: 106000, perfCeiling: 70000,  perfDelta: 30000,  deltaLoss: 20000,  netPromise: 120000, resources: "Arun, Satish, Kapil, Nityashish, Yash, Sahil" },
-  { id: "mem-sub",    category: "Memory",      platform: "Sub Total", actuals: 152926, promise: 116000, perfCeiling: 70000,  perfDelta: 40000,  deltaLoss: 25000,  netPromise: 135000, resources: "", isSubTotal: true },
+  { id: "mem-tab",    category: "Memory",      platform: "Taboola",   actuals: 1744,    promise: 10000,  perfCeiling: null,   perfDelta: 10000,  deltaLoss: 5000,   netPromise: 15000,  resources: "komal", hasExpand: true, expandCount: 1 },
+  { id: "mem-note",   category: "Memory",      platform: "",          actuals: null,    promise: null,   perfCeiling: null,   perfDelta: null,   deltaLoss: null,   netPromise: null,   resources: "", isPromiseNote: true, promiseNote: "I will establish \"MediaGo\" as a validated platform by completing testing → platform setup → baseline test campaign → Go/No-Go decision, with documented learnings to inform July scale-or-kill decision, by June 30, 2026.", promiseDate: "Jun 29, 2026" },
+  { id: "mem-meta",   category: "Memory",      platform: "Meta",      actuals: 101182,  promise: 106000, perfCeiling: 70000,  perfDelta: 30000,  deltaLoss: 20000,  netPromise: 120000, resources: "Arun, Satish, Kapil, Nityashish, Yash, Sahil", hasExpand: true, expandCount: 1 },
+  { id: "mem-meta-note", category: "Memory",   platform: "",          actuals: null,    promise: null,   perfCeiling: null,   perfDelta: null,   deltaLoss: null,   netPromise: null,   resources: "", isPromiseNote: true, promiseNote: "Scale Memory on Meta by testing 3 proven VSL angles across catalog and standard placements, achieving ≥$70K spend at ≥30% ROI with 5-day consistency by Jun 30, 2026.", promiseDate: "Jun 30, 2026" },
+  { id: "mem-sub",    category: "Memory",      platform: "Sub Total",  actuals: 152926, promise: 116000, perfCeiling: 70000,  perfDelta: 40000,  deltaLoss: 25000,  netPromise: 135000, resources: "", isSubTotal: true },
 
   // Weight Loss
-  { id: "wl-tab",     category: "Weight Loss",  platform: "Taboola", actuals: null,    promise: 10000,  perfCeiling: null,   perfDelta: 10000,  deltaLoss: 5000,   netPromise: 15000,  resources: "Yash, komal" },
-  { id: "wl-meta",    category: "Weight Loss",  platform: "Meta",    actuals: -82943,  promise: 30000,  perfCeiling: null,   perfDelta: 30000,  deltaLoss: 10000,  netPromise: 40000,  resources: "Arun, Satish, Kapil, komal", hasExpand: true, expandCount: 1 },
-  { id: "wl-note",    category: "Weight Loss",  platform: "",        actuals: null,    promise: null,   perfCeiling: null,   perfDelta: null,   deltaLoss: null,   netPromise: null,   resources: "", isPromiseNote: true, promiseNote: "Promise: I will make catalog testing profitable on Weight Loss / Meta by delivering 2 winning creatives through catalog distribution, achieving ≥30% ROI at ≥$10K spend with 5-day consistency, generating $10K additional GM ...", promiseDate: "Jun 28, 2026" },
-  { id: "wl-sub",     category: "Weight Loss",  platform: "Sub Total", actuals: -82943, promise: 40000, perfCeiling: null,   perfDelta: 40000,  deltaLoss: 15000,  netPromise: 55000,  resources: "", isSubTotal: true },
+  { id: "wl-tab",     category: "Weight Loss", platform: "Taboola",   actuals: null,    promise: 10000,  perfCeiling: null,   perfDelta: 10000,  deltaLoss: 5000,   netPromise: 15000,  resources: "Yash, komal", hasExpand: true, expandCount: 1 },
+  { id: "wl-tab-note", category: "Weight Loss", platform: "",         actuals: null,    promise: null,   perfCeiling: null,   perfDelta: null,   deltaLoss: null,   netPromise: null,   resources: "", isPromiseNote: true, promiseNote: "Establish Weight Loss on Taboola by completing platform onboarding, launching baseline test campaign, and delivering a Go/No-Go decision with documented learnings to guide July scale-or-kill decision, by Jun 30, 2026.", promiseDate: "Jun 30, 2026" },
+  { id: "wl-meta",    category: "Weight Loss", platform: "Meta",      actuals: -82943,  promise: 30000,  perfCeiling: null,   perfDelta: 30000,  deltaLoss: 10000,  netPromise: 40000,  resources: "Arun, Satish, Kapil, komal", hasExpand: true, expandCount: 1 },
+  { id: "wl-note",    category: "Weight Loss", platform: "",          actuals: null,    promise: null,   perfCeiling: null,   perfDelta: null,   deltaLoss: null,   netPromise: null,   resources: "", isPromiseNote: true, promiseNote: "Promise: I will make catalog testing profitable on Weight Loss / Meta by delivering 2 winning creatives through catalog distribution, achieving ≥30% ROI at ≥$10K spend with 5-day consistency, generating $10K additional GM ...", promiseDate: "Jun 28, 2026" },
+  { id: "wl-sub",     category: "Weight Loss", platform: "Sub Total",  actuals: -82943, promise: 40000, perfCeiling: null,   perfDelta: 40000,  deltaLoss: 15000,  netPromise: 55000,  resources: "", isSubTotal: true },
 ];
 
 const TOTALS = {
@@ -121,17 +124,25 @@ const planColumns = [
       const row = info.row.original;
       if (row.isSubTotal) return <span className="text-xs font-medium text-[#4B5563] dark:text-[#9CA3AF]">Sub Total</span>;
       if (row.isPromiseNote) return null;
+      // NOTE: toggleRow is injected via table meta — see CategoryTable
+      const toggleRow = (info.table.options.meta as { toggleRow?: (id: string) => void } | undefined)?.toggleRow;
+      const isExpanded = (info.table.options.meta as { expandedRows?: Set<string> } | undefined)?.expandedRows?.has(row.id);
       return (
         <div className="flex items-center gap-1.5">
           {row.hasExpand && (
-            <button className="text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white transition-colors">
-              <LuChevronRight size={12} />
+            <button
+              onClick={() => toggleRow?.(row.id)}
+              className="text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white transition-colors"
+            >
+              <LuChevronRight
+                size={12}
+                className={`transition-transform duration-200 ${isExpanded ? "rotate-90" : ""}`}
+              />
             </button>
           )}
           <span className="text-xs text-[#111928] dark:text-[#D1D5DB]">{row.platform}</span>
           {row.hasExpand && row.expandCount && (
             <span className="flex items-center gap-0.5 text-[10px] text-[#FBBF24]">
-              {/* <LuTriangleAlert size={10} /> */}
               {row.expandCount}
             </span>
           )}
@@ -240,6 +251,15 @@ function groupByCategory(data: PlanningRow[]): Map<string, PlanningRow[]> {
 /* --- Category Table ------------------------------------------------- */
 function CategoryTable({ category, rows }: { category: string; rows: PlanningRow[] }) {
   const [sorting, setSorting] = useState<SortingState>([]);
+  /** Tracks which hasExpand row IDs are currently open */
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+
+  const toggleRow = (id: string) =>
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
 
   const table = useReactTable({
     data: rows,
@@ -250,7 +270,54 @@ function CategoryTable({ category, rows }: { category: string; rows: PlanningRow
     getCoreRowModel: coreModel,
     getSortedRowModel: sortedModel,
     getExpandedRowModel: expandedModel,
+    meta: { toggleRow, expandedRows },
   });
+
+  /**
+   * Build the final render order with sort-safe pinning:
+   * 1. Separate Sub Total and promiseNote rows from data rows
+   * 2. Group each data row with its immediately-following note row(s)
+   * 3. Sort those groups by the active sort column
+   * 4. Flatten: sorted groups + Sub Total always last
+   */
+  const sortedRows = useMemo(() => {
+    const allRows = table.getRowModel().rows;
+
+    // Separate sub-total row(s) — they go to the end
+    const subTotalRows = allRows.filter(r => r.original.isSubTotal);
+    const nonSubRows   = allRows.filter(r => !r.original.isSubTotal);
+
+    // Build groups: each data row paired with its following note row(s)
+    type Group = { head: typeof allRows[0]; notes: typeof allRows };
+    const groups: Group[] = [];
+    for (let i = 0; i < nonSubRows.length; i++) {
+      const r = nonSubRows[i];
+      if (r.original.isPromiseNote) continue; // already consumed
+      const noteRows: typeof allRows = [];
+      // Collect consecutive note rows that follow this data row
+      let j = i + 1;
+      while (j < nonSubRows.length && nonSubRows[j].original.isPromiseNote) {
+        noteRows.push(nonSubRows[j]);
+        j++;
+      }
+      i = j - 1; // advance past consumed note rows
+      groups.push({ head: r, notes: noteRows });
+    }
+
+    // Sort groups (tanstack already applied column sort to `head` rows)
+    // We rely on the ORDER from tanstack's sorted model — the data rows
+    // come out in the right order, we just rebuild groups from that order.
+    // (No extra sort needed — tanstack sorted `allRows` already.)
+
+    // Flatten: each group = [head, ...notes]
+    const ordered: typeof allRows = [];
+    for (const g of groups) {
+      ordered.push(g.head);
+      ordered.push(...g.notes);
+    }
+
+    return [...ordered, ...subTotalRows];
+  }, [table.getRowModel().rows]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="mb-1">
@@ -298,11 +365,16 @@ function CategoryTable({ category, rows }: { category: string; rows: PlanningRow
             ))}
           </thead>
           <tbody>
-            {table.getRowModel().rows.map((row) => {
+            {sortedRows.map((row) => {
               const orig = row.original;
 
-              /* - Promise Note Row - */
+              /* - Promise Note Row: only show when the parent hasExpand row is expanded - */
               if (orig.isPromiseNote) {
+                // Find the preceding hasExpand row to check expansion
+                const rowIdx = sortedRows.findIndex(r => r.id === row.id);
+                const prevRow = rowIdx > 0 ? sortedRows[rowIdx - 1].original : null;
+                const parentId = prevRow?.hasExpand ? prevRow.id : null;
+                if (!parentId || !expandedRows.has(parentId)) return null;
                 return (
                   <tr key={row.id} className="border-b border-[#E6EBF1] dark:border-[#1F2A37]">
                     <td colSpan={planColumns.length} className="px-4 py-2.5">
@@ -344,6 +416,7 @@ function CategoryTable({ category, rows }: { category: string; rows: PlanningRow
         </table>
       </div>
     </div>
+
   );
 }
 

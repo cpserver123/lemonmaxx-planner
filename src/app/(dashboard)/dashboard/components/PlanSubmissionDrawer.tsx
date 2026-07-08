@@ -18,25 +18,29 @@ interface PlanRow {
   isSubTotal?: boolean;
   isNote?:     boolean;
   note?:       string;
+  hasExpand?:  boolean;
 }
 
 /* --- Initial data (mirrors PLANNING_DATA) ---------------------------- */
 const INITIAL_ROWS: PlanRow[] = [
   // Blood Sugar
-  { id: "bs-meta", category: "Blood Sugar", platform: "Meta",      actuals: 34185,  promise: 30000,  perfCeiling: 20000, perfDelta: 10000, deltaLoss: 10000, netPromise: 40000,  resources: "Arun, Satish, Kapil, Nityashish, Yash, Sahil..." },
-  { id: "bs-sub",  category: "Blood Sugar", platform: "Sub Total", actuals: 34185,  promise: 30000,  perfCeiling: 20000, perfDelta: 10000, deltaLoss: 10000, netPromise: 40000,  resources: "", isSubTotal: true },
+  { id: "bs-meta",      category: "Blood Sugar", platform: "Meta",      actuals: 34185,  promise: 30000,  perfCeiling: 20000, perfDelta: 10000, deltaLoss: 10000, netPromise: 40000,  resources: "Arun, Satish, Kapil, Nityashish, Yash, Sahil...", hasExpand: true },
+  { id: "bs-meta-note", category: "Blood Sugar", platform: "",          actuals: null,   promise: null,   perfCeiling: null,  perfDelta: null,  deltaLoss: null,  netPromise: null,   resources: "", isNote: true, note: "Drive Blood Sugar revenue on Meta by scaling the top 2 proven angles across 10 hook/visual/script variants, hitting ≥$20K spend at ≥30% ROI with 5-day consistency by Jun 30, 2026." },
+  { id: "bs-sub",       category: "Blood Sugar", platform: "Sub Total", actuals: 34185,  promise: 30000,  perfCeiling: 20000, perfDelta: 10000, deltaLoss: 10000, netPromise: 40000,  resources: "", isSubTotal: true },
 
   // Memory
-  { id: "mem-tab",  category: "Memory", platform: "Taboola",    actuals: 1744,    promise: 10000,  perfCeiling: null,  perfDelta: 10000, deltaLoss: 5000,  netPromise: 15000,  resources: "komal" },
-  { id: "mem-note", category: "Memory", platform: "",           actuals: null,    promise: null,   perfCeiling: null,  perfDelta: null,  deltaLoss: null,  netPromise: null,   resources: "", isNote: true, note: "I will establish \"MediaGo\" as a validated platform by completing testing → platform setup → baseline test campaign → Go/No-Go decision, with documented learnings to inform July scale-or-kill decision, by June 30, 2026." },
-  { id: "mem-meta", category: "Memory", platform: "Meta",      actuals: 101182,  promise: 106000, perfCeiling: 70000, perfDelta: 30000, deltaLoss: 20000, netPromise: 120000, resources: "Arun, Satish, Kapil, Nityashish, Yash, Sahil" },
-  { id: "mem-sub",  category: "Memory", platform: "Sub Total", actuals: 152926,  promise: 116000, perfCeiling: 70000, perfDelta: 40000, deltaLoss: 25000, netPromise: 135000, resources: "", isSubTotal: true },
+  { id: "mem-tab",       category: "Memory", platform: "Taboola",    actuals: 1744,    promise: 10000,  perfCeiling: null,  perfDelta: 10000, deltaLoss: 5000,  netPromise: 15000,  resources: "komal", hasExpand: true },
+  { id: "mem-note",      category: "Memory", platform: "",           actuals: null,    promise: null,   perfCeiling: null,  perfDelta: null,  deltaLoss: null,  netPromise: null,   resources: "", isNote: true, note: "I will establish \"MediaGo\" as a validated platform by completing testing → platform setup → baseline test campaign → Go/No-Go decision, with documented learnings to inform July scale-or-kill decision, by June 30, 2026." },
+  { id: "mem-meta",      category: "Memory", platform: "Meta",      actuals: 101182,  promise: 106000, perfCeiling: 70000, perfDelta: 30000, deltaLoss: 20000, netPromise: 120000, resources: "Arun, Satish, Kapil, Nityashish, Yash, Sahil", hasExpand: true },
+  { id: "mem-meta-note", category: "Memory", platform: "",           actuals: null,    promise: null,   perfCeiling: null,  perfDelta: null,  deltaLoss: null,  netPromise: null,   resources: "", isNote: true, note: "Scale Memory on Meta by testing 3 proven VSL angles across catalog and standard placements, achieving ≥$70K spend at ≥30% ROI with 5-day consistency by Jun 30, 2026." },
+  { id: "mem-sub",       category: "Memory", platform: "Sub Total", actuals: 152926,  promise: 116000, perfCeiling: 70000, perfDelta: 40000, deltaLoss: 25000, netPromise: 135000, resources: "", isSubTotal: true },
 
   // Weight Loss
-  { id: "wl-tab",  category: "Weight Loss", platform: "Taboola",    actuals: null,   promise: 10000,  perfCeiling: null,  perfDelta: 10000, deltaLoss: 5000,  netPromise: 15000,  resources: "Yash, komal" },
-  { id: "wl-meta", category: "Weight Loss", platform: "Meta",       actuals: -82943, promise: 30000,  perfCeiling: null,  perfDelta: 30000, deltaLoss: 10000, netPromise: 40000,  resources: "Arun, Satish, Kapil, komal" },
-  { id: "wl-note", category: "Weight Loss", platform: "",           actuals: null,   promise: null,   perfCeiling: null,  perfDelta: null,  deltaLoss: null,  netPromise: null,   resources: "", isNote: true, note: "Promise: I will make catalog testing profitable on Weight Loss / Meta by delivering 2 winning creatives through catalog distribution, achieving ≥30% ROI at ≥$10K spend with 5-day consistency, generating $10K additional GM..." },
-  { id: "wl-sub",  category: "Weight Loss", platform: "Sub Total",  actuals: -82943, promise: 40000,  perfCeiling: null,  perfDelta: 40000, deltaLoss: 15000, netPromise: 55000,  resources: "", isSubTotal: true },
+  { id: "wl-tab",      category: "Weight Loss", platform: "Taboola",    actuals: null,   promise: 10000,  perfCeiling: null,  perfDelta: 10000, deltaLoss: 5000,  netPromise: 15000,  resources: "Yash, komal", hasExpand: true },
+  { id: "wl-tab-note", category: "Weight Loss", platform: "",           actuals: null,   promise: null,   perfCeiling: null,  perfDelta: null,  deltaLoss: null,  netPromise: null,   resources: "", isNote: true, note: "Establish Weight Loss on Taboola by completing platform onboarding, launching baseline test campaign, and delivering a Go/No-Go decision with documented learnings to guide July scale-or-kill decision, by Jun 30, 2026." },
+  { id: "wl-meta",     category: "Weight Loss", platform: "Meta",       actuals: -82943, promise: 30000,  perfCeiling: null,  perfDelta: 30000, deltaLoss: 10000, netPromise: 40000,  resources: "Arun, Satish, Kapil, komal", hasExpand: true },
+  { id: "wl-note",     category: "Weight Loss", platform: "",           actuals: null,   promise: null,   perfCeiling: null,  perfDelta: null,  deltaLoss: null,  netPromise: null,   resources: "", isNote: true, note: "Promise: I will make catalog testing profitable on Weight Loss / Meta by delivering 2 winning creatives through catalog distribution, achieving ≥30% ROI at ≥$10K spend with 5-day consistency, generating $10K additional GM..." },
+  { id: "wl-sub",      category: "Weight Loss", platform: "Sub Total",  actuals: -82943, promise: 40000,  perfCeiling: null,  perfDelta: 40000, deltaLoss: 15000, netPromise: 55000,  resources: "", isSubTotal: true },
 ];
 
 /* --- Helpers --------------------------------------------------------- */
@@ -179,6 +183,14 @@ export default function PlanSubmissionDrawer({
   onClose: () => void;
 }) {
   const [rows, setRows] = useState<PlanRow[]>(INITIAL_ROWS);
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+
+  const toggleExpand = (id: string) =>
+    setExpandedRows(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
 
   const update = (id: string, field: keyof PlanRow, value: unknown) => {
     setRows(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
@@ -388,8 +400,12 @@ export default function PlanSubmissionDrawer({
                       ))}
                     </tr>
 
-                    {catRows.map(row => {
+                    {catRows.map((row, rowIdx) => {
+                      // Note rows: only show when parent hasExpand row is expanded
                       if (row.isNote) {
+                        const prevRow = rowIdx > 0 ? catRows[rowIdx - 1] : null;
+                        const parentId = prevRow?.hasExpand ? prevRow.id : null;
+                        if (!parentId || !expandedRows.has(parentId)) return null;
                         return (
                           <tr key={row.id} className="border-b border-[#E6EBF1] dark:border-[#1F2A37]">
                             <td colSpan={COLS.length + 1} className="px-3 py-2 bg-[#FFFBEB] dark:bg-[#1a1500]">
@@ -432,7 +448,25 @@ export default function PlanSubmissionDrawer({
 
                       return (
                         <tr key={row.id} className="border-b border-[#E6EBF1] dark:border-[#1F2A37] hover:bg-[#F9FAFB] dark:hover:bg-[#0a1018] transition-colors">
-                          <td className="px-3 py-2 text-xs text-[#111928] dark:text-[#D1D5DB]">{row.platform}</td>
+                          <td className="px-3 py-2">
+                            <div className="flex items-center gap-1.5">
+                              {row.hasExpand && (
+                                <button
+                                  onClick={() => toggleExpand(row.id)}
+                                  className="text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white transition-colors shrink-0"
+                                  aria-label={expandedRows.has(row.id) ? "Collapse" : "Expand"}
+                                >
+                                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                                    <path
+                                      d={expandedRows.has(row.id) ? "M2 4L5 7L8 4" : "M4 2L7 5L4 8"}
+                                      stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
+                                    />
+                                  </svg>
+                                </button>
+                              )}
+                              <span className="text-xs text-[#111928] dark:text-[#D1D5DB]">{row.platform}</span>
+                            </div>
+                          </td>
                           {COLS.map(c => (
                             <td key={String(c.key)} className={`px-3 py-2 ${c.key === "actuals" ? "bg-[#F3F4F6]/50 dark:bg-[#060a10]" : ""}`}>
                               {c.key === "resources" ? (

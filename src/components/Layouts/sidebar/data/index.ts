@@ -1,5 +1,6 @@
 import { RxDashboard } from "react-icons/rx";
 import { LuTrendingUp } from "react-icons/lu";
+import { GiGiftOfKnowledge } from "react-icons/gi";
 
 export const NAV_DATA = [
   {
@@ -20,7 +21,7 @@ export const NAV_DATA = [
       {
         title: "Knowledge Bank",
         url: "/knowledge_bank",
-        icon: LuTrendingUp,
+        icon: GiGiftOfKnowledge,
         items: [],
       },
     ],
