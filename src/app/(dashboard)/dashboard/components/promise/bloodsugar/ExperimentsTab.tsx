@@ -509,6 +509,7 @@ export default function ExperimentsTab() {
       {/* Action Drawer */}
       <ActionDrawer
         row={selectedAction}
+        performance="experiments"
         onClose={() => { setSelectedAction(null); setPendingExpId(null); }}
         onSave={(updated) => {
           if (pendingExpId) {
