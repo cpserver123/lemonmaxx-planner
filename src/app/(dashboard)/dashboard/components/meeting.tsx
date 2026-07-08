@@ -365,7 +365,7 @@ function RichNoteEditor({ placeholder = "Write Content" }: { placeholder?: strin
                 <p className="text-[9px] font-bold text-[#6B7280] uppercase tracking-widest mb-2">Indent</p>
                 <div className="grid grid-cols-2 gap-2">
                   <button onMouseDown={e => { e.preventDefault(); exec("indent"); setShowMore(false); }} className="flex flex-col items-center gap-1 rounded-lg bg-[#F3F4F6] dark:bg-[#0d1520] border border-[#E5E7EB] dark:border-[#374151] py-2 text-[10px] text-[#6B7280] dark:text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white hover:border-[#2563eb]/40 transition-colors">
-                    <span>⇥</span>Indent<span className="text-[8px] text-[#9CA3AF]">Tab</span>
+                    <span>⇥</span>Indents<span className="text-[8px] text-[#9CA3AF]">Tab</span>
                   </button>
                   <button onMouseDown={e => { e.preventDefault(); exec("outdent"); setShowMore(false); }} className="flex flex-col items-center gap-1 rounded-lg bg-[#F3F4F6] dark:bg-[#0d1520] border border-[#E5E7EB] dark:border-[#374151] py-2 text-[10px] text-[#6B7280] dark:text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white hover:border-[#2563eb]/40 transition-colors">
                     <span>⇤</span>Outdent<span className="text-[8px] text-[#9CA3AF]">⇧Tab</span>
