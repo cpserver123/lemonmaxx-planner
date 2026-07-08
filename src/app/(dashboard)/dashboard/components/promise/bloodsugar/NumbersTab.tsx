@@ -424,7 +424,7 @@ export default function NumbersTab() {
                 </p>
               </div>
               <div className="flex items-center gap-3 shrink-0 text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">
-                <span>👤 Yash Poonia</span>
+                <span>👤 Yash Pooni</span>
                 <span>📊 2</span>
                 <span>📅 Jun 30</span>
               </div>
