@@ -259,7 +259,7 @@ export default function DashboardSection() {
               Drop in actions, then move them to a real promise / deliverable / pathway.
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          {/* <div className="flex items-center gap-3">
             <button
               onClick={addRow}
               className="flex items-center gap-1.5 rounded-md px-3 py-1.5 bg-[#111928] dark:bg-white text-white dark:text-[#111928] text-xs font-medium hover:opacity-90 transition-opacity"
@@ -267,7 +267,7 @@ export default function DashboardSection() {
               <LuPlus size={13} />
               New note
             </button>
-          </div>
+          </div> */}
         </div>
 
         {/* Table */}

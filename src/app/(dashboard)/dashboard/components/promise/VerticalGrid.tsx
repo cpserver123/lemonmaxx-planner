@@ -61,19 +61,23 @@ function CreateOfferModal({
   onClose,
   onSave,
   verticals,
+  offerNames,
 }: {
   open: boolean;
   onClose: () => void;
   onSave: (offerName: string, verticalName: string) => void;
   verticals: string[];
+  offerNames: string[];
 }) {
   const [offerName, setOfferName] = useState("");
   const [selectedVertical, setSelectedVertical] = useState("");
+  const [selectedOffer, setSelectedOffer] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
       setOfferName("");
+      setSelectedOffer("");
       setSelectedVertical(verticals[0] ?? "");
       setTimeout(() => inputRef.current?.focus(), 50);
     }
@@ -99,6 +103,26 @@ function CreateOfferModal({
             placeholder="e.g. Bruno VSL"
             className="w-full rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-[#F9FAFB] dark:bg-[#0a1018] px-3 py-2 text-sm text-[#111928] dark:text-white placeholder:text-[#9CA3AF] outline-none focus:border-[#5750F1] transition-colors"
           />
+        </div>
+
+        {/* Offers dropdown */}
+        <div className="mb-4">
+          <label className="block text-xs font-semibold text-[#111928] dark:text-white mb-1.5">Offers</label>
+          {offerNames.length === 0 ? (
+            <p className="text-xs text-[#9CA3AF] italic">No offers yet.</p>
+          ) : (
+            <div className="relative">
+              <select
+                value={selectedOffer}
+                onChange={e => setSelectedOffer(e.target.value)}
+                className="w-full appearance-none rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-[#F9FAFB] dark:bg-[#0a1018] px-3 py-2 text-sm text-[#111928] dark:text-white outline-none focus:border-[#5750F1] transition-colors cursor-pointer"
+              >
+                <option value="">Select an offer…</option>
+                {offerNames.map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+              <LuChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9CA3AF] pointer-events-none" />
+            </div>
+          )}
         </div>
 
         <div className="mb-5">
@@ -400,6 +424,7 @@ export default function VerticalGrid({
         onClose={() => setShowCreateOffer(false)}
         onSave={handleSaveOffer}
         verticals={allVerticalNames}
+        offerNames={mergedVerticals.flatMap(v => (v.offers ?? []).map(o => o.name))}
       />
     </div>
   );

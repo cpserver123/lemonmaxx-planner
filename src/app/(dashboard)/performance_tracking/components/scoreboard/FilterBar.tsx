@@ -6,15 +6,26 @@ import { LuCalendar, LuChevronLeft, LuChevronRight, LuSearch } from "react-icons
 const TIME_FILTERS = ["Yest", "7D", "MTD", "LM"];
 const MONTH_NAMES  = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
+/** Build a compact label from a Set of selected month indices */
+function buildLabel(months: Set<number>, year: number): string {
+  if (months.size === 0) return `— ${year}`;
+  const sorted = [...months].sort((a, b) => a - b);
+  if (sorted.length === 1) return `${MONTH_NAMES[sorted[0]]} ${year}`;
+  const isConsecutive = sorted.every((v, i) => i === 0 || v === sorted[i - 1] + 1);
+  if (isConsecutive) return `${MONTH_NAMES[sorted[0]]} – ${MONTH_NAMES[sorted[sorted.length - 1]]} ${year}`;
+  if (sorted.length <= 3) return sorted.map(i => MONTH_NAMES[i]).join(", ") + ` ${year}`;
+  return `${sorted.length} months ${year}`;
+}
+
 export default function FilterBar() {
   const [search,     setSearch]     = useState("");
   const [activeTime, setActiveTime] = useState(1);
   const [showPicker, setShowPicker] = useState(false);
 
-  // Selected month state
+  // Multi-month selection
   const today = new Date();
-  const [selectedYear,  setSelectedYear]  = useState(today.getFullYear());
-  const [selectedMonth, setSelectedMonth] = useState(today.getMonth()); // 0-indexed
+  const [selectedYear,   setSelectedYear]   = useState(today.getFullYear());
+  const [selectedMonths, setSelectedMonths] = useState<Set<number>>(new Set([today.getMonth()]));
 
   // Picker year (navigation inside picker)
   const [pickerYear, setPickerYear] = useState(selectedYear);
@@ -35,27 +46,20 @@ export default function FilterBar() {
 
   const openPicker = () => {
     setPickerYear(selectedYear);
-    setShowPicker(true);
+    setShowPicker(p => !p);
   };
 
-  const selectMonth = (m: number) => {
-    setSelectedMonth(m);
+  const toggleMonth = (i: number) => {
+    setSelectedMonths(prev => {
+      const next = new Set(prev);
+      next.has(i) ? next.delete(i) : next.add(i);
+      return next;
+    });
+    // Commit picker year when any month is toggled
     setSelectedYear(pickerYear);
-    setShowPicker(false);
   };
 
-  const prevMonth = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (selectedMonth === 0) { setSelectedMonth(11); setSelectedYear(y => y - 1); }
-    else setSelectedMonth(m => m - 1);
-  };
-  const nextMonth = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (selectedMonth === 11) { setSelectedMonth(0); setSelectedYear(y => y + 1); }
-    else setSelectedMonth(m => m + 1);
-  };
-
-  const label = `${MONTH_NAMES[selectedMonth]} ${selectedYear}`;
+  const label = buildLabel(selectedMonths, selectedYear);
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
@@ -89,7 +93,7 @@ export default function FilterBar() {
         />
       </div>
 
-      {/* Month picker */}
+      {/* Multi-month picker */}
       <div ref={dropRef} className="ml-auto relative">
         {/* Trigger button */}
         <button
@@ -98,18 +102,8 @@ export default function FilterBar() {
         >
           <LuCalendar size={12} className="text-[#9CA3AF]" />
           {label}
-          <button
-            onClick={prevMonth}
-            className="p-0.5 rounded hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"
-          >
-            <LuChevronLeft size={11} className="text-[#9CA3AF]" />
-          </button>
-          <button
-            onClick={nextMonth}
-            className="p-0.5 rounded hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"
-          >
-            <LuChevronRight size={11} className="text-[#9CA3AF]" />
-          </button>
+          <LuChevronLeft size={11} className="text-[#9CA3AF]" />
+          <LuChevronRight size={11} className="text-[#9CA3AF]" />
         </button>
 
         {/* Dropdown picker */}
@@ -133,24 +127,47 @@ export default function FilterBar() {
               </button>
             </div>
 
-            {/* Month grid — 3 columns */}
+            {/* Month grid — multi-select */}
             <div className="grid grid-cols-3 gap-1.5">
               {MONTH_NAMES.map((m, i) => {
-                const isSelected = i === selectedMonth && pickerYear === selectedYear;
+                const active = selectedMonths.has(i) && pickerYear === selectedYear;
                 return (
                   <button
                     key={m}
-                    onClick={() => selectMonth(i)}
-                    className={`rounded-lg py-2 text-xs font-medium transition-all ${
-                      isSelected
+                    onClick={() => toggleMonth(i)}
+                    className={`relative rounded-lg py-2 text-xs font-medium transition-all ${
+                      active
                         ? "bg-[#5750F1] text-white shadow-sm"
                         : "text-[#111928] dark:text-[#D1D5DB] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332]"
                     }`}
                   >
                     {m}
+                    {active && (
+                      <span className="absolute -top-1 -right-1 flex h-3 w-3 items-center justify-center rounded-full bg-white">
+                        <svg width="6" height="5" viewBox="0 0 6 5" fill="none">
+                          <path d="M1 2.5L2.5 4L5 1" stroke="#5750F1" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </span>
+                    )}
                   </button>
                 );
               })}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between mt-3 pt-2 border-t border-[#E6EBF1] dark:border-[#27303E]">
+              <button
+                onClick={() => setSelectedMonths(new Set())}
+                className="text-[10px] text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white transition-colors"
+              >
+                Clear
+              </button>
+              <button
+                onClick={() => setShowPicker(false)}
+                className="rounded-md bg-[#5750F1] px-2.5 py-1 text-[10px] font-semibold text-white hover:bg-[#4742d4] transition-colors"
+              >
+                Done
+              </button>
             </div>
 
           </div>

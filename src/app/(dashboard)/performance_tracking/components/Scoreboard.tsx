@@ -3,20 +3,20 @@
 import { useState } from "react";
 import DashboardTab from "./scoreboard/DashboardTab";
 import BusinessTab  from "./scoreboard/BusinessTab";
-import FrontTab     from "./scoreboard/FrontTab";
+// import FrontTab     from "./scoreboard/FrontTab";
 import TeamTab      from "./scoreboard/TeamTab";
 import MemberTab    from "./scoreboard/MemberTab";
 import WeekTab      from "./scoreboard/WeekTab";
 import DailyTab     from "./scoreboard/DailyTab";
 
-type ContentTab = "Dashboard" | "Business" | "Front" | "Team" | "Member" | "Week" | "Daily";
+type ContentTab = "Dashboard" | "Business" | "Team" | "Member" | "Week" | "Daily";
 
-const TABS: ContentTab[] = ["Dashboard", "Business", "Front", "Team", "Member", "Week", "Daily"];
+const TABS: ContentTab[] = ["Dashboard", "Business", "Team", "Member", "Week", "Daily"];
 
 const TAB_VIEWS: Record<ContentTab, React.ReactNode> = {
   Dashboard: <DashboardTab />,
   Business:  <BusinessTab />,
-  Front:     <FrontTab />,
+  // Front:     <FrontTab />,
   Team:      <TeamTab />,
   Member:    <MemberTab />,
   Week:      <WeekTab />,
