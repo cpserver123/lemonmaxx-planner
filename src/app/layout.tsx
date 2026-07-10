@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Poppins } from "next/font/google";
 import "./globals.css";
+import { RootProviders } from "./providers";
 
 const poppins = Poppins({
   subsets: ["latin"],
@@ -23,7 +24,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning className={poppins.className}>
       <body suppressHydrationWarning className="bg-white dark:bg-[#020817] text-dark dark:text-gray-100 antialiased">
-        {children}
+        <RootProviders>{children}</RootProviders>
       </body>
     </html>
   );

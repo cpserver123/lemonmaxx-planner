@@ -54,14 +54,34 @@ const BREAKDOWNS: Breakdown[] = [
   },
 ];
 
+/* --- buildLabel helper ----------------------------------------------- */
+function buildLabel(months: Set<number>, year: number): string {
+  if (months.size === 0) return `${year}`;
+  const sorted = [...months].sort((a, b) => a - b);
+  if (sorted.length === 1) return `${MONTH_NAMES[sorted[0]]} ${year}`;
+  const isContiguous = sorted.every((v, i) => i === 0 || v === sorted[i - 1] + 1);
+  if (isContiguous) return `${MONTH_NAMES[sorted[0]]} – ${MONTH_NAMES[sorted[sorted.length - 1]]} ${year}`;
+  const labels = sorted.map(m => MONTH_NAMES[m]);
+  return labels.length <= 3 ? `${labels.join(", ")} ${year}` : `${labels.slice(0, 3).join(", ")}… ${year}`;
+}
+
 /* --- Month picker component ------------------------------------------ */
 function MonthPicker() {
-  const [activeTime, setActiveTime]     = useState(2); // MTD
-  const [showPicker, setShowPicker]     = useState(false);
-  const [selectedYear,  setSelectedYear]  = useState(2026);
-  const [selectedMonth, setSelectedMonth] = useState(5); // June
+  const [activeTime, setActiveTime] = useState(2); // MTD
+  const [showPicker, setShowPicker] = useState(false);
+  const [selectedYear, setSelectedYear] = useState(2026);
+  // Multi-month: store a Set of 0-indexed month numbers
+  const [selectedMonths, setSelectedMonths] = useState<Set<number>>(new Set([5])); // default: June
 
-  const label = `${MONTH_NAMES[selectedMonth]} 1 - ${MONTH_NAMES[selectedMonth]} 29, ${selectedYear}`;
+  const label = buildLabel(selectedMonths, selectedYear);
+
+  const toggleMonth = (m: number) => {
+    setSelectedMonths(prev => {
+      const next = new Set(prev);
+      next.has(m) ? next.delete(m) : next.add(m);
+      return next;
+    });
+  };
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
@@ -110,21 +130,51 @@ function MonthPicker() {
                   <LuChevronRight size={14} />
                 </button>
               </div>
+
+              {/* Selection hint */}
+              <p className="text-[10px] text-[#9CA3AF] mb-2">
+                {selectedMonths.size === 0
+                  ? "Tap months to select"
+                  : `${selectedMonths.size} month${selectedMonths.size > 1 ? "s" : ""} selected`}
+              </p>
+
               {/* Month grid */}
               <div className="grid grid-cols-3 gap-1.5">
-                {MONTH_NAMES.map((m, i) => (
-                  <button
-                    key={m}
-                    onClick={() => { setSelectedMonth(i); setShowPicker(false); }}
-                    className={`rounded-lg py-1.5 text-xs font-medium transition-colors ${
-                      i === selectedMonth
-                        ? "bg-[#5750F1] text-white"
-                        : "text-[#111928] dark:text-[#D1D5DB] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332]"
-                    }`}
-                  >
-                    {m}
-                  </button>
-                ))}
+                {MONTH_NAMES.map((m, i) => {
+                  const isSelected = selectedMonths.has(i);
+                  return (
+                    <button
+                      key={m}
+                      onClick={() => toggleMonth(i)}
+                      className={`relative rounded-lg py-1.5 text-xs font-medium transition-all ${
+                        isSelected
+                          ? "bg-[#5750F1] text-white ring-2 ring-[#5750F1]/40"
+                          : "text-[#111928] dark:text-[#D1D5DB] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332]"
+                      }`}
+                    >
+                      {m}
+                      {isSelected && (
+                        <span className="absolute top-0.5 right-0.5 text-[8px] leading-none">✓</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Footer actions */}
+              <div className="flex items-center justify-between mt-3 pt-3 border-t border-[#E6EBF1] dark:border-[#27303E]">
+                <button
+                  onClick={() => setSelectedMonths(new Set())}
+                  className="text-[11px] text-[#6B7280] dark:text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white transition-colors"
+                >
+                  Clear
+                </button>
+                <button
+                  onClick={() => setShowPicker(false)}
+                  className="px-3 py-1 rounded-lg bg-[#5750F1] text-white text-[11px] font-semibold hover:bg-[#4740d4] transition-colors"
+                >
+                  Done
+                </button>
               </div>
             </div>
           </>

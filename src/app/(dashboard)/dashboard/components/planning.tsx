@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -12,8 +12,10 @@ import {
   type ColumnResizeMode,
   type ExpandedState,
 } from "@tanstack/react-table";
-import { LuArrowUpDown, LuArrowUp, LuArrowDown, LuChevronRight, LuChevronDown, LuChevronLeft, LuLayoutGrid, LuCalendar, LuFileText } from "react-icons/lu";
+import { LuArrowUpDown, LuArrowUp, LuArrowDown, LuChevronRight, LuChevronDown, LuChevronLeft, LuLayoutGrid, LuCalendar, LuFileText, LuPencil } from "react-icons/lu";
 import PlanSubmissionDrawer from "./PlanSubmissionDrawer";
+import EditPlanDrawer from "./promise/editplan";
+import type { PlanningRow as EditPlanRow } from "./promise/editplan";
 
 /* --- Types ----------------------------------------------------------- */
 interface PlanningRow {
@@ -112,7 +114,136 @@ function Dropdown({ value, options, onChange }: { value: string; options: string
   );
 }
 
-/* --- Column defs (module-level) ------------------------------------- */
+/* --- Platform Dropdown Cell ----------------------------------------- */
+const PLATFORM_OPTIONS = ["Facebook", "Newsbreak", "Bigo", "TikTok"];
+
+function PlatformDropdownCell({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  const handleOpen = () => {
+    if (btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setPos({ top: rect.bottom + 4, left: rect.left });
+    }
+    setOpen(p => !p);
+  };
+
+  return (
+    <div className="relative inline-block">
+      <button
+        ref={btnRef}
+        onClick={handleOpen}
+        className="flex items-center gap-1 group text-xs text-[#111928] dark:text-[#D1D5DB] hover:text-[#5750F1] dark:hover:text-[#818CF8] transition-colors"
+      >
+        <span className="font-medium">{value || "—"}</span>
+        <LuChevronDown size={10} className="text-[#9CA3AF] group-hover:text-[#5750F1] transition-colors shrink-0" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-[9998]" onClick={() => setOpen(false)} />
+          <div
+            className="fixed z-[9999] w-36 rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] shadow-xl py-1"
+            style={{ top: pos.top, left: pos.left }}
+          >
+            {PLATFORM_OPTIONS.map(opt => (
+              <button
+                key={opt}
+                onClick={() => { onChange(opt); setOpen(false); }}
+                className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
+                  opt === value
+                    ? "bg-[#5750F1]/10 text-[#5750F1] font-semibold"
+                    : "text-[#111928] dark:text-[#D1D5DB] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332]"
+                }`}
+              >
+                {opt}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* --- Resource multi-select dropdown cell ---------------------------- */
+const TEAM_MEMBERS = [
+  "Arun", "Satish", "Kapil", "Nityashish", "Yash", "Sahil", "Komal", "Chris", "Sarah", "Lisa", "Raj", "Manish",
+];
+
+function ResourceDropdownCell({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  const selected = new Set(value.split(",").map(s => s.trim()).filter(Boolean));
+
+  const toggle = (name: string) => {
+    const next = new Set(selected);
+    next.has(name) ? next.delete(name) : next.add(name);
+    onChange([...next].join(", "));
+  };
+
+  const handleOpen = () => {
+    if (btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setPos({ top: rect.bottom + 4, left: rect.left });
+    }
+    setOpen(p => !p);
+  };
+
+  const label = selected.size === 0
+    ? <span className="text-[#9CA3AF] text-[10px]">Select...</span>
+    : <span className="text-[10px] text-[#5750F1] font-medium truncate">{[...selected].join(", ")}</span>;
+
+  return (
+    <div className="relative inline-block">
+      <button
+        ref={btnRef}
+        onClick={handleOpen}
+        className="flex items-center gap-1 rounded border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] px-2 py-1 text-left w-36 hover:border-[#5750F1]/50 transition-colors"
+      >
+        <span className="flex-1 truncate leading-none">{label}</span>
+        <LuChevronDown size={11} className="shrink-0 text-[#9CA3AF]" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-[9998]" onClick={() => setOpen(false)} />
+          <div
+            className="fixed z-[9999] w-44 rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] shadow-xl py-1 max-h-52 overflow-y-auto"
+            style={{ top: pos.top, left: pos.left }}
+          >
+            {TEAM_MEMBERS.map(name => (
+              <label
+                key={name}
+                onClick={(e) => { e.stopPropagation(); toggle(name); }}
+                className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"
+              >
+                <span
+                  className={`flex h-3.5 w-3.5 items-center justify-center rounded border transition-colors ${
+                    selected.has(name)
+                      ? "border-[#5750F1] bg-[#5750F1]"
+                      : "border-[#D1D5DB] dark:border-[#374151]"
+                  }`}
+                >
+                  {selected.has(name) && (
+                    <svg width="8" height="6" viewBox="0 0 8 6" fill="none">
+                      <path d="M1 3L3 5L7 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </span>
+                <span className="text-xs text-[#111928] dark:text-[#D1D5DB]">{name}</span>
+              </label>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+
 const columnHelper = createColumnHelper<PlanningRow>();
 
 const planColumns = [
@@ -124,29 +255,10 @@ const planColumns = [
       const row = info.row.original;
       if (row.isSubTotal) return <span className="text-xs font-medium text-[#4B5563] dark:text-[#9CA3AF]">Sub Total</span>;
       if (row.isPromiseNote) return null;
-      // NOTE: toggleRow is injected via table meta — see CategoryTable
-      const toggleRow = (info.table.options.meta as { toggleRow?: (id: string) => void } | undefined)?.toggleRow;
-      const isExpanded = (info.table.options.meta as { expandedRows?: Set<string> } | undefined)?.expandedRows?.has(row.id);
       return (
-        <div className="flex items-center gap-1.5">
-          {row.hasExpand && (
-            <button
-              onClick={() => toggleRow?.(row.id)}
-              className="text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white transition-colors"
-            >
-              <LuChevronRight
-                size={12}
-                className={`transition-transform duration-200 ${isExpanded ? "rotate-90" : ""}`}
-              />
-            </button>
-          )}
-          <span className="text-xs text-[#111928] dark:text-[#D1D5DB]">{row.platform}</span>
-          {row.hasExpand && row.expandCount && (
-            <span className="flex items-center gap-0.5 text-[10px] text-[#FBBF24]">
-              {row.expandCount}
-            </span>
-          )}
-        </div>
+        <span className="text-xs font-medium text-[#111928] dark:text-[#D1D5DB]">
+          {row.platform || "—"}
+        </span>
       );
     },
   }),
@@ -157,9 +269,18 @@ const planColumns = [
     cell: (info) => {
       const row = info.row.original;
       if (row.isPromiseNote) return null;
+      if (row.isSubTotal) {
+        const v = info.table.getRowModel().rows
+          .filter(r => !r.original.isSubTotal && !r.original.isPromiseNote)
+          .reduce<number | null>((acc, r) => {
+            const n = r.original.actuals;
+            return n === null ? acc : (acc ?? 0) + n;
+          }, null);
+        return <span className={`text-xs font-medium ${v !== null && v < 0 ? "text-red-500 dark:text-red-400" : "text-[#111928] dark:text-[#D1D5DB]"}`}>{fmt(v)}</span>;
+      }
       const v = info.getValue();
       return (
-        <span className={`text-xs ${row.isSubTotal ? "font-medium" : ""} ${v !== null && v < 0 ? "text-red-500 dark:text-red-400" : "text-[#111928] dark:text-[#D1D5DB]"}`}>
+        <span className={`text-xs ${v !== null && v < 0 ? "text-red-500 dark:text-red-400" : "text-[#111928] dark:text-[#D1D5DB]"}`}>
           {fmt(v)}
         </span>
       );
@@ -172,7 +293,13 @@ const planColumns = [
     cell: (info) => {
       const row = info.row.original;
       if (row.isPromiseNote) return null;
-      return <span className={`text-xs ${row.isSubTotal ? "font-medium" : ""} text-[#111928] dark:text-[#D1D5DB]`}>{fmt(info.getValue())}</span>;
+      if (row.isSubTotal) {
+        const v = info.table.getRowModel().rows
+          .filter(r => !r.original.isSubTotal && !r.original.isPromiseNote)
+          .reduce<number | null>((acc, r) => { const n = r.original.promise; return n === null ? acc : (acc ?? 0) + n; }, null);
+        return <span className="text-xs font-medium text-[#111928] dark:text-[#D1D5DB]">{fmt(v)}</span>;
+      }
+      return <span className="text-xs text-[#111928] dark:text-[#D1D5DB]">{fmt(info.getValue())}</span>;
     },
   }),
   columnHelper.accessor("perfCeiling", {
@@ -182,7 +309,13 @@ const planColumns = [
     cell: (info) => {
       const row = info.row.original;
       if (row.isPromiseNote) return null;
-      return <span className={`text-xs ${row.isSubTotal ? "font-medium" : ""} text-[#111928] dark:text-[#D1D5DB]`}>{fmt(info.getValue())}</span>;
+      if (row.isSubTotal) {
+        const v = info.table.getRowModel().rows
+          .filter(r => !r.original.isSubTotal && !r.original.isPromiseNote)
+          .reduce<number | null>((acc, r) => { const n = r.original.perfCeiling; return n === null ? acc : (acc ?? 0) + n; }, null);
+        return <span className="text-xs font-medium text-[#111928] dark:text-[#D1D5DB]">{fmt(v)}</span>;
+      }
+      return <span className="text-xs text-[#111928] dark:text-[#D1D5DB]">{fmt(info.getValue())}</span>;
     },
   }),
   columnHelper.accessor("perfDelta", {
@@ -192,7 +325,13 @@ const planColumns = [
     cell: (info) => {
       const row = info.row.original;
       if (row.isPromiseNote) return null;
-      return <span className={`text-xs ${row.isSubTotal ? "font-medium" : ""} text-[#111928] dark:text-[#D1D5DB]`}>{fmt(info.getValue())}</span>;
+      if (row.isSubTotal) {
+        const v = info.table.getRowModel().rows
+          .filter(r => !r.original.isSubTotal && !r.original.isPromiseNote)
+          .reduce<number | null>((acc, r) => { const n = r.original.perfDelta; return n === null ? acc : (acc ?? 0) + n; }, null);
+        return <span className="text-xs font-medium text-[#111928] dark:text-[#D1D5DB]">{fmt(v)}</span>;
+      }
+      return <span className="text-xs text-[#111928] dark:text-[#D1D5DB]">{fmt(info.getValue())}</span>;
     },
   }),
   columnHelper.accessor("deltaLoss", {
@@ -202,7 +341,13 @@ const planColumns = [
     cell: (info) => {
       const row = info.row.original;
       if (row.isPromiseNote) return null;
-      return <span className={`text-xs ${row.isSubTotal ? "font-medium" : ""} text-[#111928] dark:text-[#D1D5DB]`}>{fmt(info.getValue())}</span>;
+      if (row.isSubTotal) {
+        const v = info.table.getRowModel().rows
+          .filter(r => !r.original.isSubTotal && !r.original.isPromiseNote)
+          .reduce<number | null>((acc, r) => { const n = r.original.deltaLoss; return n === null ? acc : (acc ?? 0) + n; }, null);
+        return <span className="text-xs font-medium text-[#111928] dark:text-[#D1D5DB]">{fmt(v)}</span>;
+      }
+      return <span className="text-xs text-[#111928] dark:text-[#D1D5DB]">{fmt(info.getValue())}</span>;
     },
   }),
   columnHelper.accessor("netPromise", {
@@ -212,7 +357,13 @@ const planColumns = [
     cell: (info) => {
       const row = info.row.original;
       if (row.isPromiseNote) return null;
-      return <span className={`text-xs ${row.isSubTotal ? "font-medium" : ""} text-[#111928] dark:text-[#D1D5DB]`}>{fmt(info.getValue())}</span>;
+      if (row.isSubTotal) {
+        const v = info.table.getRowModel().rows
+          .filter(r => !r.original.isSubTotal && !r.original.isPromiseNote)
+          .reduce<number | null>((acc, r) => { const n = r.original.netPromise; return n === null ? acc : (acc ?? 0) + n; }, null);
+        return <span className="text-xs font-medium text-[#111928] dark:text-[#D1D5DB]">{fmt(v)}</span>;
+      }
+      return <span className="text-xs text-[#111928] dark:text-[#D1D5DB]">{fmt(info.getValue())}</span>;
     },
   }),
   columnHelper.accessor("resources", {
@@ -222,12 +373,14 @@ const planColumns = [
     cell: (info) => {
       const row = info.row.original;
       if (row.isPromiseNote || row.isSubTotal) return null;
-      const v = info.getValue();
-      if (!v) return <span className="text-xs text-[#6B7280]">-</span>;
+      const updateResources = (info.table.options.meta as { updateResources?: (id: string, v: string) => void } | undefined)?.updateResources;
+      const resourceOverrides = (info.table.options.meta as { resourceOverrides?: Map<string, string> } | undefined)?.resourceOverrides;
+      const currentVal = resourceOverrides?.get(row.id) ?? (info.getValue() || "");
       return (
-        <span className="text-xs text-[#6B7280] dark:text-[#9CA3AF] truncate block max-w-[180px]" title={v}>
-          👥 {v}
-        </span>
+        <ResourceDropdownCell
+          value={currentVal}
+          onChange={(v) => updateResources?.(row.id, v)}
+        />
       );
     },
   }),
@@ -253,6 +406,10 @@ function CategoryTable({ category, rows }: { category: string; rows: PlanningRow
   const [sorting, setSorting] = useState<SortingState>([]);
   /** Tracks which hasExpand row IDs are currently open */
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  /** Tracks per-row platform overrides */
+  const [platformOverrides, setPlatformOverrides] = useState<Map<string, string>>(new Map());
+  /** Tracks per-row resource overrides */
+  const [resourceOverrides, setResourceOverrides] = useState<Map<string, string>>(new Map());
 
   const toggleRow = (id: string) =>
     setExpandedRows((prev) => {
@@ -260,6 +417,12 @@ function CategoryTable({ category, rows }: { category: string; rows: PlanningRow
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
+
+  const updatePlatform = (id: string, v: string) =>
+    setPlatformOverrides(prev => new Map(prev).set(id, v));
+
+  const updateResources = (id: string, v: string) =>
+    setResourceOverrides(prev => new Map(prev).set(id, v));
 
   const table = useReactTable({
     data: rows,
@@ -270,7 +433,7 @@ function CategoryTable({ category, rows }: { category: string; rows: PlanningRow
     getCoreRowModel: coreModel,
     getSortedRowModel: sortedModel,
     getExpandedRowModel: expandedModel,
-    meta: { toggleRow, expandedRows },
+    meta: { toggleRow, expandedRows, updatePlatform, platformOverrides, updateResources, resourceOverrides },
   });
 
   /**
@@ -368,25 +531,8 @@ function CategoryTable({ category, rows }: { category: string; rows: PlanningRow
             {sortedRows.map((row) => {
               const orig = row.original;
 
-              /* - Promise Note Row: only show when the parent hasExpand row is expanded - */
-              if (orig.isPromiseNote) {
-                // Find the preceding hasExpand row to check expansion
-                const rowIdx = sortedRows.findIndex(r => r.id === row.id);
-                const prevRow = rowIdx > 0 ? sortedRows[rowIdx - 1].original : null;
-                const parentId = prevRow?.hasExpand ? prevRow.id : null;
-                if (!parentId || !expandedRows.has(parentId)) return null;
-                return (
-                  <tr key={row.id} className="border-b border-[#E6EBF1] dark:border-[#1F2A37]">
-                    <td colSpan={planColumns.length} className="px-4 py-2.5">
-                      <div className="flex items-start gap-2 rounded-md bg-[#FFFBEB] dark:bg-[#1a1f10] border border-[#FDE68A] dark:border-[#374151] px-3 py-2">
-                        {/* <LuTriangleAlert size={14} className="text-[#FBBF24] shrink-0 mt-0.5" /> */}
-                        <p className="text-[11px] text-[#374151] dark:text-[#D1D5DB] leading-relaxed flex-1">{orig.promiseNote}</p>
-                        <span className="text-[10px] text-[#6B7280] whitespace-nowrap shrink-0 ml-2">{orig.promiseDate}</span>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              }
+              /* - Promise Note Row: hidden - */
+              if (orig.isPromiseNote) return null;
 
               /* - Sub Total Row - */
               if (orig.isSubTotal) {
@@ -423,7 +569,10 @@ function CategoryTable({ category, rows }: { category: string; rows: PlanningRow
 /* --- Main Component -------------------------------------------------- */
 export default function PlanningSection() {
   const [showSubmitDrawer, setShowSubmitDrawer] = useState(false);
+  const [showEditPlan, setShowEditPlan] = useState(false);
   const [vslFilter, setVslFilter] = useState("VSL");
+  /** Live planning data — updated when user clicks Update in EditPlanDrawer */
+  const [planningData, setPlanningData] = useState(PLANNING_DATA);
 
   /* Planning month */
   const [planningYear,  setPlanningYear]  = useState(2026);
@@ -435,7 +584,7 @@ export default function PlanningSection() {
   const [actualsMonth, setActualsMonth] = useState(4); // May
   const [showActualsPicker, setShowActualsPicker] = useState(false);
 
-  const grouped = useMemo(() => groupByCategory(PLANNING_DATA), []);
+  const grouped = useMemo(() => groupByCategory(planningData), [planningData]);
 
   const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const planningLabel = `${MONTHS[planningMonth]} ${planningYear}`;
@@ -520,6 +669,15 @@ export default function PlanningSection() {
         {/* VSL Dropdown */}
         <Dropdown value={vslFilter} options={["VSL", "Supplement", "E-Commerce", "All"]} onChange={setVslFilter} />
 
+        {/* Edit button */}
+        <button
+          onClick={() => setShowEditPlan(true)}
+          className="flex items-center gap-1.5 rounded-md border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] px-3 py-1.5 text-xs font-medium text-[#111928] dark:text-white hover:border-[#5750F1]/40 transition-colors"
+        >
+          <LuPencil size={13} />
+          Edit
+        </button>
+
         {/* Plan Submission button */}
         <button
           onClick={() => setShowSubmitDrawer(true)}
@@ -556,6 +714,14 @@ export default function PlanningSection() {
       <PlanSubmissionDrawer
         open={showSubmitDrawer}
         onClose={() => setShowSubmitDrawer(false)}
+      />
+
+      {/* Edit Plan Drawer */}
+      <EditPlanDrawer
+        open={showEditPlan}
+        data={planningData as EditPlanRow[]}
+        onClose={() => setShowEditPlan(false)}
+        onUpdate={(updated) => setPlanningData(updated as typeof PLANNING_DATA)}
       />
     </div>
   );

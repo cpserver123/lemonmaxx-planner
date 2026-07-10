@@ -6,7 +6,9 @@ import { useSidebarContext } from "../sidebar/sidebar-context";
 import { ThemeToggleSwitch } from "./theme-toggle";
 import { CiMenuBurger } from "react-icons/ci";
 import { useDashboardTab, DASHBOARD_TABS } from "@/context/DashboardTabContext";
+import { UserInfo } from "./user-info";
 
+/* --- Header ---------------------------------------------------------- */
 function HeaderComponent() {
   const { toggleSidebar } = useSidebarContext();
   const pathname = usePathname();
@@ -57,12 +59,10 @@ function HeaderComponent() {
           <div className="flex-1" />
         )}
 
-        {/* Right — theme toggle + avatar */}
+        {/* Right — theme toggle + avatar with dropdown */}
         <div className="flex items-center gap-3 shrink-0">
           <ThemeToggleSwitch />
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#5750F1] text-white text-xs font-semibold shrink-0">
-            MU
-          </div>
+          <UserInfo />
         </div>
       </div>
     </header>

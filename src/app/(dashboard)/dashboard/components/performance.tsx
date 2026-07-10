@@ -33,19 +33,32 @@ const BREAKDOWNS = [
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
 /* --- FilterBar ------------------------------------------------------- */
+function buildLabel(months: Set<number>, year: number): string {
+  if (months.size === 0) return `— ${year}`;
+  const sorted = [...months].sort((a, b) => a - b);
+  if (sorted.length === 1) return `${MONTHS[sorted[0]]} ${year}`;
+  const isConsecutive = sorted.every((v, i) => i === 0 || v === sorted[i - 1] + 1);
+  if (isConsecutive) return `${MONTHS[sorted[0]]} – ${MONTHS[sorted[sorted.length - 1]]} ${year}`;
+  if (sorted.length <= 3) return sorted.map(i => MONTHS[i]).join(", ") + ` ${year}`;
+  return `${sorted.length} months ${year}`;
+}
+
 function FilterBar() {
   const [activeTime, setActiveTime] = useState(2); // MTD
   const [showPicker, setShowPicker] = useState(false);
-  const [selectedYear,  setSelectedYear]  = useState(2026);
-  const [selectedMonth, setSelectedMonth] = useState(5); // 0-indexed, June
+  const [selectedYear,   setSelectedYear]   = useState(2026);
+  const [selectedMonths, setSelectedMonths] = useState<Set<number>>(new Set([5])); // June
   const [teamLeader, setTeamLeader] = useState("All Leaders");
   const [mediaBuyer, setMediaBuyer] = useState("All Buyers");
 
-  const label = `${MONTHS[selectedMonth]} ${selectedYear}`;
+  const label = buildLabel(selectedMonths, selectedYear);
 
-  const selectMonth = (m: number) => {
-    setSelectedMonth(m);
-    setShowPicker(false);
+  const toggleMonth = (i: number) => {
+    setSelectedMonths(prev => {
+      const next = new Set(prev);
+      next.has(i) ? next.delete(i) : next.add(i);
+      return next;
+    });
   };
 
   return (
@@ -92,7 +105,7 @@ function FilterBar() {
         ))}
       </div>
 
-      {/* Month picker button */}
+      {/* Multi-month picker */}
       <div className="ml-auto relative">
         <button
           onClick={() => setShowPicker(p => !p)}
@@ -128,21 +141,47 @@ function FilterBar() {
                 </button>
               </div>
 
-              {/* Month grid */}
+              {/* Month grid — multi-select */}
               <div className="grid grid-cols-3 gap-1.5">
-                {MONTHS.map((m, i) => (
-                  <button
-                    key={m}
-                    onClick={() => selectMonth(i)}
-                    className={`rounded-lg py-1.5 text-xs font-medium transition-colors ${
-                      i === selectedMonth
-                        ? "bg-[#5750F1] text-white"
-                        : "text-[#111928] dark:text-[#D1D5DB] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332]"
-                    }`}
-                  >
-                    {m}
-                  </button>
-                ))}
+                {MONTHS.map((m, i) => {
+                  const active = selectedMonths.has(i);
+                  return (
+                    <button
+                      key={m}
+                      onClick={() => toggleMonth(i)}
+                      className={`relative rounded-lg py-1.5 text-xs font-medium transition-colors ${
+                        active
+                          ? "bg-[#5750F1] text-white"
+                          : "text-[#111928] dark:text-[#D1D5DB] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332]"
+                      }`}
+                    >
+                      {m}
+                      {active && (
+                        <span className="absolute -top-1 -right-1 flex h-3 w-3 items-center justify-center rounded-full bg-white">
+                          <svg width="6" height="5" viewBox="0 0 6 5" fill="none">
+                            <path d="M1 2.5L2.5 4L5 1" stroke="#5750F1" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-between mt-3 pt-2 border-t border-[#E6EBF1] dark:border-[#27303E]">
+                <button
+                  onClick={() => setSelectedMonths(new Set())}
+                  className="text-[10px] text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white transition-colors"
+                >
+                  Clear
+                </button>
+                <button
+                  onClick={() => setShowPicker(false)}
+                  className="rounded-md bg-[#5750F1] px-2.5 py-1 text-[10px] font-semibold text-white hover:bg-[#4742d4] transition-colors"
+                >
+                  Done
+                </button>
               </div>
             </div>
           </>
