@@ -17,6 +17,9 @@ export interface DrawerRow {
   due:             string;
   accountable:     string;
   linkTo:          string;
+  pathwayTitle?:   string;
+  pathwayDesc?:    string;
+  additionalActions?: { id: string; action: string; intendedOutcome: string }[];
 }
 
 export type PerformanceTab = "numbers" | "creatives" | "experiments";
@@ -55,6 +58,8 @@ const STATUS_OPTIONS = [
   { label: "Partially Done", color: "bg-orange-500/20 text-orange-400" },
   { label: "Cancelled",      color: "bg-[#6B7280]/20 text-[#6B7280]" },
   { label: "On Hold",        color: "bg-[#5750F1]/20 text-[#5750F1]" },
+  { label: "In Progress",    color: "bg-green-500/20 text-green-500" },
+
 ];
 
 function statusColor(status: string) {
@@ -489,12 +494,16 @@ function SimpleDropdown<T extends string>({
 /* --- ActionDrawer ---------------------------------------------------- */
 export default function ActionDrawer({
   row,
+  title,
+  isPathway,
   onClose,
   onSave,
   onDelete,
   performance: initialPerformance,
 }: {
   row:          DrawerRow | null;
+  title?:       string;
+  isPathway?:   boolean;
   onClose:      () => void;
   onSave:       (updated: DrawerRow) => void;
   onDelete:     (id: string) => void;
@@ -577,7 +586,9 @@ export default function ActionDrawer({
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#E6EBF1] dark:border-[#1F2A37]">
           <div className="flex items-center gap-2">
             <LuZap size={16} className="text-[#2563eb]" />
-            <span className="text-sm font-semibold text-[#111928] dark:text-white">Edit Action</span>
+            <span className="text-sm font-semibold text-[#111928] dark:text-white">
+              {isPathway ? "Create Pathway" : "Edit Action"}
+            </span>
           </div>
           <button
             onClick={onClose}
@@ -589,7 +600,34 @@ export default function ActionDrawer({
 
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
-          {/* Title */}
+          {/* Main title (from pathway) */}
+          {title && !isPathway && (
+            <div className="mb-2">
+              <span className="text-[10px] font-semibold text-[#9CA3AF] uppercase tracking-wider">Pathway</span>
+              <h2 className="text-sm font-bold text-[#111928] dark:text-white mt-0.5">{title}</h2>
+            </div>
+          )}
+
+          {isPathway && (
+            <div className="mb-6 pb-4 border-b border-[#E6EBF1] dark:border-[#1F2A37]">
+              <textarea
+                value={draft.pathwayTitle || ""}
+                onChange={e => setDraft(d => d ? { ...d, pathwayTitle: e.target.value } : d)}
+                placeholder="Pathway title..."
+                rows={1}
+                className="w-full resize-none text-lg font-bold text-[#111928] dark:text-white bg-transparent border-none outline-none placeholder:text-[#9CA3AF] leading-snug mb-2"
+              />
+              <input
+                type="text"
+                value={draft.pathwayDesc || ""}
+                onChange={e => setDraft(d => d ? { ...d, pathwayDesc: e.target.value } : d)}
+                placeholder="Click to add description..."
+                className="w-full text-xs text-[#111928] dark:text-[#D1D5DB] bg-transparent border-none outline-none placeholder:text-[#9CA3AF] py-1 hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] rounded px-1 -ml-1 transition-colors focus:bg-[#F3F4F6] dark:focus:bg-[#1a2332]"
+              />
+            </div>
+          )}
+
+          {/* Action Title */}
           <textarea
             value={draft.action}
             onChange={e => setDraft(d => d ? { ...d, action: e.target.value } : d)}
@@ -605,6 +643,51 @@ export default function ActionDrawer({
             placeholder="Click to add intended outcome..."
             className="w-full text-xs text-[#111928] dark:text-[#D1D5DB] bg-transparent border-none outline-none placeholder:text-[#9CA3AF] mb-4 py-1 hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] rounded px-1 -ml-1 transition-colors focus:bg-[#F3F4F6] dark:focus:bg-[#1a2332]"
           />
+
+          {/* Additional Actions */}
+          {draft.additionalActions?.map((add, idx) => (
+            <div key={add.id} className="mb-4 relative border-l-2 border-[#5750F1]/30 pl-3">
+              <button
+                onClick={() => setDraft(d => d ? { ...d, additionalActions: d.additionalActions?.filter(a => a.id !== add.id) } : d)}
+                className="absolute -left-[9px] top-1 text-[#9CA3AF] hover:text-red-500 bg-white dark:bg-[#0d1520] transition-colors"
+                title="Remove action"
+              >
+                <LuX size={14} />
+              </button>
+              <textarea
+                value={add.action}
+                onChange={e => setDraft(d => {
+                  if (!d) return d;
+                  const newActs = [...(d.additionalActions || [])];
+                  newActs[idx].action = e.target.value;
+                  return { ...d, additionalActions: newActs };
+                })}
+                placeholder="Action title..."
+                rows={2}
+                className="w-full resize-none text-base font-semibold text-[#111928] dark:text-white bg-transparent border-none outline-none placeholder:text-[#9CA3AF] leading-snug mb-1"
+              />
+              <input
+                type="text"
+                value={add.intendedOutcome}
+                onChange={e => setDraft(d => {
+                  if (!d) return d;
+                  const newActs = [...(d.additionalActions || [])];
+                  newActs[idx].intendedOutcome = e.target.value;
+                  return { ...d, additionalActions: newActs };
+                })}
+                placeholder="Click to add intended outcome..."
+                className="w-full text-xs text-[#111928] dark:text-[#D1D5DB] bg-transparent border-none outline-none placeholder:text-[#9CA3AF] py-1 hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] rounded px-1 -ml-1 transition-colors focus:bg-[#F3F4F6] dark:focus:bg-[#1a2332]"
+              />
+            </div>
+          ))}
+
+          <button
+            onClick={() => setDraft(d => d ? { ...d, additionalActions: [...(d.additionalActions || []), { id: crypto.randomUUID(), action: "", intendedOutcome: "" }] } : d)}
+            className="flex items-center gap-1.5 text-xs font-medium text-[#5750F1] hover:text-[#5750F1]/80 transition-colors mb-6"
+          >
+            <LuPlus size={14} />
+            Add another action
+          </button>
 
           {/* Performance / Category / Platform — only when opened from a bloodsugar tab */}
           {initialPerformance != null && (

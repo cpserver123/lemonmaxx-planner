@@ -8,25 +8,28 @@ import {
 import TeamDashboard from "./teamdashboard";
 import TeamCalender  from "./teamcalender";
 import TeamBreakdown from "./teambreakdown";
+import TeamReport    from "./teamreport";
 
-type Tab = "dashboard" | "calendar" | "breakdown";
+type Tab = "dashboard" | "calendar" | "breakdown" | "report";
 
 const SIDEBAR_ITEMS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "dashboard", label: "Dashboard",  icon: LuLayoutDashboard },
   { id: "calendar",  label: "Calendar",   icon: LuCalendar },
-  { id: "breakdown", label: "Breakdowns", icon: LuTrendingUp },
 ];
 
-const EXTRA_LINKS = [
-  { label: "Reports",     icon: LuFileText },
+const EXTRA_LINKS: { id?: Tab; label: string; icon: React.ElementType }[] = [
+   { id: "breakdown", label: "Breakdowns",  icon: LuTrendingUp },
   { label: "Escalations", icon: LuTriangleAlert },
   { label: "Requests",    icon: LuMessageSquare },
+  { id: "report", label: "Reports",     icon: LuFileText },
+ 
 ];
 
 const TAB_VIEWS: Record<Tab, React.ReactNode> = {
   dashboard: <TeamDashboard />,
   calendar:  <TeamCalender />,
   breakdown: <TeamBreakdown />,
+  report:    <TeamReport />,
 };
 
 /* --- Shared sidebar nav content -------------------------------------- */
@@ -82,10 +85,16 @@ function SidebarNav({
       <nav className="flex flex-col gap-0.5">
         {EXTRA_LINKS.map((item) => {
           const Icon = item.icon;
+          const isActive = item.id ? activeTab === item.id : false;
           return (
             <button
               key={item.label}
-              className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-[#6B7280] dark:text-[#9CA3AF] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332]/60 hover:text-[#111928] dark:hover:text-white transition-all w-full text-left"
+              onClick={() => { if (item.id) onSelect(item.id); }}
+              className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium w-full text-left transition-all ${
+                isActive
+                  ? "bg-[#111928] dark:bg-[#1a2332] text-[#2563eb]"
+                  : "text-[#6B7280] dark:text-[#9CA3AF] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332]/60 hover:text-[#111928] dark:hover:text-white"
+              }`}
             >
               <Icon size={15} className="shrink-0" />
               {item.label}

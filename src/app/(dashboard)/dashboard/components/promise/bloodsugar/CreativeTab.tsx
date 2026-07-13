@@ -75,17 +75,39 @@ const INITIAL_PATHWAY_ACTIONS: Record<string, ActionRow[]> = {
 };
 
 /* --- Status Badge ---------------------------------------------------- */
-function StatusBadge({ status }: { status: string }) {
+function StatusDropdown({ id, status }: { id: string, status: string }) {
+  const OPTIONS = [
+    "Planned",
+    "Done",
+    "Not Done",
+    "Partially Done",
+    "Cancelled",
+    "On Hold",
+    "In Progress"
+  ];
   const styles: Record<string, string> = {
-    "Done":        "bg-green-500/10 text-green-500 border-green-500/20",
-    "In Progress": "bg-blue-500/10 text-blue-400 border-blue-500/20",
-    "Todo":        "bg-[#9CA3AF]/10 text-[#9CA3AF] border-[#9CA3AF]/20",
-    "Planned":     "bg-[#9CA3AF]/10 text-[#9CA3AF] border-[#9CA3AF]/20",
+    "Done":           "bg-green-500/10 text-green-500 border-green-500/20",
+    "In Progress":    "bg-blue-500/10 text-blue-500 border-blue-500/20",
+    "Todo":           "bg-[#9CA3AF]/10 text-[#9CA3AF] border-[#9CA3AF]/20",
+    "Planned":        "bg-[#9CA3AF]/10 text-[#9CA3AF] border-[#9CA3AF]/20",
+    "Not Done":       "bg-red-500/10 text-red-500 border-red-500/20",
+    "Partially Done": "bg-yellow-500/10 text-yellow-600 border-yellow-500/20",
+    "Cancelled":      "bg-red-500/10 text-red-500 border-red-500/20",
+    "On Hold":        "bg-orange-500/10 text-orange-500 border-orange-500/20",
   };
   return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${styles[status] ?? styles["Todo"]}`}>
-      {status}
-    </span>
+    <div className="relative inline-block">
+      <select
+        value={status}
+        onChange={(e) => updateCreativeStatus?.(id, e.target.value)}
+        className={`appearance-none cursor-pointer inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold outline-none ${styles[status] ?? styles["Todo"]}`}
+      >
+        {!OPTIONS.includes(status) && <option value={status} className="text-black bg-white">{status}</option>}
+        {OPTIONS.map(opt => (
+          <option key={opt} value={opt} className="text-black bg-white">{opt}</option>
+        ))}
+      </select>
+    </div>
   );
 }
 
@@ -107,6 +129,7 @@ function PathwayBadge({ status }: { status: Pathway["status"] }) {
 const colHelper = createColumnHelper<ActionRow>();
 
 let openCreativeDrawer: ((row: ActionRow) => void) | null = null;
+let updateCreativeStatus: ((id: string, status: string) => void) | null = null;
 
 const columns = [
   colHelper.accessor("action", {
@@ -136,7 +159,7 @@ const columns = [
     header: "Status",
     size: 120,
     minSize: 80,
-    cell: (info) => <StatusBadge status={info.getValue()} />,
+    cell: (info) => <StatusDropdown id={info.row.original.id} status={info.getValue()} />,
   }),
   colHelper.accessor("due", {
     header: "Due",
@@ -367,19 +390,42 @@ function PathwayCard({
 
 /* --- Main Component -------------------------------------------------- */
 export default function CreativeTab() {
+  const [pathways, setPathways] = useState<Pathway[]>(PATHWAYS);
   const [pathwayActions, setPathwayActions] = useState<Record<string, ActionRow[]>>(INITIAL_PATHWAY_ACTIONS);
   const [selectedAction, setSelectedAction] = useState<DrawerRow | null>(null);
   const [pendingPathwayId, setPendingPathwayId] = useState<string | null>(null);
 
-  openCreativeDrawer = (row: ActionRow) => setSelectedAction({
-    id:              row.id,
-    action:          row.action,
-    intendedOutcome: row.intendedOutcome,
-    status:          row.status,
-    due:             row.due,
-    accountable:     row.accountable,
-    linkTo:          row.linkTo,
-  });
+  openCreativeDrawer = (row: ActionRow) => {
+    let foundPathwayId = null;
+    for (const [pId, actions] of Object.entries(pathwayActions)) {
+      if (actions.some(a => a.id === row.id)) {
+        foundPathwayId = pId;
+        break;
+      }
+    }
+    setPendingPathwayId(foundPathwayId);
+    setSelectedAction({
+      id:              row.id,
+      action:          row.action,
+      intendedOutcome: row.intendedOutcome,
+      status:          row.status,
+      due:             row.due,
+      accountable:     row.accountable,
+      linkTo:          row.linkTo,
+    });
+  };
+
+  updateCreativeStatus = (id: string, status: string) => {
+    setPathwayActions(prev => {
+      const next = { ...prev };
+      for (const pId of Object.keys(next)) {
+        if (next[pId].some(a => a.id === id)) {
+          next[pId] = next[pId].map(a => a.id === id ? { ...a, status } : a);
+        }
+      }
+      return next;
+    });
+  };
 
   const handleOpenDrawer = (pathwayId: string, row: DrawerRow) => {
     setPendingPathwayId(pathwayId);
@@ -388,7 +434,7 @@ export default function CreativeTab() {
 
   return (
     <div className="rounded-xl border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] p-4 flex flex-col gap-4">
-      {PATHWAYS.map((pathway) => (
+      {pathways.map((pathway) => (
         <PathwayCard
           key={pathway.id}
           pathway={pathway}
@@ -421,19 +467,57 @@ export default function CreativeTab() {
       <ActionDrawer
         row={selectedAction}
         performance="creatives"
+        isPathway={selectedAction !== null && !pendingPathwayId}
+        title={pendingPathwayId ? pathways.find(p => p.id === pendingPathwayId)?.title : undefined}
         onClose={() => { setSelectedAction(null); setPendingPathwayId(null); }}
         onSave={(updated) => {
+          const primaryAction = updated.action ? { ...updated, completed: false } : null;
+          const extraActions = (updated.additionalActions || [])
+            .filter(a => a.action.trim())
+            .map(a => ({
+               ...updated,
+               id: crypto.randomUUID(),
+               action: a.action,
+               intendedOutcome: a.intendedOutcome,
+               completed: false
+            }));
+
           if (pendingPathwayId) {
             setPathwayActions(prev => {
               const existing = prev[pendingPathwayId] ?? [];
               const found = existing.some(r => r.id === updated.id);
-              return {
-                ...prev,
-                [pendingPathwayId]: found
-                  ? existing.map(r => r.id === updated.id ? { ...r, ...updated } : r)
-                  : [...existing, { ...updated, completed: false }],
-              };
+              let newActions = [...existing];
+              
+              if (found) {
+                newActions = newActions.map(r => r.id === updated.id ? { ...r, ...updated } : r);
+                newActions.push(...extraActions);
+              } else {
+                if (primaryAction) newActions.push({ ...primaryAction, id: crypto.randomUUID() });
+                newActions.push(...extraActions);
+              }
+              
+              return { ...prev, [pendingPathwayId]: newActions };
             });
+          } else {
+            const newPathway: Pathway = {
+              id: `p-${Date.now()}`,
+              title: updated.pathwayTitle || "Untitled Pathway",
+              description: updated.pathwayDesc || "",
+              status: updated.status === "Planned" ? "Draft" : "Active",
+              accountable: updated.accountable || "Unassigned",
+              count: 0,
+              due: updated.due || "-",
+            };
+            
+            const allNewActions: ActionRow[] = [];
+            if (primaryAction) allNewActions.push({ ...primaryAction, id: crypto.randomUUID() });
+            allNewActions.push(...extraActions);
+
+            setPathways(prev => [...prev, newPathway]);
+            setPathwayActions(prev => ({
+              ...prev,
+              [newPathway.id]: allNewActions,
+            }));
           }
           setSelectedAction(null);
           setPendingPathwayId(null);

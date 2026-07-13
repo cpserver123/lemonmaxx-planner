@@ -12,12 +12,12 @@ export const NAV_DATA = [
         icon: RxDashboard,
         items: [],
       },
-      {
-        title: "Performance Tracking",
-        url: "/performance_tracking",
-        icon: LuTrendingUp,
-        items: [],
-      },
+      // {
+      //   title: "Performance Tracking",
+      //   url: "/performance_tracking",
+      //   icon: LuTrendingUp,
+      //   items: [],
+      // },
       {
         title: "Knowledge Bank",
         url: "/knowledge_bank",
