@@ -1,6 +1,7 @@
-﻿"use client";
+"use client";
 
 import { useState, useMemo, useCallback } from "react";
+import { useSelector } from "react-redux";
 import {
   useReactTable,
   getCoreRowModel,
@@ -13,6 +14,7 @@ import {
 import { LuClipboardCheck, LuUsers, LuShieldCheck, LuArrowUpDown, LuArrowUp, LuArrowDown, LuPlus } from "react-icons/lu";
 import { RxDragHandleDots2 } from "react-icons/rx";
 import MyTeamPanel from "./my-team/MyTeamPanel";
+import CheckIn from "./checkin";
 import ActionDrawer, { type DrawerRow } from "./ActionDrawer";
 import { useDashboardTab } from "@/context/DashboardTabContext";
 
@@ -73,9 +75,9 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
 }
 
 /* --- Quick Access Card ----------------------------------------------- */
-function QuickCard({ icon, title, subtitle }: { icon: React.ReactNode; title: string; subtitle: string }) {
+function QuickCard({ icon, title, subtitle, onClick }: { icon: React.ReactNode; title: string; subtitle: string; onClick?: () => void }) {
   return (
-    <button className="flex items-center gap-3 rounded-lg border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#1a2332] p-4 text-left w-full hover:border-[#5750F1]/40 transition-all duration-200 group">
+    <button onClick={onClick} className="flex items-center gap-3 rounded-lg border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#1a2332] p-4 text-left w-full hover:border-[#5750F1]/40 transition-all duration-200 group">
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[#E6EBF1] dark:border-[#1F2A37] bg-[#F3F4F6] dark:bg-[#0d1520] group-hover:border-[#5750F1]/30 transition-colors duration-200">
         {icon}
       </div>
@@ -160,10 +162,15 @@ const sortedRowModel = getSortedRowModel();
 
 /* --- Main Component -------------------------------------------------- */
 export default function DashboardSection() {
+  const user = useSelector((state: any) => state.user?.user);
+  const allowedRoles = ["superadmin", "Team Leader", "Admin"];
+  const canViewTeam = user && allowedRoles.includes(user.role);
+
   const [data, setData] = useState<CaptureRow[]>(DUMMY_DATA);
   const [showCompleted, setShowCompleted] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [showMyTeam, setShowMyTeam] = useState(false);
+  const [showCheckIn, setShowCheckIn] = useState(false);
   const [selectedRow, setSelectedRow] = useState<DrawerRow | null>(null);
   const { setActiveTab } = useDashboardTab();
 
@@ -212,6 +219,10 @@ export default function DashboardSection() {
     return <MyTeamPanel onClose={() => setShowMyTeam(false)} />;
   }
 
+  if (showCheckIn) {
+    return <CheckIn onClose={() => setShowCheckIn(false)} />;
+  }
+
   return (
     <div className="animate-fade-in">
       {/* Page title */}
@@ -222,19 +233,26 @@ export default function DashboardSection() {
 
       {/* Quick Access Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
-        <QuickCard icon={<LuClipboardCheck size={20} className="text-[#5750F1]" />} title="Check In"  subtitle="Daily check-in and status updates" />
-        <button
-          onClick={() => setShowMyTeam(true)}
-          className="flex items-center gap-3 rounded-lg border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#1a2332] p-4 text-left w-full hover:border-[#5750F1]/40 transition-all duration-200 group"
-        >
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[#E6EBF1] dark:border-[#1F2A37] bg-[#F3F4F6] dark:bg-[#0d1520] group-hover:border-[#5750F1]/30 transition-colors duration-200">
-            <LuUsers size={20} className="text-[#5750F1]" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold leading-tight text-[#111928] dark:text-white">My Team</p>
-            <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-0.5 truncate">View your team</p>
-          </div>
-        </button>
+        <QuickCard 
+          icon={<LuClipboardCheck size={20} className="text-[#5750F1]" />} 
+          title="Check In"  
+          subtitle="Daily check-in and status updates" 
+          onClick={() => setShowCheckIn(true)}
+        />
+        {canViewTeam && (
+          <button
+            onClick={() => setShowMyTeam(true)}
+            className="flex items-center gap-3 rounded-lg border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#1a2332] p-4 text-left w-full hover:border-[#5750F1]/40 transition-all duration-200 group"
+          >
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[#E6EBF1] dark:border-[#1F2A37] bg-[#F3F4F6] dark:bg-[#0d1520] group-hover:border-[#5750F1]/30 transition-colors duration-200">
+              <LuUsers size={20} className="text-[#5750F1]" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold leading-tight text-[#111928] dark:text-white">My Team</p>
+              <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-0.5 truncate">View your team</p>
+            </div>
+          </button>
+        )}
         <button
           onClick={() => setActiveTab("promises")}
           className="flex items-center gap-3 rounded-lg border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#1a2332] p-4 text-left w-full hover:border-[#5750F1]/40 transition-all duration-200 group"

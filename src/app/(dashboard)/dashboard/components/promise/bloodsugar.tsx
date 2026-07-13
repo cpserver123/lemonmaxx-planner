@@ -70,12 +70,7 @@ function SidebarContent({
 
       <div className="border-t border-[#E6EBF1] dark:border-[#1F2A37] my-4" />
 
-      <div className="flex items-center justify-between px-2 mb-2">
-        <p className="text-[10px] font-semibold text-[#6B7280] uppercase tracking-widest">Delta</p>
-        <button className="text-[#6B7280] hover:text-[#111928] dark:hover:text-white transition-colors">
-          <LuPlus size={12} />
-        </button>
-      </div>
+     
     </>
   );
 }

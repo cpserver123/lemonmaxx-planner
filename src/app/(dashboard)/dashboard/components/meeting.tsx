@@ -23,6 +23,7 @@ interface MeetingForm {
   description:     string;
   isExternal:      boolean;
   isPrivate:       boolean;
+  reportScore?:    string;
 }
 
 const BLANK: MeetingForm = {
@@ -147,7 +148,7 @@ function RightHeading({ icon, label }: { icon: React.ReactNode; label: string })
 const FONT_FAMILIES = ["System Default", "Georgia", "Courier New", "Helvetica Neue", "Times New Roman"];
 const FONT_SIZES    = ["12px", "13px", "14px", "15px", "16px", "18px", "20px", "24px"];
 
-function RichNoteEditor({ placeholder = "Write Content" }: { placeholder?: string }) {
+function RichNoteEditor({ placeholder = "Write Content", readOnly = false }: { placeholder?: string, readOnly?: boolean }) {
   const editorRef      = useRef<HTMLDivElement>(null);
   const [bold, setBold]           = useState(false);
   const [italic, setItalic]       = useState(false);
@@ -165,6 +166,7 @@ function RichNoteEditor({ placeholder = "Write Content" }: { placeholder?: strin
   const historyIdxRef = useRef(0);                // current position in stack
 
   const saveSnapshot = useCallback(() => {
+    if (readOnly) return;
     const content = editorRef.current?.innerHTML ?? "";
     const stack   = historyRef.current;
     // Don't push duplicates
@@ -172,27 +174,27 @@ function RichNoteEditor({ placeholder = "Write Content" }: { placeholder?: strin
     // Truncate any forward history before pushing
     historyRef.current    = [...stack.slice(0, historyIdxRef.current + 1), content];
     historyIdxRef.current = historyRef.current.length - 1;
-  }, []);
+  }, [readOnly]);
 
   const handleUndo = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
-    if (historyIdxRef.current <= 0) return;
+    if (readOnly || historyIdxRef.current <= 0) return;
     historyIdxRef.current--;
     if (editorRef.current)
       editorRef.current.innerHTML = historyRef.current[historyIdxRef.current];
     syncState();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [readOnly]);
 
   const handleRedo = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
-    if (historyIdxRef.current >= historyRef.current.length - 1) return;
+    if (readOnly || historyIdxRef.current >= historyRef.current.length - 1) return;
     historyIdxRef.current++;
     if (editorRef.current)
       editorRef.current.innerHTML = historyRef.current[historyIdxRef.current];
     syncState();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [readOnly]);
   /* ---------------------------------------------------------------------- */
 
   /* close dropdowns on outside click */
@@ -206,19 +208,22 @@ function RichNoteEditor({ placeholder = "Write Content" }: { placeholder?: strin
   }, []);
 
   const syncState = useCallback(() => {
+    if (readOnly) return;
     setBold(document.queryCommandState("bold"));
     setItalic(document.queryCommandState("italic"));
     setUnderline(document.queryCommandState("underline"));
     setStrike(document.queryCommandState("strikeThrough"));
-  }, []);
+  }, [readOnly]);
 
   const exec = useCallback((cmd: string, value?: string) => {
+    if (readOnly) return;
     editorRef.current?.focus();
     document.execCommand(cmd, false, value ?? "");
     syncState();
-  }, [syncState]);
+  }, [syncState, readOnly]);
 
   const applyFont = (family: string) => {
+    if (readOnly) return;
     setFontFamily(family);
     setShowFont(false);
     editorRef.current?.focus();
@@ -226,6 +231,7 @@ function RichNoteEditor({ placeholder = "Write Content" }: { placeholder?: strin
   };
 
   const applySize = (size: string) => {
+    if (readOnly) return;
     setFontSize(size);
     editorRef.current?.focus();
     /* execCommand fontsize uses 1-7 index; use inline style instead */
@@ -239,10 +245,12 @@ function RichNoteEditor({ placeholder = "Write Content" }: { placeholder?: strin
   };
 
   const insertDate = () => {
+    if (readOnly) return;
     exec("insertText", new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" }));
   };
 
   const insertDivider = () => {
+    if (readOnly) return;
     editorRef.current?.focus();
     document.execCommand("insertHTML", false, "<hr style='border:none;border-top:1px solid #374151;margin:8px 0'/><br/>");
   };
@@ -255,132 +263,139 @@ function RichNoteEditor({ placeholder = "Write Content" }: { placeholder?: strin
     }`;
 
   return (
-    <div className="rounded-lg border border-[#E5E7EB] dark:border-[#1F2A37] flex flex-col bg-white dark:bg-[#111928]">
+    <div className={`rounded-lg border border-[#E5E7EB] dark:border-[#1F2A37] flex flex-col bg-white dark:bg-[#111928] ${readOnly ? "opacity-80" : ""}`}>
       {/* Toolbar */}
-      <div className="relative flex items-center gap-0.5 px-2 py-1.5 border-b border-[#E5E7EB] dark:border-[#1F2A37] flex-wrap bg-[#F9FAFB] dark:bg-[#1a2332] rounded-t-lg">
-        {/* Undo / Redo — per-instance isolated history */}
-        <button onMouseDown={handleUndo} title="Undo" className={btnCls(false)}>←</button>
-        <button onMouseDown={handleRedo} title="Redo" className={btnCls(false)}>→</button>
+      {!readOnly && (
+        <div className="relative flex items-center gap-0.5 px-2 py-1.5 border-b border-[#E5E7EB] dark:border-[#1F2A37] flex-wrap bg-[#F9FAFB] dark:bg-[#1a2332] rounded-t-lg">
+          {/* Undo / Redo — per-instance isolated history */}
+          <button onMouseDown={handleUndo} title="Undo" className={btnCls(false)}>←</button>
+          <button onMouseDown={handleRedo} title="Redo" className={btnCls(false)}>→</button>
 
-        <span className="mx-1 h-3.5 w-px bg-[#E5E7EB] dark:bg-[#374151]" />
+          <span className="mx-1 h-3.5 w-px bg-[#E5E7EB] dark:bg-[#374151]" />
 
-        {/* Bold */}
-        <button onMouseDown={e => { e.preventDefault(); exec("bold"); }} title="Bold" className={btnCls(bold)}><strong>B</strong></button>
-        {/* Italic */}
-        <button onMouseDown={e => { e.preventDefault(); exec("italic"); }} title="Italic" className={btnCls(italic)}><em>I</em></button>
-        {/* Underline */}
-        <button onMouseDown={e => { e.preventDefault(); exec("underline"); }} title="Underline" className={btnCls(underline)}><u>U</u></button>
-        {/* Strikethrough */}
-        <button onMouseDown={e => { e.preventDefault(); exec("strikeThrough"); }} title="Strikethrough" className={btnCls(strike)}><s>S</s></button>
+          {/* Bold */}
+          <button onMouseDown={e => { e.preventDefault(); exec("bold"); }} title="Bold" className={btnCls(bold)}><strong>B</strong></button>
+          {/* Italic */}
+          <button onMouseDown={e => { e.preventDefault(); exec("italic"); }} title="Italic" className={btnCls(italic)}><em>I</em></button>
+          {/* Underline */}
+          <button onMouseDown={e => { e.preventDefault(); exec("underline"); }} title="Underline" className={btnCls(underline)}><u>U</u></button>
+          {/* Strikethrough */}
+          <button onMouseDown={e => { e.preventDefault(); exec("strikeThrough"); }} title="Strikethrough" className={btnCls(strike)}><s>S</s></button>
 
-        <span className="mx-1 h-3.5 w-px bg-[#E5E7EB] dark:bg-[#374151]" />
+          <span className="mx-1 h-3.5 w-px bg-[#E5E7EB] dark:bg-[#374151]" />
 
-        {/* Bullet List */}
-        <button onMouseDown={e => { e.preventDefault(); exec("insertUnorderedList"); }} title="Bullet List" className={btnCls(false)}>• List</button>
-        {/* Numbered List */}
-        <button onMouseDown={e => { e.preventDefault(); exec("insertOrderedList"); }} title="Numbered List" className={btnCls(false)}>1. List</button>
+          {/* Bullet List */}
+          <button onMouseDown={e => { e.preventDefault(); exec("insertUnorderedList"); }} title="Bullet List" className={btnCls(false)}>• List</button>
+          {/* Numbered List */}
+          <button onMouseDown={e => { e.preventDefault(); exec("insertOrderedList"); }} title="Numbered List" className={btnCls(false)}>1. List</button>
 
-        <span className="mx-1 h-3.5 w-px bg-[#E5E7EB] dark:bg-[#374151]" />
+          <span className="mx-1 h-3.5 w-px bg-[#E5E7EB] dark:bg-[#374151]" />
 
-        {/* Font Family */}
-        <div ref={fontRef} className="relative">
-          <button
-            onClick={() => { setShowFont(o => !o); setShowMore(false); }}
-            className="flex items-center gap-1 px-2 py-1 rounded text-xs font-bold bg-[#2563eb] text-white hover:bg-[#1d4ed8] transition-colors"
-          >
-            Font {showFont ? "▲" : "▼"}
-          </button>
-          {showFont && (
-            <div className="absolute left-0 top-full mt-1 z-50 w-52 rounded-xl border border-[#E5E7EB] dark:border-[#374151] bg-white dark:bg-[#1a2332] shadow-2xl py-2">
-              <p className="px-3 py-1 text-[9px] font-bold text-[#6B7280] uppercase tracking-widest mb-1">Font Family</p>
-              {FONT_FAMILIES.map(f => (
-                <button
-                  key={f}
-                  onClick={() => applyFont(f)}
-                  className={`flex items-center justify-between w-full px-3 py-1.5 text-xs hover:bg-[#F3F4F6] dark:hover:bg-[#0d1520] transition-colors ${
-                    fontFamily === f ? "text-[#111928] dark:text-white font-medium" : "text-[#6B7280] dark:text-[#9CA3AF]"
-                  }`}
-                  style={{ fontFamily: f === "System Default" ? undefined : f }}
-                >
-                  {f}
-                  {fontFamily === f && <span className="text-[#2563eb] text-xs">✓</span>}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Font Size */}
-        <div className="relative">
-          <select
-            value={fontSize}
-            onChange={e => applySize(e.target.value)}
-            className="px-2 py-1 rounded text-xs font-bold bg-[#2563eb] text-white border-none outline-none cursor-pointer appearance-none pr-5"
-          >
-            {FONT_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-          <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[8px] text-white pointer-events-none">▼</span>
-        </div>
-
-        {/* More */}
-        <div ref={moreRef} className="relative ml-auto">
-          <button
-            onClick={() => { setShowMore(o => !o); setShowFont(false); }}
-            className="flex items-center gap-1 px-2 py-1 rounded text-xs font-bold bg-[#2563eb] text-white hover:bg-[#1d4ed8] transition-colors"
-          >
-            More {showMore ? "▲" : "▼"}
-          </button>
-          {showMore && (
-            <div className="absolute right-0 top-full mt-1 z-50 w-64 rounded-xl border border-[#E5E7EB] dark:border-[#374151] bg-white dark:bg-[#1a2332] shadow-2xl p-3 flex flex-col gap-3">
-              {/* Alignment */}
-              <div>
-                <p className="text-[9px] font-bold text-[#6B7280] uppercase tracking-widest mb-2">Alignment</p>
-                <div className="grid grid-cols-3 gap-2">
-                  {(["Left", "Center", "Right"] as const).map(align => (
+          {/* Font Family */}
+          <div ref={fontRef} className="relative">
+            <button
+              onClick={() => { setShowFont(o => !o); setShowMore(false); }}
+              className="flex items-center gap-1 px-2 py-1 rounded text-xs font-bold bg-[#2563eb] text-white hover:bg-[#1d4ed8] transition-colors"
+            >
+              Font {showFont ? "▲" : "▼"}
+            </button>
+            {showFont && (
+              <div className="absolute left-0 top-full mt-1 z-50 w-52 rounded-xl border border-[#E5E7EB] dark:border-[#374151] bg-white dark:bg-[#1a2332] shadow-2xl py-2">
+                <p className="px-3 py-1 text-[9px] font-bold text-[#6B7280] uppercase tracking-widest mb-1">Font Family</p>
+                {FONT_FAMILIES.map(f => (
+                  <button
+                    key={f}
+                    onClick={() => applyFont(f)}
+                    className={`flex items-center justify-between w-full px-3 py-1.5 text-xs hover:bg-[#F3F4F6] dark:hover:bg-[#0d1520] transition-colors ${
+                      fontFamily === f ? "text-[#2563eb] font-bold bg-[#F9FAFB] dark:bg-[#0a1018]" : "text-[#111928] dark:text-white font-medium"
+                    }`}
+                  >
+                    <span style={{ fontFamily: f === "System Default" ? undefined : f }}>{f}</span>
+                    {fontFamily === f && <span>✓</span>}
+                  </button>
+                ))}
+                
+                <div className="h-px bg-[#E5E7EB] dark:bg-[#374151] my-1" />
+                <p className="px-3 py-1 text-[9px] font-bold text-[#6B7280] uppercase tracking-widest mb-1">Font Size</p>
+                <div className="grid grid-cols-4 gap-1 px-3">
+                  {FONT_SIZES.map(s => (
                     <button
-                      key={align}
-                      onMouseDown={e => { e.preventDefault(); exec("justify" + align); setShowMore(false); }}
-                      className="flex flex-col items-center gap-1 rounded-lg bg-[#F3F4F6] dark:bg-[#0d1520] border border-[#E5E7EB] dark:border-[#374151] py-2 text-[10px] text-[#6B7280] dark:text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white hover:border-[#2563eb]/40 transition-colors"
+                      key={s}
+                      onClick={() => applySize(s)}
+                      className={`py-1 rounded text-[10px] font-medium transition-colors ${
+                        fontSize === s ? "bg-[#2563eb] text-white" : "bg-[#F3F4F6] dark:bg-[#0d1520] text-[#111928] dark:text-white hover:border-[#2563eb]/40 border border-[#E5E7EB] dark:border-[#374151]"
+                      }`}
                     >
-                      <span className="text-base">≡</span>
-                      {align}
+                      {s.replace("px", "")}
                     </button>
                   ))}
                 </div>
               </div>
-              {/* Insert */}
-              <div>
-                <p className="text-[9px] font-bold text-[#6B7280] uppercase tracking-widest mb-2">Insert</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <button onMouseDown={e => { e.preventDefault(); insertDivider(); setShowMore(false); }} className="flex flex-col items-center gap-1 rounded-lg bg-[#F3F4F6] dark:bg-[#0d1520] border border-[#E5E7EB] dark:border-[#374151] py-2 text-[10px] text-[#6B7280] dark:text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white hover:border-[#2563eb]/40 transition-colors">
-                    <span>╌╌╌╌</span>Divider
-                  </button>
-                  <button onMouseDown={e => { e.preventDefault(); insertDate(); setShowMore(false); }} className="flex flex-col items-center gap-1 rounded-lg bg-[#F3F4F6] dark:bg-[#0d1520] border border-[#E5E7EB] dark:border-[#374151] py-2 text-[10px] text-[#6B7280] dark:text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white hover:border-[#2563eb]/40 transition-colors">
-                    <span>📅</span>Date
-                  </button>
+            )}
+          </div>
+
+          <span className="mx-1 h-3.5 w-px bg-[#E5E7EB] dark:bg-[#374151]" />
+
+          {/* More Dropdown */}
+          <div ref={moreRef} className="relative">
+            <button
+              onClick={() => { setShowMore(o => !o); setShowFont(false); }}
+              className="flex items-center gap-1 px-2 py-1 rounded text-xs font-bold bg-[#2563eb] text-white hover:bg-[#1d4ed8] transition-colors"
+            >
+              More {showMore ? "▲" : "▼"}
+            </button>
+            {showMore && (
+              <div className="absolute right-0 top-full mt-1 z-50 w-48 rounded-xl border border-[#E5E7EB] dark:border-[#374151] bg-white dark:bg-[#1a2332] shadow-2xl p-3 flex flex-col gap-3">
+                {/* Alignment */}
+                <div>
+                  <p className="text-[9px] font-bold text-[#6B7280] uppercase tracking-widest mb-2">Align</p>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {["Left", "Center", "Right", "Full"].map(align => (
+                      <button
+                        key={align}
+                        onMouseDown={e => { e.preventDefault(); exec("justify" + align); setShowMore(false); }}
+                        className="flex flex-col items-center gap-1 rounded-lg bg-[#F3F4F6] dark:bg-[#0d1520] border border-[#E5E7EB] dark:border-[#374151] py-2 text-[10px] text-[#6B7280] dark:text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white hover:border-[#2563eb]/40 transition-colors"
+                      >
+                        <span className="text-base">≡</span>
+                        {align}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {/* Insert */}
+                <div>
+                  <p className="text-[9px] font-bold text-[#6B7280] uppercase tracking-widest mb-2">Insert</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button onMouseDown={e => { e.preventDefault(); insertDivider(); setShowMore(false); }} className="flex flex-col items-center gap-1 rounded-lg bg-[#F3F4F6] dark:bg-[#0d1520] border border-[#E5E7EB] dark:border-[#374151] py-2 text-[10px] text-[#6B7280] dark:text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white hover:border-[#2563eb]/40 transition-colors">
+                      <span>╌╌╌╌</span>Divider
+                    </button>
+                    <button onMouseDown={e => { e.preventDefault(); insertDate(); setShowMore(false); }} className="flex flex-col items-center gap-1 rounded-lg bg-[#F3F4F6] dark:bg-[#0d1520] border border-[#E5E7EB] dark:border-[#374151] py-2 text-[10px] text-[#6B7280] dark:text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white hover:border-[#2563eb]/40 transition-colors">
+                      <span>📅</span>Date
+                    </button>
+                  </div>
+                </div>
+                {/* Indent */}
+                <div>
+                  <p className="text-[9px] font-bold text-[#6B7280] uppercase tracking-widest mb-2">Indent</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button onMouseDown={e => { e.preventDefault(); exec("indent"); setShowMore(false); }} className="flex flex-col items-center gap-1 rounded-lg bg-[#F3F4F6] dark:bg-[#0d1520] border border-[#E5E7EB] dark:border-[#374151] py-2 text-[10px] text-[#6B7280] dark:text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white hover:border-[#2563eb]/40 transition-colors">
+                      <span>⇥</span>Indents<span className="text-[8px] text-[#9CA3AF]">Tab</span>
+                    </button>
+                    <button onMouseDown={e => { e.preventDefault(); exec("outdent"); setShowMore(false); }} className="flex flex-col items-center gap-1 rounded-lg bg-[#F3F4F6] dark:bg-[#0d1520] border border-[#E5E7EB] dark:border-[#374151] py-2 text-[10px] text-[#6B7280] dark:text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white hover:border-[#2563eb]/40 transition-colors">
+                      <span>⇤</span>Outdent<span className="text-[8px] text-[#9CA3AF]">⇧Tab</span>
+                    </button>
+                  </div>
                 </div>
               </div>
-              {/* Indent */}
-              <div>
-                <p className="text-[9px] font-bold text-[#6B7280] uppercase tracking-widest mb-2">Indent</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <button onMouseDown={e => { e.preventDefault(); exec("indent"); setShowMore(false); }} className="flex flex-col items-center gap-1 rounded-lg bg-[#F3F4F6] dark:bg-[#0d1520] border border-[#E5E7EB] dark:border-[#374151] py-2 text-[10px] text-[#6B7280] dark:text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white hover:border-[#2563eb]/40 transition-colors">
-                    <span>⇥</span>Indents<span className="text-[8px] text-[#9CA3AF]">Tab</span>
-                  </button>
-                  <button onMouseDown={e => { e.preventDefault(); exec("outdent"); setShowMore(false); }} className="flex flex-col items-center gap-1 rounded-lg bg-[#F3F4F6] dark:bg-[#0d1520] border border-[#E5E7EB] dark:border-[#374151] py-2 text-[10px] text-[#6B7280] dark:text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white hover:border-[#2563eb]/40 transition-colors">
-                    <span>⇤</span>Outdent<span className="text-[8px] text-[#9CA3AF]">⇧Tab</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Editor area */}
       <div
         ref={editorRef}
-        contentEditable
+        contentEditable={!readOnly}
         suppressContentEditableWarning
         onInput={saveSnapshot}
         onKeyUp={syncState}
@@ -390,6 +405,7 @@ function RichNoteEditor({ placeholder = "Write Content" }: { placeholder?: strin
         style={{ fontFamily: fontFamily === "System Default" ? undefined : fontFamily, fontSize }}
         className={[
           "flex-1 min-h-[140px] px-4 py-3 text-sm text-[#111928] dark:text-white outline-none",
+          readOnly ? "cursor-not-allowed select-none" : "",
           "[&_ul]:list-disc [&_ul]:pl-4",
           "[&_ol]:list-decimal [&_ol]:pl-4",
           "[&_h1]:text-xl [&_h1]:font-bold",
@@ -475,24 +491,56 @@ function FilesSection() {
 
 type ModalTab = "design" | "reports" | "ai-summary";
 
-function CreateMeetingModal({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated?: (form: MeetingForm) => void }) {
+function CreateMeetingModal({ 
+  open, 
+  onClose, 
+  onCreated,
+  initialData,
+}: { 
+  open: boolean; 
+  onClose: () => void; 
+  onCreated?: (form: MeetingForm) => void;
+  initialData?: MeetingRow | null;
+}) {
   const [tab, setTab] = useState<ModalTab>("design");
   const [form, setForm] = useState<MeetingForm>(BLANK);
+
+  useEffect(() => {
+    if (open) {
+      if (initialData) {
+        setForm({
+          ...BLANK,
+          name: initialData.name,
+          type: initialData.type,
+          recurrence: initialData.recurrence,
+          participants: String(initialData.participants || ""),
+          duration: initialData.duration === "—" ? "" : initialData.duration.replace(" min", ""),
+          reportScore: initialData.reportScore || "",
+        });
+      } else {
+        setForm(BLANK);
+      }
+      setTab("design");
+    }
+  }, [open, initialData]);
+
+  const isReadOnly = !!initialData;
 
   const set = (field: keyof MeetingForm) => (value: string | boolean) =>
     setForm(prev => ({ ...prev, [field]: value }));
 
   const handleCreate = () => {
-    if (form.name.trim()) onCreated?.(form);
+    if (form.name.trim() && !isReadOnly) onCreated?.(form);
     onClose();
     setForm(BLANK);
   };
 
-  const TABS: { id: ModalTab; label: string; icon: React.ReactNode }[] = [
+  const ALL_TABS: { id: ModalTab; label: string; icon: React.ReactNode }[] = [
     { id: "design",     label: "Design",     icon: <LuListChecks size={13} /> },
     { id: "reports",    label: "Reports",    icon: <LuFileText size={13} /> },
     { id: "ai-summary", label: "Summary", icon: <LuSparkles size={13} /> },
   ];
+  const TABS = isReadOnly ? ALL_TABS : ALL_TABS.filter(t => t.id === "design");
 
   /* Panel bg + border tokens that work in both modes */
   const panelBg     = "bg-white dark:bg-[#0d1520]";
@@ -518,7 +566,7 @@ function CreateMeetingModal({ open, onClose, onCreated }: { open: boolean; onClo
             <LuX size={16} />
           </button>
           <LuVideo size={16} className="text-[#2563eb]" />
-          <span className="text-sm font-bold text-[#111928] dark:text-white">New Meeting</span>
+          <span className="text-sm font-bold text-[#111928] dark:text-white">{isReadOnly ? initialData.name : "New Meeting"}</span>
         </div>
 
         {/* Tab bar */}
@@ -543,7 +591,7 @@ function CreateMeetingModal({ open, onClose, onCreated }: { open: boolean; onClo
         {tab === "design" && (
           <div className="flex flex-1 overflow-hidden">
             {/* Left form panel */}
-            <div className={`flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-5 border-r ${borderColor}`}>
+            <div className={`flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-5 border-r ${borderColor} ${isReadOnly ? "pointer-events-none opacity-60" : ""}`}>
 
               {/* Name */}
               <div>
@@ -674,12 +722,12 @@ function CreateMeetingModal({ open, onClose, onCreated }: { open: boolean; onClo
             </div>
 
             {/* Right info panel */}
-            <div className={`w-[550px] shrink-0 overflow-y-auto px-5 py-5 flex flex-col gap-6 bg-[#F9FAFB] dark:bg-[#080f1a]`}>
+            <div className={`w-[550px] shrink-0 overflow-y-auto px-5 py-5 flex flex-col gap-6 bg-[#F9FAFB] dark:bg-[#080f1a] ${isReadOnly ? "pointer-events-none opacity-60" : ""}`}>
 
               {/* Agenda */}
               <div>
                 <RightHeading icon={<LuListChecks size={13} />} label="Agenda" />
-                <RichNoteEditor placeholder="Write agenda items..." />
+                <RichNoteEditor placeholder="Write agenda items..." readOnly={isReadOnly} />
               </div>
 
               <div className={`h-px bg-[#E5E7EB] dark:bg-[#1F2A37]`} />
@@ -687,7 +735,7 @@ function CreateMeetingModal({ open, onClose, onCreated }: { open: boolean; onClo
               {/* Prework */}
               <div>
                 <RightHeading icon={<LuRepeat size={13} />} label="Prework" />
-                <RichNoteEditor placeholder="Write prework actions..." />
+                <RichNoteEditor placeholder="Write prework actions..." readOnly={isReadOnly} />
               </div>
 
               <div className={`h-px bg-[#E5E7EB] dark:bg-[#1F2A37]`} />
@@ -700,7 +748,22 @@ function CreateMeetingModal({ open, onClose, onCreated }: { open: boolean; onClo
 
         {tab === "reports" && (
           <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-2">
-            <p className="text-[10px] font-bold text-[#6B7280] dark:text-[#9CA3AF] uppercase tracking-widest mb-1">Report Notes</p>
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-[10px] font-bold text-[#6B7280] dark:text-[#9CA3AF] uppercase tracking-widest">Report Notes</p>
+              {form.type === "Review" && (
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-semibold text-[#111928] dark:text-[#E5E7EB]">Report Score (1-10):</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={form.reportScore || ""}
+                    onChange={e => set("reportScore")(e.target.value)}
+                    className="w-16 rounded-md border border-[#D1D5DB] dark:border-[#374151] bg-[#F9FAFB] dark:bg-[#0a1628] px-2 py-1 text-sm text-[#111928] dark:text-white outline-none focus:border-[#2563eb]"
+                  />
+                </div>
+              )}
+            </div>
             <div className="flex-1">
               <RichNoteEditor placeholder="Write your meeting report..." />
             </div>
@@ -729,7 +792,7 @@ function CreateMeetingModal({ open, onClose, onCreated }: { open: boolean; onClo
             disabled={!form.name.trim()}
             className="flex-1 rounded-lg bg-[#2563eb] py-3 text-sm font-bold text-white hover:bg-[#1d4ed8] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
-            Create Meeting
+            {isReadOnly ? "Save Changes" : "Create Meeting"}
           </button>
         </div>
       </div>
@@ -750,6 +813,7 @@ interface MeetingRow {
   duration:    string;
   createdBy:   string;
   status:      MeetingStatus;
+  reportScore?: string;
 }
 
 const DUMMY_ROWS: MeetingRow[] = [
@@ -782,12 +846,17 @@ const TYPE_COLOR: Record<string, string> = {
 
 /* --- Meeting Table Component -------------------------------------------- */
 function MeetingTable({
-  rows, onAddMeeting, showCompleted, onToggleShowCompleted,
+  rows,
+  onAddMeeting,
+  showCompleted,
+  onToggleShowCompleted,
+  onNameClick,
 }: {
   rows: MeetingRow[];
   onAddMeeting: () => void;
   showCompleted: boolean;
   onToggleShowCompleted: () => void;
+  onNameClick: (row: MeetingRow) => void;
 }) {
   const [search, setSearch] = useState("");
   const [meMode, setMeMode] = useState(false);
@@ -950,7 +1019,12 @@ function MeetingTable({
                   <td className="w-10 px-2 py-2.5 text-xs text-[#9CA3AF] text-center">{i + 1}</td>
                   {/* Name */}
                   <td className="px-3 py-2.5 min-w-[220px] flex-1">
-                    <span className="text-sm font-medium text-[#111928] dark:text-white truncate block max-w-[260px]">{row.name}</span>
+                    <span 
+                      className="text-sm font-medium text-[#111928] dark:text-white truncate block max-w-[260px] hover:text-[#2563eb] cursor-pointer transition-colors"
+                      onClick={() => onNameClick(row)}
+                    >
+                      {row.name}
+                    </span>
                   </td>
                   {/* Type */}
                   <td className="px-3 py-2.5 w-[110px] shrink-0">
@@ -1253,6 +1327,7 @@ type ViewTab = "table" | "calendar";
 
 export default function MeetingSection() {
   const [showModal, setShowModal]   = useState(false);
+  const [selectedMeeting, setSelectedMeeting] = useState<MeetingRow | null>(null);
   const [calEvents, setCalEvents]   = useState<MeetingEvent[]>([]);
   const [viewTab, setViewTab]       = useState<ViewTab>("table");
   const [showCompleted, setShowCompleted] = useState(false);
@@ -1326,9 +1401,16 @@ export default function MeetingSection() {
       {viewTab === "table" && (
         <MeetingTable
           rows={tableRows}
-          onAddMeeting={() => setShowModal(true)}
+          onAddMeeting={() => {
+            setSelectedMeeting(null);
+            setShowModal(true);
+          }}
           showCompleted={showCompleted}
           onToggleShowCompleted={() => setShowCompleted(p => !p)}
+          onNameClick={(row) => {
+            setSelectedMeeting(row);
+            setShowModal(true);
+          }}
         />
       )}
 
@@ -1337,7 +1419,10 @@ export default function MeetingSection() {
         <div>
           <div className="flex justify-end mb-3">
             <button
-              onClick={() => setShowModal(true)}
+              onClick={() => {
+                setSelectedMeeting(null);
+                setShowModal(true);
+              }}
               className="flex items-center gap-1.5 rounded-lg bg-[#2563eb] px-3 py-2 text-xs font-bold text-white hover:bg-[#1d4ed8] transition-colors"
             >
               <LuPlus size={13} />
@@ -1353,6 +1438,7 @@ export default function MeetingSection() {
         open={showModal}
         onClose={() => setShowModal(false)}
         onCreated={handleCreated}
+        initialData={selectedMeeting}
       />
     </div>
   );

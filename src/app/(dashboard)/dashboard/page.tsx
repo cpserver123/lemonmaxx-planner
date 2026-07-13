@@ -5,6 +5,7 @@ import PlanningSection from "./components/planning";
 import PromiseSection from "./components/promise";
 import MeetingSection from "./components/meeting";
 import PerformanceSection from "./components/performance";
+import PerformanceTracking from "./components/performance tracking/page";
 import { useDashboardTab } from "@/context/DashboardTabContext";
 import type { DashboardTabId } from "@/context/DashboardTabContext";
 
@@ -15,7 +16,8 @@ function TabContent({ activeTab }: { activeTab: DashboardTabId }) {
     case "planning":        return <PlanningSection />;
     case "promises":        return <PromiseSection />;
     case "meetings":        return <MeetingSection />;
-    case "performance": return <PerformanceSection />;
+    case "performance":     return <PerformanceSection />;
+    case "scoreboard":      return <PerformanceTracking />;
   }
 }
 

@@ -65,17 +65,39 @@ function fmt(n: number): string {
 }
 
 /* --- Status Badge ---------------------------------------------------- */
-function StatusBadge({ status }: { status: string }) {
+function StatusDropdown({ id, status }: { id: string, status: string }) {
+  const OPTIONS = [
+    "Planned",
+    "Done",
+    "Not Done",
+    "Partially Done",
+    "Cancelled",
+    "On Hold",
+    "In Progress"
+  ];
   const styles: Record<string, string> = {
-    "Done":        "bg-green-500/10 text-green-500 border-green-500/20",
-    "In Progress": "bg-blue-500/10 text-blue-400 border-blue-500/20",
-    "Todo":        "bg-[#9CA3AF]/10 text-[#9CA3AF] border-[#9CA3AF]/20",
-    "Planned":     "bg-[#9CA3AF]/10 text-[#9CA3AF] border-[#9CA3AF]/20",
+    "Done":           "bg-green-500/10 text-green-500 border-green-500/20",
+    "In Progress":    "bg-blue-500/10 text-blue-500 border-blue-500/20",
+    "Todo":           "bg-[#9CA3AF]/10 text-[#9CA3AF] border-[#9CA3AF]/20",
+    "Planned":        "bg-[#9CA3AF]/10 text-[#9CA3AF] border-[#9CA3AF]/20",
+    "Not Done":       "bg-red-500/10 text-red-500 border-red-500/20",
+    "Partially Done": "bg-yellow-500/10 text-yellow-600 border-yellow-500/20",
+    "Cancelled":      "bg-red-500/10 text-red-500 border-red-500/20",
+    "On Hold":        "bg-orange-500/10 text-orange-500 border-orange-500/20",
   };
   return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${styles[status] ?? styles["Todo"]}`}>
-      {status}
-    </span>
+    <div className="relative inline-block">
+      <select
+        value={status}
+        onChange={(e) => updateNumberStatus?.(id, e.target.value)}
+        className={`appearance-none cursor-pointer inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold outline-none ${styles[status] ?? styles["Todo"]}`}
+      >
+        {!OPTIONS.includes(status) && <option value={status} className="text-black bg-white">{status}</option>}
+        {OPTIONS.map(opt => (
+          <option key={opt} value={opt} className="text-black bg-white">{opt}</option>
+        ))}
+      </select>
+    </div>
   );
 }
 
@@ -83,6 +105,7 @@ function StatusBadge({ status }: { status: string }) {
 const colHelper = createColumnHelper<ActionRow>();
 
 let openActionDrawer: ((row: ActionRow) => void) | null = null;
+let updateNumberStatus: ((id: string, status: string) => void) | null = null;
 
 const columns = [
   colHelper.accessor("action", {
@@ -112,7 +135,7 @@ const columns = [
     header: "Status",
     size: 120,
     minSize: 80,
-    cell: (info) => <StatusBadge status={info.getValue()} />,
+    cell: (info) => <StatusDropdown id={info.row.original.id} status={info.getValue()} />,
   }),
   colHelper.accessor("due", {
     header: "Due",
@@ -316,34 +339,147 @@ function ActionsTable({
   );
 }
 
+interface Strategy {
+  id: string;
+  title: string;
+  description: string;
+  status: string;
+  accountable: string;
+  count: number;
+  due: string;
+}
+
+const INITIAL_STRATEGIES: Strategy[] = [
+  {
+    id: "s1",
+    title: "Bruno Strategy on Catalog",
+    description: "Bruno Strategy Identify winning creatives by iterating 2 proven Blood Sugar angles into 10 hook/visual/script variants, achie...",
+    status: "Active",
+    accountable: "Yash Poonia",
+    count: 2,
+    due: "Jun 30",
+  }
+];
+
+function StrategyCard({
+  strategy,
+  actions,
+  onOpenDrawer,
+  onAddAction,
+}: {
+  strategy: Strategy;
+  actions: ActionRow[];
+  onOpenDrawer: (row: DrawerRow) => void;
+  onAddAction: () => void;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+  return (
+    <div className="rounded-lg border border-[#E6EBF1] dark:border-[#1F2A37] bg-[#F9FAFB] dark:bg-[#0a1018] mb-5 overflow-hidden">
+      {collapsed && (
+        <div className="flex items-center gap-3 px-4 py-3 bg-[#F9FAFB] dark:bg-[#111928] border-b border-[#E6EBF1] dark:border-transparent cursor-pointer" onClick={() => setCollapsed(false)}>
+          <button className="text-[#9CA3AF] shrink-0" aria-label="Expand">
+            <svg width="10" height="6" viewBox="0 0 10 6" fill="none" style={{ transform: "rotate(180deg)" }}>
+              <path d="M1 5L5 1L9 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#5750F1]/10 border border-[#5750F1]/20">
+            <span className="text-[#5750F1] text-xs">📋</span>
+          </div>
+          <span className="text-sm font-semibold text-[#111928] dark:text-white truncate">{strategy.title}</span>
+          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${strategy.status === "Active" ? "bg-[#2563eb]/10 border-[#2563eb]/20 text-[#2563eb]" : "bg-gray-100 border-gray-200 text-gray-600 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300"}`}>{strategy.status}</span>
+          <p className="flex-1 text-[11px] text-[#6B7280] dark:text-[#9CA3AF] truncate hidden sm:block">
+            {strategy.description}
+          </p>
+          <div className="flex items-center gap-3 shrink-0 text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">
+            <span>👤 {strategy.accountable}</span>
+            <span>📊 {strategy.count}</span>
+            <span>📅 {strategy.due}</span>
+          </div>
+        </div>
+      )}
+
+      {!collapsed && (
+        <>
+          <div className="flex items-start gap-3 px-4 py-3 border-b border-[#E6EBF1] dark:border-[#1F2A37]">
+            <button onClick={() => setCollapsed(true)} className="text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white mt-1 transition-colors" aria-label="Collapse">
+              <svg width="10" height="6" viewBox="0 0 10 6" fill="none">
+                <path d="M1 5L5 1L9 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#5750F1]/10 border border-[#5750F1]/20">
+              <span className="text-[#5750F1] text-sm">📋</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-sm font-semibold text-[#111928] dark:text-white">{strategy.title}</h3>
+                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${strategy.status === "Active" ? "bg-[#2563eb]/10 border-[#2563eb]/20 text-[#2563eb]" : "bg-gray-100 border-gray-200 text-gray-600 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300"}`}>{strategy.status}</span>
+              </div>
+              <p className="text-[11px] text-[#6B7280] dark:text-[#9CA3AF] mt-0.5 line-clamp-2">
+                {strategy.description}
+              </p>
+            </div>
+            <div className="flex items-center gap-3 shrink-0 text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">
+              <span>👤 {strategy.accountable}</span>
+              <span>📊 {strategy.count}</span>
+              <span>📅 {strategy.due}</span>
+            </div>
+          </div>
+
+          <ActionsTable
+            data={actions}
+            onRowClick={(row) => onOpenDrawer(row)}
+            onAddAction={onAddAction}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
 /* --- Main Component -------------------------------------------------- */
 export default function NumbersTab() {
   const [editOpen, setEditOpen] = useState(false);
   const [weeklyData, setWeeklyData] = useState(WEEKLY_DATA);
-  const [collapsed, setCollapsed] = useState(false);
-  const [actions, setActions] = useState<ActionRow[]>(INITIAL_ACTIONS);
+  const [strategies, setStrategies] = useState<Strategy[]>(INITIAL_STRATEGIES);
+  const [strategyActions, setStrategyActions] = useState<Record<string, ActionRow[]>>({ s1: INITIAL_ACTIONS });
   const [selectedAction, setSelectedAction] = useState<DrawerRow | null>(null);
+  const [pendingStrategyId, setPendingStrategyId] = useState<string | null>(null);
 
-  openActionDrawer = (row: ActionRow) => setSelectedAction({
-    id:              row.id,
-    action:          row.action,
-    intendedOutcome: row.intendedOutcome,
-    status:          row.status,
-    due:             row.due,
-    accountable:     row.accountable,
-    linkTo:          row.linkTo,
-  });
-
-  const handleAddAction = () => {
+  openActionDrawer = (row: ActionRow) => {
+    let foundStrategyId = null;
+    for (const [sId, actions] of Object.entries(strategyActions)) {
+      if (actions.some(a => a.id === row.id)) {
+        foundStrategyId = sId;
+        break;
+      }
+    }
+    setPendingStrategyId(foundStrategyId);
     setSelectedAction({
-      id: crypto.randomUUID(),
-      action: "",
-      intendedOutcome: "",
-      status: "Todo",
-      due: "",
-      accountable: "",
-      linkTo: "",
+      id:              row.id,
+      action:          row.action,
+      intendedOutcome: row.intendedOutcome,
+      status:          row.status,
+      due:             row.due,
+      accountable:     row.accountable,
+      linkTo:          row.linkTo,
     });
+  };
+
+  updateNumberStatus = (id: string, status: string) => {
+    setStrategyActions(prev => {
+      const next = { ...prev };
+      for (const sId of Object.keys(next)) {
+        if (next[sId].some(a => a.id === id)) {
+          next[sId] = next[sId].map(a => a.id === id ? { ...a, status } : a);
+        }
+      }
+      return next;
+    });
+  };
+
+  const handleOpenDrawer = (strategyId: string, row: DrawerRow) => {
+    setPendingStrategyId(strategyId);
+    setSelectedAction(row);
   };
 
   return (
@@ -360,96 +496,53 @@ export default function NumbersTab() {
           <div className="bg-[#F3F4F6] dark:bg-[#122031] px-3 py-2.5">
             <div className="flex items-center justify-between">
               <p className="text-[10px] text-[#6B7280] dark:text-[#6B7280] uppercase tracking-wide">Total</p>
-              <button onClick={() => setEditOpen(true)} className="text-[#9CA3AF] hover:text-[#5750F1] transition-colors" title="Edit weekly distribution">
-                <LuPencil size={11} />
-              </button>
+             
             </div>
             <p className="text-sm font-bold text-[#111928] dark:text-white mt-0.5">{fmt(weeklyData.reduce((a, w) => a + w.amount, 0))}</p>
           </div>
         </div>
       </div>
-
+{/* 
       <EditDistributionModal
         open={editOpen}
         onClose={() => setEditOpen(false)}
         weeks={weeklyData}
         onSave={(vals) => setWeeklyData(weeklyData.map((w, i) => ({ ...w, amount: vals[i] })))}
-      />
+      /> */}
 
-      {/* Strategy Card */}
-      <div className="rounded-lg border border-[#E6EBF1] dark:border-[#1F2A37] bg-[#F9FAFB] dark:bg-[#0a1018] mb-5 overflow-hidden">
-        {/* Collapsed view */}
-        {collapsed && (
-          <div className="flex items-center gap-3 px-4 py-3 bg-[#F9FAFB] dark:bg-[#111928] border-b border-[#E6EBF1] dark:border-transparent cursor-pointer" onClick={() => setCollapsed(false)}>
-            <button className="text-[#9CA3AF] shrink-0" aria-label="Expand">
-              <svg width="10" height="6" viewBox="0 0 10 6" fill="none" style={{ transform: "rotate(180deg)" }}>
-                <path d="M1 5L5 1L9 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#5750F1]/10 border border-[#5750F1]/20">
-              <span className="text-[#5750F1] text-xs">📋</span>
-            </div>
-            <span className="text-sm font-semibold text-[#111928] dark:text-white">Bruno Strategy on Catalog</span>
-            <span className="rounded-full bg-[#2563eb]/10 border border-[#2563eb]/20 px-2 py-0.5 text-[10px] font-medium text-[#2563eb]">Active</span>
-            <p className="flex-1 text-[11px] text-[#6B7280] dark:text-[#9CA3AF] truncate hidden sm:block">
-              Bruno Strategy Identify winning creatives by iterating 2 proven Blood Sugar angles...
-            </p>
-            <div className="flex items-center gap-3 shrink-0 text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">
-              <span>👤 Yash Poonia</span>
-              <span>📊 2</span>
-              <span>📅 Jun 30</span>
-            </div>
-          </div>
-        )}
-
-        {/* Expanded view */}
-        {!collapsed && (
-          <>
-            <div className="flex items-start gap-3 px-4 py-3 border-b border-[#E6EBF1] dark:border-[#1F2A37]">
-              <button onClick={() => setCollapsed(true)} className="text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white mt-1 transition-colors" aria-label="Collapse">
-                <svg width="10" height="6" viewBox="0 0 10 6" fill="none">
-                  <path d="M1 5L5 1L9 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#5750F1]/10 border border-[#5750F1]/20">
-                <span className="text-[#5750F1] text-sm">📋</span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-sm font-semibold text-[#111928] dark:text-white">Bruno Strategy on Catalog</h3>
-                  <span className="rounded-full bg-[#2563eb]/10 border border-[#2563eb]/20 px-2 py-0.5 text-[10px] font-medium text-[#2563eb]">Active</span>
-                </div>
-                <p className="text-[11px] text-[#6B7280] dark:text-[#9CA3AF] mt-0.5 line-clamp-2">
-                  Bruno Strategy Identify winning creatives by iterating 2 proven Blood Sugar angles into 10 hook/visual/script variants, achie...
-                </p>
-              </div>
-              <div className="flex items-center gap-3 shrink-0 text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">
-                <span>👤 Yash Pooni</span>
-                <span>📊 2</span>
-                <span>📅 Jun 30</span>
-              </div>
-            </div>
-
-            <ActionsTable
-              data={actions}
-              onRowClick={(row) => openActionDrawer?.(row)}
-              onAddAction={handleAddAction}
-            />
-          </>
-        )}
-      </div>
+      {/* Strategies */}
+      {strategies.map(strategy => (
+        <StrategyCard
+          key={strategy.id}
+          strategy={strategy}
+          actions={strategyActions[strategy.id] ?? []}
+          onOpenDrawer={(row) => handleOpenDrawer(strategy.id, row)}
+          onAddAction={() => handleOpenDrawer(strategy.id, {
+            id: crypto.randomUUID(),
+            action: "",
+            intendedOutcome: "",
+            status: "Todo",
+            due: "",
+            accountable: "",
+            linkTo: "",
+          })}
+        />
+      ))}
 
       {/* Add Pathway button */}
       <button
-        onClick={() => setSelectedAction({
-          id: crypto.randomUUID(),
-          action: "",
-          intendedOutcome: "",
-          status: "Planned",
-          due: "",
-          accountable: "",
-          linkTo: "",
-        })}
+        onClick={() => {
+          setPendingStrategyId(null);
+          setSelectedAction({
+            id: crypto.randomUUID(),
+            action: "",
+            intendedOutcome: "",
+            status: "Planned",
+            due: "",
+            accountable: "",
+            linkTo: "",
+          });
+        }}
         className="flex items-center gap-1.5 rounded-md border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] px-3 py-2 text-xs font-medium text-[#111928] dark:text-white hover:border-[#5750F1]/40 transition-colors"
       >
         + Add Pathway
@@ -459,18 +552,70 @@ export default function NumbersTab() {
       <ActionDrawer
         row={selectedAction}
         performance="numbers"
-        onClose={() => setSelectedAction(null)}
+        isPathway={selectedAction !== null && !pendingStrategyId}
+        title={pendingStrategyId ? strategies.find(s => s.id === pendingStrategyId)?.title : undefined}
+        onClose={() => { setSelectedAction(null); setPendingStrategyId(null); }}
         onSave={(updated) => {
-          setActions(prev => {
-            const exists = prev.some(r => r.id === updated.id);
-            if (exists) return prev.map(r => r.id === updated.id ? { ...r, ...updated } : r);
-            return [...prev, { ...updated, completed: false }];
-          });
+          const primaryAction = updated.action ? { ...updated, completed: false } : null;
+          const extraActions = (updated.additionalActions || [])
+            .filter(a => a.action.trim())
+            .map(a => ({
+               ...updated,
+               id: crypto.randomUUID(),
+               action: a.action,
+               intendedOutcome: a.intendedOutcome,
+               completed: false
+            }));
+
+          if (pendingStrategyId) {
+            setStrategyActions(prev => {
+              const existing = prev[pendingStrategyId] ?? [];
+              const found = existing.some(r => r.id === updated.id);
+              let newActions = [...existing];
+              
+              if (found) {
+                newActions = newActions.map(r => r.id === updated.id ? { ...r, ...updated } : r);
+                newActions.push(...extraActions);
+              } else {
+                if (primaryAction) newActions.push({ ...primaryAction, id: crypto.randomUUID() });
+                newActions.push(...extraActions);
+              }
+              
+              return { ...prev, [pendingStrategyId]: newActions };
+            });
+          } else {
+            const newStrategy: Strategy = {
+              id: `s-${Date.now()}`,
+              title: updated.pathwayTitle || "Untitled Strategy",
+              description: updated.pathwayDesc || "",
+              status: updated.status === "Planned" ? "Draft" : "Active",
+              accountable: updated.accountable || "Unassigned",
+              count: 0,
+              due: updated.due || "-",
+            };
+            
+            const allNewActions: ActionRow[] = [];
+            if (primaryAction) allNewActions.push({ ...primaryAction, id: crypto.randomUUID() });
+            allNewActions.push(...extraActions);
+
+            setStrategies(prev => [...prev, newStrategy]);
+            setStrategyActions(prev => ({
+              ...prev,
+              [newStrategy.id]: allNewActions,
+            }));
+          }
           setSelectedAction(null);
+          setPendingStrategyId(null);
         }}
         onDelete={(id) => {
-          setActions(prev => prev.filter(r => r.id !== id));
+          if (pendingStrategyId) {
+            setStrategyActions(prev => ({
+              ...prev,
+              [pendingStrategyId]: (prev[pendingStrategyId] ?? []).filter(r => r.id !== id),
+            }));
+          }
           setSelectedAction(null);
+          setPendingStrategyId(null);
         }}
       />
     </div>
