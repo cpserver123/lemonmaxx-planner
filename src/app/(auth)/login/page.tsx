@@ -54,7 +54,7 @@ export default function Login() {
 
     const exchangeCode = async () => {
       try {
-        const callbackUrl = `${API_BASE}/api/v1/auth/google/callback?code=${encodeURIComponent(code)}`;
+        const callbackUrl = `${API_BASE}/api/v1/auth/google/callback?code=${encodeURIComponent(code)}&state=planner`;
 
         const resp = await fetch(callbackUrl, {
           method: 'GET',
@@ -131,7 +131,7 @@ export default function Login() {
           'Content-Type': 'application/json',
           'ngrok-skip-browser-warning': 'true',
         },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, source: 'planner' }),
       });
       const payload = await response.json();
 
@@ -180,7 +180,7 @@ export default function Login() {
           'Content-Type': 'application/json',
           'ngrok-skip-browser-warning': 'true',
         },
-        body: JSON.stringify({ email, password, code }),
+        body: JSON.stringify({ email, password, code, source: 'planner' }),
       });
       const payload = await response.json();
 
@@ -222,7 +222,7 @@ export default function Login() {
           'Content-Type': 'application/json',
           'ngrok-skip-browser-warning': 'true',
         },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, source: 'planner' }),
       });
       const payload = await response.json();
 
@@ -302,7 +302,7 @@ export default function Login() {
   const isCodeComplete = otpCode.every(d => d !== '');
 
   const handleGoogleLogin = () => {
-    window.location.href = `${API_BASE}/api/v1/auth/google/login`;
+    window.location.href = `${API_BASE}/api/v1/auth/google/login?source=planner`;
   };
 
   // ── OTP Screen ──
