@@ -116,11 +116,15 @@ function AccountableDropdown({
   value, onChange,
 }: { value: string; onChange: (s: string) => void }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSearch("");
+      }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -129,10 +133,20 @@ function AccountableDropdown({
   const initials = (name: string) =>
     name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
 
+  const filteredMembers = TEAM_MEMBERS.filter(name =>
+    name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const handleSelect = (name: string) => {
+    onChange(name);
+    setOpen(false);
+    setSearch("");
+  };
+
   return (
     <div ref={ref} className="relative">
       <button
-        onClick={() => setOpen(o => !o)}
+        onClick={() => { setOpen(o => !o); setSearch(""); }}
         className="flex items-center gap-1.5 text-xs text-[#111928] dark:text-white hover:text-[#5750F1] dark:hover:text-[#7c78f3] transition-colors"
       >
         {value ? (
@@ -152,34 +166,63 @@ function AccountableDropdown({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full mt-1 z-50 w-52 max-h-[240px] overflow-y-auto rounded-xl border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] shadow-xl py-1">
-          {/* Unassign option */}
-          <button
-            onClick={() => { onChange(""); setOpen(false); }}
-            className="flex items-center gap-2 w-full px-3 py-2 text-xs text-[#9CA3AF] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"
-          >
-            <LuUser size={13} />
-            <span>Unassigned</span>
-            {!value && <LuCheck size={12} className="text-[#5750F1] ml-auto shrink-0" />}
-          </button>
-          {TEAM_MEMBERS.map(name => (
-            <button
-              key={name}
-              onClick={() => { onChange(name); setOpen(false); }}
-              className="flex items-center gap-2 w-full px-3 py-2 text-xs hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"
-            >
-              <div className="h-5 w-5 rounded-full bg-[#2563eb] flex items-center justify-center text-[8px] font-bold text-white shrink-0">
-                {initials(name)}
-              </div>
-              <span className="text-[#111928] dark:text-[#D1D5DB]">{name}</span>
-              {value === name && <LuCheck size={12} className="text-[#5750F1] ml-auto shrink-0" />}
-            </button>
-          ))}
+        <div className="absolute left-0 top-full mt-1 z-50 w-52 rounded-xl border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] shadow-xl overflow-hidden">
+          {/* Search box */}
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-[#E6EBF1] dark:border-[#374151]">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="text-[#9CA3AF] shrink-0">
+              <circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2"/>
+              <path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
+            <input
+              autoFocus
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search members..."
+              className="flex-1 bg-transparent text-xs text-[#111928] dark:text-white placeholder:text-[#9CA3AF] outline-none"
+              onClick={e => e.stopPropagation()}
+            />
+            {search && (
+              <button onClick={() => setSearch("")} className="text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white">
+                <LuX size={11} />
+              </button>
+            )}
+          </div>
+
+          {/* List */}
+          <div className="max-h-[200px] overflow-y-auto py-1">
+            {/* Unassign option — only show if not filtering */}
+            {!search && (
+              <button
+                onClick={() => { onChange(""); setOpen(false); setSearch(""); }}
+                className="flex items-center gap-2 w-full px-3 py-2 text-xs text-[#9CA3AF] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"
+              >
+                <LuUser size={13} />
+                <span>Unassigned</span>
+                {!value && <LuCheck size={12} className="text-[#5750F1] ml-auto shrink-0" />}
+              </button>
+            )}
+            {filteredMembers.length > 0 ? filteredMembers.map(name => (
+              <button
+                key={name}
+                onClick={() => handleSelect(name)}
+                className="flex items-center gap-2 w-full px-3 py-2 text-xs hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"
+              >
+                <div className="h-5 w-5 rounded-full bg-[#2563eb] flex items-center justify-center text-[8px] font-bold text-white shrink-0">
+                  {initials(name)}
+                </div>
+                <span className="text-[#111928] dark:text-[#D1D5DB]">{name}</span>
+                {value === name && <LuCheck size={12} className="text-[#5750F1] ml-auto shrink-0" />}
+              </button>
+            )) : (
+              <p className="px-3 py-2 text-xs text-[#9CA3AF] text-center">No results</p>
+            )}
+          </div>
         </div>
       )}
     </div>
   );
 }
+
 
 /* --- Section row ----------------------------------------------------- */
 function SectionRow({ label, children }: { label: string; children: React.ReactNode }) {

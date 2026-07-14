@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import type { VerticalData } from "./VerticalCard";
 import PromiseFilters from "./PromiseFilters";
-import { LuPlus, LuX, LuChevronDown, LuTriangleAlert, LuPencil } from "react-icons/lu";
+import { LuPlus, LuX, LuChevronDown, LuTriangleAlert, LuPencil, LuSearch } from "react-icons/lu";
 
 /* --- Create Vertical Modal --------------------------------------------- */
 export function CreateVerticalModal({
@@ -16,11 +16,26 @@ export function CreateVerticalModal({
   onSave: (name: string) => void;
 }) {
   const [name, setName] = useState("");
+  const [verticalSearch, setVerticalSearch] = useState("");
+  const [verticalOpen, setVerticalOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+
+  const VERTICALS = ["Blood Sugar", "Weight Loss", "Skin Care", "Hair Care", "Dental", "Vision", "Hearing"];
+  const filteredVerticals = VERTICALS.filter(v => v.toLowerCase().includes(verticalSearch.toLowerCase()));
 
   useEffect(() => {
-    if (open) { setName(""); setTimeout(() => inputRef.current?.focus(), 50); }
+    if (open) { setName(""); setVerticalSearch(""); setVerticalOpen(false); setTimeout(() => inputRef.current?.focus(), 50); }
   }, [open]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (dropRef.current && !dropRef.current.contains(e.target as Node)) setVerticalOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   const handleSave = () => {
     const v = name.trim();
@@ -38,25 +53,52 @@ export function CreateVerticalModal({
           <button onClick={onClose} className="text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white transition-colors"><LuX size={15} /></button>
         </div>
         <p className="text-[11px] text-[#9CA3AF] mb-4">Enter a name for the new vertical.</p>
-        <div className="relative mb-4">
-          <select
+
+        {/* Searchable vertical dropdown */}
+        <div className="relative mb-4" ref={dropRef}>
+          <div
             ref={inputRef as any}
-            value={name}
-            onChange={e => setName(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") onClose(); }}
-            className="w-full appearance-none rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-[#F9FAFB] dark:bg-[#0a1018] px-3 py-2 text-sm text-[#111928] dark:text-white outline-none focus:border-[#5750F1] transition-colors cursor-pointer"
+            onClick={() => setVerticalOpen(p => !p)}
+            className="w-full flex items-center justify-between rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-[#F9FAFB] dark:bg-[#0a1018] px-3 py-2 text-sm cursor-pointer select-none transition-colors focus-within:border-[#5750F1]"
           >
-            <option value="" disabled hidden>Select a vertical...</option>
-            <option value="Blood Sugar">Blood Sugar</option>
-            <option value="Weight Loss">Weight Loss</option>
-            <option value="Skin Care">Skin Care</option>
-            <option value="Hair Care">Hair Care</option>
-            <option value="Dental">Dental</option>
-            <option value="Vision">Vision</option>
-            <option value="Hearing">Hearing</option>
-          </select>
-          <LuChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]" />
+            <span className={name ? "text-[#111928] dark:text-white" : "text-[#9CA3AF]"}>
+              {name || "Select a vertical..."}
+            </span>
+            <LuChevronDown size={14} className={`text-[#9CA3AF] transition-transform ${verticalOpen ? "rotate-180" : ""}`} />
+          </div>
+          {verticalOpen && (
+            <div className="absolute left-0 top-full mt-1 z-20 w-full rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] shadow-lg overflow-hidden">
+              {/* Search box */}
+              <div className="flex items-center gap-2 px-3 py-2 border-b border-[#E6EBF1] dark:border-[#374151]">
+                <LuSearch size={13} className="text-[#9CA3AF] shrink-0" />
+                <input
+                  autoFocus
+                  value={verticalSearch}
+                  onChange={e => setVerticalSearch(e.target.value)}
+                  placeholder="Search verticals..."
+                  className="flex-1 bg-transparent text-xs text-[#111928] dark:text-white placeholder:text-[#9CA3AF] outline-none"
+                  onClick={e => e.stopPropagation()}
+                />
+              </div>
+              <div className="max-h-40 overflow-y-auto">
+                {filteredVerticals.length > 0 ? filteredVerticals.map(v => (
+                  <button
+                    key={v}
+                    onClick={() => { setName(v); setVerticalOpen(false); setVerticalSearch(""); }}
+                    className={`w-full text-left px-3 py-2 text-sm transition-colors hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] ${
+                      name === v ? "text-[#5750F1] font-medium" : "text-[#111928] dark:text-white"
+                    }`}
+                  >
+                    {v}
+                  </button>
+                )) : (
+                  <p className="px-3 py-2 text-xs text-[#9CA3AF] text-center">No results</p>
+                )}
+              </div>
+            </div>
+          )}
         </div>
+
         <div className="flex items-center justify-end gap-2">
           <button onClick={onClose} className="rounded-lg border border-[#E6EBF1] dark:border-[#374151] px-4 py-2 text-xs font-medium text-[#6B7280] dark:text-[#9CA3AF] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors">Cancel</button>
           <button onClick={handleSave} disabled={!name.trim()} className="rounded-lg bg-[#5750F1] px-4 py-2 text-xs font-semibold text-white hover:bg-[#4742d4] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">Save Vertical</button>
@@ -86,17 +128,39 @@ export function CreateOfferModal({
   const [selectedVertical, setSelectedVertical] = useState("");
   const [selectedOffers, setSelectedOffers] = useState<string[]>([]);
   const [offersOpen, setOffersOpen] = useState(false);
+  const [offersSearch, setOffersSearch] = useState("");
+  const [verticalOpen, setVerticalOpen] = useState(false);
+  const [verticalSearch, setVerticalSearch] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const offersDropRef = useRef<HTMLDivElement>(null);
+  const verticalDropRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (open) {
       setOfferName(initialOfferName);
       setSelectedOffers([]);
       setOffersOpen(false);
+      setOffersSearch("");
+      setVerticalOpen(false);
+      setVerticalSearch("");
       setSelectedVertical(verticals[0] ?? "");
       setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [open, verticals, initialOfferName]);
+
+  // Close dropdowns on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (offersDropRef.current && !offersDropRef.current.contains(e.target as Node)) setOffersOpen(false);
+      if (verticalDropRef.current && !verticalDropRef.current.contains(e.target as Node)) setVerticalOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const uniqueOfferNames = [...new Set(offerNames)];
+  const filteredOffers = uniqueOfferNames.filter(n => n.toLowerCase().includes(offersSearch.toLowerCase()));
+  const filteredVerticals = verticals.filter(v => v.toLowerCase().includes(verticalSearch.toLowerCase()));
 
   return (
     <>
@@ -126,7 +190,7 @@ export function CreateOfferModal({
           {offerNames.length === 0 ? (
             <p className="text-xs text-[#9CA3AF] italic">No offers yet.</p>
           ) : (
-            <div className="relative">
+            <div className="relative" ref={offersDropRef}>
               <div
                 onClick={() => setOffersOpen(!offersOpen)}
                 className="w-full flex items-center justify-between rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-[#F9FAFB] dark:bg-[#0a1018] px-3 py-2 text-sm text-[#111928] dark:text-white outline-none focus:border-[#5750F1] transition-colors cursor-pointer"
@@ -134,24 +198,40 @@ export function CreateOfferModal({
                 <span className={`truncate ${selectedOffers.length ? "" : "text-[#9CA3AF]"}`}>
                   {selectedOffers.length ? selectedOffers.join(", ") : "Select offers..."}
                 </span>
-                <LuChevronDown size={13} className="text-[#9CA3AF] shrink-0 ml-2" />
+                <LuChevronDown size={13} className={`text-[#9CA3AF] shrink-0 ml-2 transition-transform ${offersOpen ? "rotate-180" : ""}`} />
               </div>
               {offersOpen && (
-                <div className="absolute z-10 w-full mt-1 max-h-40 overflow-y-auto rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] shadow-lg">
-                  {offerNames.map(n => (
-                    <label key={n} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332]">
-                      <input
-                        type="checkbox"
-                        checked={selectedOffers.includes(n)}
-                        onChange={e => {
-                          if (e.target.checked) setSelectedOffers([...selectedOffers, n]);
-                          else setSelectedOffers(selectedOffers.filter(x => x !== n));
-                        }}
-                        className="rounded border-[#D1D5DB] dark:border-[#374151] text-[#5750F1] focus:ring-[#5750F1]"
-                      />
-                      <span className="text-sm text-[#111928] dark:text-white truncate">{n}</span>
-                    </label>
-                  ))}
+                <div className="absolute left-0 top-full mt-1 z-20 w-full rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] shadow-lg overflow-hidden">
+                  {/* Search box */}
+                  <div className="flex items-center gap-2 px-3 py-2 border-b border-[#E6EBF1] dark:border-[#374151]">
+                    <LuSearch size={13} className="text-[#9CA3AF] shrink-0" />
+                    <input
+                      autoFocus
+                      value={offersSearch}
+                      onChange={e => setOffersSearch(e.target.value)}
+                      placeholder="Search offers..."
+                      className="flex-1 bg-transparent text-xs text-[#111928] dark:text-white placeholder:text-[#9CA3AF] outline-none"
+                      onClick={e => e.stopPropagation()}
+                    />
+                  </div>
+                  <div className="max-h-36 overflow-y-auto">
+                    {filteredOffers.length > 0 ? filteredOffers.map(n => (
+                      <label key={n} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332]">
+                        <input
+                          type="checkbox"
+                          checked={selectedOffers.includes(n)}
+                          onChange={e => {
+                            if (e.target.checked) setSelectedOffers([...selectedOffers, n]);
+                            else setSelectedOffers(selectedOffers.filter(x => x !== n));
+                          }}
+                          className="rounded border-[#D1D5DB] dark:border-[#374151] text-[#5750F1] focus:ring-[#5750F1]"
+                        />
+                        <span className="text-sm text-[#111928] dark:text-white truncate">{n}</span>
+                      </label>
+                    )) : (
+                      <p className="px-3 py-2 text-xs text-[#9CA3AF] text-center">No results</p>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -163,11 +243,47 @@ export function CreateOfferModal({
           {verticals.length === 0 ? (
             <p className="text-xs text-[#9CA3AF] italic">No verticals yet — create one first.</p>
           ) : (
-            <div className="relative">
-              <select value={selectedVertical} onChange={e => setSelectedVertical(e.target.value)} className="w-full appearance-none rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-[#F9FAFB] dark:bg-[#0a1018] px-3 py-2 text-sm text-[#111928] dark:text-white outline-none focus:border-[#5750F1] transition-colors cursor-pointer">
-                {verticals.map(v => <option key={v}>{v}</option>)}
-              </select>
-              <LuChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9CA3AF] pointer-events-none" />
+            <div className="relative" ref={verticalDropRef}>
+              <div
+                onClick={() => setVerticalOpen(p => !p)}
+                className="w-full flex items-center justify-between rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-[#F9FAFB] dark:bg-[#0a1018] px-3 py-2 text-sm cursor-pointer select-none transition-colors"
+              >
+                <span className={selectedVertical ? "text-[#111928] dark:text-white" : "text-[#9CA3AF]"}>
+                  {selectedVertical || "Select vertical..."}
+                </span>
+                <LuChevronDown size={13} className={`text-[#9CA3AF] pointer-events-none transition-transform ${verticalOpen ? "rotate-180" : ""}`} />
+              </div>
+              {verticalOpen && (
+                <div className="absolute left-0 top-full mt-1 z-20 w-full rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] shadow-lg overflow-hidden">
+                  {/* Search box */}
+                  <div className="flex items-center gap-2 px-3 py-2 border-b border-[#E6EBF1] dark:border-[#374151]">
+                    <LuSearch size={13} className="text-[#9CA3AF] shrink-0" />
+                    <input
+                      autoFocus
+                      value={verticalSearch}
+                      onChange={e => setVerticalSearch(e.target.value)}
+                      placeholder="Search verticals..."
+                      className="flex-1 bg-transparent text-xs text-[#111928] dark:text-white placeholder:text-[#9CA3AF] outline-none"
+                      onClick={e => e.stopPropagation()}
+                    />
+                  </div>
+                  <div className="max-h-36 overflow-y-auto">
+                    {filteredVerticals.length > 0 ? filteredVerticals.map(v => (
+                      <button
+                        key={v}
+                        onClick={() => { setSelectedVertical(v); setVerticalOpen(false); setVerticalSearch(""); }}
+                        className={`w-full text-left px-3 py-2 text-sm transition-colors hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] ${
+                          selectedVertical === v ? "text-[#5750F1] font-medium" : "text-[#111928] dark:text-white"
+                        }`}
+                      >
+                        {v}
+                      </button>
+                    )) : (
+                      <p className="px-3 py-2 text-xs text-[#9CA3AF] text-center">No results</p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -465,7 +581,7 @@ export default function VerticalGrid({
         onClose={() => setShowEditOfferModal(false)}
         onSave={handleEditOfferSave}
         verticals={allVerticalNames}
-        offerNames={mergedVerticals.flatMap(v => (v.offers ?? []).map(o => o.name))}
+        offerNames={[...new Set(mergedVerticals.flatMap(v => (v.offers ?? []).map(o => o.name)))]}
         initialOfferName={editOfferName}
       />
     </div>

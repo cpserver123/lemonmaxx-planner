@@ -178,6 +178,7 @@ const TEAM_MEMBERS = [
 function ResourceDropdownCell({ value, onChange, promise }: { value: string; onChange: (v: string) => void; promise?: number | null }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0 });
+  const [search, setSearch] = useState("");
   const btnRef = useRef<HTMLButtonElement>(null);
 
   const selected = new Set(value.split(",").map(s => s.trim()).filter(Boolean));
@@ -187,6 +188,10 @@ function ResourceDropdownCell({ value, onChange, promise }: { value: string; onC
     : null;
 
   const fmtShort = (n: number) => `$${n.toLocaleString("en-US")}`;
+
+  const filteredMembers = TEAM_MEMBERS.filter(name =>
+    name.toLowerCase().includes(search.toLowerCase())
+  );
 
   const toggle = (name: string) => {
     const next = new Set(selected);
@@ -200,6 +205,7 @@ function ResourceDropdownCell({ value, onChange, promise }: { value: string; onC
       setPos({ top: rect.bottom + 4, left: rect.left });
     }
     setOpen(p => !p);
+    setSearch("");
   };
 
   const label = selected.size === 0
@@ -218,38 +224,58 @@ function ResourceDropdownCell({ value, onChange, promise }: { value: string; onC
       </button>
       {open && (
         <>
-          <div className="fixed inset-0 z-[9998]" onClick={() => setOpen(false)} />
+          <div className="fixed inset-0 z-[9998]" onClick={() => { setOpen(false); setSearch(""); }} />
           <div
-            className="fixed z-[9999] w-52 rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] shadow-xl py-1 max-h-52 overflow-y-auto"
+            className="fixed z-[9999] w-52 rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] shadow-xl overflow-hidden"
             style={{ top: pos.top, left: pos.left }}
           >
-            {TEAM_MEMBERS.map(name => (
-              <label
-                key={name}
-                onClick={(e) => { e.stopPropagation(); toggle(name); }}
-                className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"
-              >
-                <span
-                  className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border transition-colors ${
-                    selected.has(name)
-                      ? "border-[#5750F1] bg-[#5750F1]"
-                      : "border-[#D1D5DB] dark:border-[#374151]"
-                  }`}
+            {/* Search box */}
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-[#E6EBF1] dark:border-[#374151]">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="text-[#9CA3AF] shrink-0">
+                <circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2"/>
+                <path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
+              <input
+                autoFocus
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search members..."
+                className="flex-1 bg-transparent text-xs text-[#111928] dark:text-white placeholder:text-[#9CA3AF] outline-none"
+                onClick={e => e.stopPropagation()}
+              />
+            </div>
+            {/* List */}
+            <div className="max-h-44 overflow-y-auto py-1">
+              {filteredMembers.length > 0 ? filteredMembers.map(name => (
+                <label
+                  key={name}
+                  onClick={(e) => { e.stopPropagation(); toggle(name); }}
+                  className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"
                 >
-                  {selected.has(name) && (
-                    <svg width="8" height="6" viewBox="0 0 8 6" fill="none">
-                      <path d="M1 3L3 5L7 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  )}
-                </span>
-                <span className="flex-1 text-xs text-[#111928] dark:text-[#D1D5DB]">{name}</span>
-                {selected.has(name) && perUser !== null && (
-                  <span className="text-[9px] font-semibold text-[#5750F1] bg-[#5750F1]/10 rounded px-1 py-0.5 shrink-0">
-                    {fmtShort(perUser)}
+                  <span
+                    className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border transition-colors ${
+                      selected.has(name)
+                        ? "border-[#5750F1] bg-[#5750F1]"
+                        : "border-[#D1D5DB] dark:border-[#374151]"
+                    }`}
+                  >
+                    {selected.has(name) && (
+                      <svg width="8" height="6" viewBox="0 0 8 6" fill="none">
+                        <path d="M1 3L3 5L7 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    )}
                   </span>
-                )}
-              </label>
-            ))}
+                  <span className="flex-1 text-xs text-[#111928] dark:text-[#D1D5DB]">{name}</span>
+                  {selected.has(name) && perUser !== null && (
+                    <span className="text-[9px] font-semibold text-[#5750F1] bg-[#5750F1]/10 rounded px-1 py-0.5 shrink-0">
+                      {fmtShort(perUser)}
+                    </span>
+                  )}
+                </label>
+              )) : (
+                <p className="px-3 py-2 text-xs text-[#9CA3AF] text-center">No results</p>
+              )}
+            </div>
           </div>
         </>
       )}
@@ -816,7 +842,7 @@ export default function PlanningSection() {
         onClose={() => setShowCreateOffer(false)}
         onSave={() => setShowCreateOffer(false)}
         verticals={Array.from(new Set(planningData.map(r => r.category)))}
-        offerNames={planningData.filter(r => !r.isSubTotal && !r.isPromiseNote && r.platform).map(r => r.platform)}
+        offerNames={[...new Set(planningData.filter(r => !r.isSubTotal && !r.isPromiseNote && r.platform).map(r => r.platform))]}
       />
     </div>
   );
