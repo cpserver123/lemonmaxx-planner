@@ -105,6 +105,7 @@ const TEAM_MEMBERS = [
 
 function ResourceCell({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
   const ref = useRef<HTMLDivElement>(null);
 
   // Parse comma-separated string into a Set
@@ -118,11 +119,18 @@ function ResourceCell({ value, onChange }: { value: string; onChange: (v: string
     onChange([...next].join(", "));
   };
 
+  const filteredMembers = TEAM_MEMBERS.filter(name =>
+    name.toLowerCase().includes(search.toLowerCase())
+  );
+
   // Close on outside click — use 'click' so item clicks fire before close
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSearch("");
+      }
     };
     // small delay so the item's onClick fires first
     const tid = setTimeout(() => document.addEventListener("click", handler), 0);
@@ -137,7 +145,7 @@ function ResourceCell({ value, onChange }: { value: string; onChange: (v: string
     <div ref={ref} className="relative">
       {/* Trigger */}
       <button
-        onClick={() => setOpen(p => !p)}
+        onClick={() => { setOpen(p => !p); setSearch(""); }}
         className="flex items-center gap-1 rounded border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] px-2 py-1 text-left w-36 hover:border-[#5750F1]/50 transition-colors"
       >
         <span className="flex-1 truncate leading-none">{label}</span>
@@ -146,29 +154,49 @@ function ResourceCell({ value, onChange }: { value: string; onChange: (v: string
 
       {/* Dropdown */}
       {open && (
-        <div className="absolute left-0 top-full mt-1 z-50 w-44 rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] shadow-xl py-1 max-h-52 overflow-y-auto">
-          {TEAM_MEMBERS.map(name => (
-            <label
-              key={name}
-              onClick={() => toggle(name)}
-              className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"
-            >
-              <span
-                className={`flex h-3.5 w-3.5 items-center justify-center rounded border transition-colors ${
-                  selected.has(name)
-                    ? "border-[#5750F1] bg-[#5750F1]"
-                    : "border-[#D1D5DB] dark:border-[#374151]"
-                }`}
+        <div className="absolute left-0 top-full mt-1 z-50 w-48 rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] shadow-xl overflow-hidden">
+          {/* Search box */}
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-[#E6EBF1] dark:border-[#374151]">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="text-[#9CA3AF] shrink-0">
+              <circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2"/>
+              <path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
+            <input
+              autoFocus
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search members..."
+              className="flex-1 bg-transparent text-xs text-[#111928] dark:text-white placeholder:text-[#9CA3AF] outline-none"
+              onClick={e => e.stopPropagation()}
+            />
+          </div>
+          {/* List */}
+          <div className="max-h-44 overflow-y-auto py-1">
+            {filteredMembers.length > 0 ? filteredMembers.map(name => (
+              <label
+                key={name}
+                onClick={() => toggle(name)}
+                className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"
               >
-                {selected.has(name) && (
-                  <svg width="8" height="6" viewBox="0 0 8 6" fill="none">
-                    <path d="M1 3L3 5L7 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                )}
-              </span>
-              <span className="text-xs text-[#111928] dark:text-[#D1D5DB]">{name}</span>
-            </label>
-          ))}
+                <span
+                  className={`flex h-3.5 w-3.5 items-center justify-center rounded border transition-colors ${
+                    selected.has(name)
+                      ? "border-[#5750F1] bg-[#5750F1]"
+                      : "border-[#D1D5DB] dark:border-[#374151]"
+                  }`}
+                >
+                  {selected.has(name) && (
+                    <svg width="8" height="6" viewBox="0 0 8 6" fill="none">
+                      <path d="M1 3L3 5L7 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </span>
+                <span className="text-xs text-[#111928] dark:text-[#D1D5DB]">{name}</span>
+              </label>
+            )) : (
+              <p className="px-3 py-2 text-xs text-[#9CA3AF] text-center">No results</p>
+            )}
+          </div>
         </div>
       )}
     </div>
