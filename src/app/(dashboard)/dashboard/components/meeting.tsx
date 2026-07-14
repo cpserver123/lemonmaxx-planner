@@ -148,7 +148,7 @@ function RightHeading({ icon, label }: { icon: React.ReactNode; label: string })
 const FONT_FAMILIES = ["System Default", "Georgia", "Courier New", "Helvetica Neue", "Times New Roman"];
 const FONT_SIZES    = ["12px", "13px", "14px", "15px", "16px", "18px", "20px", "24px"];
 
-function RichNoteEditor({ placeholder = "Write Content", readOnly = false }: { placeholder?: string, readOnly?: boolean }) {
+function RichNoteEditor({ placeholder = "Write Content", readOnly = false, className = "" }: { placeholder?: string, readOnly?: boolean, className?: string }) {
   const editorRef      = useRef<HTMLDivElement>(null);
   const [bold, setBold]           = useState(false);
   const [italic, setItalic]       = useState(false);
@@ -263,7 +263,7 @@ function RichNoteEditor({ placeholder = "Write Content", readOnly = false }: { p
     }`;
 
   return (
-    <div className={`rounded-lg border border-[#E5E7EB] dark:border-[#1F2A37] flex flex-col bg-white dark:bg-[#111928] ${readOnly ? "opacity-80" : ""}`}>
+    <div className={`rounded-lg border border-[#E5E7EB] dark:border-[#1F2A37] flex flex-col bg-white dark:bg-[#111928] ${readOnly ? "opacity-80" : ""} ${className}`}>
       {/* Toolbar */}
       {!readOnly && (
         <div className="relative flex items-center gap-0.5 px-2 py-1.5 border-b border-[#E5E7EB] dark:border-[#1F2A37] flex-wrap bg-[#F9FAFB] dark:bg-[#1a2332] rounded-t-lg">
@@ -591,7 +591,8 @@ function CreateMeetingModal({
         {tab === "design" && (
           <div className="flex flex-1 overflow-hidden">
             {/* Left form panel */}
-            <div className={`flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-5 border-r ${borderColor} ${isReadOnly ? "pointer-events-none opacity-60" : ""}`}>
+            <div className={`flex-1 overflow-y-auto border-r ${borderColor}`}>
+              <div className={`px-6 py-5 flex flex-col gap-5 ${isReadOnly ? "pointer-events-none opacity-60" : ""}`}>
 
               {/* Name */}
               <div>
@@ -719,10 +720,12 @@ function CreateMeetingModal({
                 />
               </div>
 
+              </div>
             </div>
 
             {/* Right info panel */}
-            <div className={`w-[550px] shrink-0 overflow-y-auto px-5 py-5 flex flex-col gap-6 bg-[#F9FAFB] dark:bg-[#080f1a] ${isReadOnly ? "pointer-events-none opacity-60" : ""}`}>
+            <div className={`w-[550px] shrink-0 overflow-y-auto bg-[#F9FAFB] dark:bg-[#080f1a]`}>
+              <div className={`px-5 py-5 flex flex-col gap-6 ${isReadOnly ? "pointer-events-none opacity-60" : ""}`}>
 
               {/* Agenda */}
               <div>
@@ -742,6 +745,7 @@ function CreateMeetingModal({
 
               {/* Files */}
               <FilesSection />
+              </div>
             </div>
           </div>
         )}
@@ -764,18 +768,14 @@ function CreateMeetingModal({
                 </div>
               )}
             </div>
-            <div className="flex-1">
-              <RichNoteEditor placeholder="Write your meeting report..." />
-            </div>
+            <RichNoteEditor placeholder="Write your meeting report..." className="flex-1" />
           </div>
         )}
 
         {tab === "ai-summary" && (
           <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-2">
             <p className="text-[10px] font-bold text-[#6B7280] dark:text-[#9CA3AF] uppercase tracking-widest mb-1">Summary Notes</p>
-            <div className="flex-1">
-              <RichNoteEditor placeholder="Write your meeting summary..." />
-            </div>
+            <RichNoteEditor placeholder="Write your meeting summary..." className="flex-1" />
           </div>
         )}
 
