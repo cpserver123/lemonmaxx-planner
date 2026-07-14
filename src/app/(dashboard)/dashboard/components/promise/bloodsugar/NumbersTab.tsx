@@ -366,13 +366,25 @@ function StrategyCard({
   actions,
   onOpenDrawer,
   onAddAction,
+  onEditTitle,
 }: {
   strategy: Strategy;
   actions: ActionRow[];
   onOpenDrawer: (row: DrawerRow) => void;
   onAddAction: () => void;
+  onEditTitle: () => void;
 }) {
   const [collapsed, setCollapsed] = useState(false);
+
+  // Derive pathway status: "Done" only if every action row is "Done", else "Active"
+  const derivedStatus = actions.length > 0 && actions.every(a => a.status === "Done")
+    ? "Done"
+    : "Active";
+
+  const statusClass = derivedStatus === "Done"
+    ? "bg-green-500/10 border-green-500/20 text-green-600 dark:text-green-400"
+    : "bg-[#2563eb]/10 border-[#2563eb]/20 text-[#2563eb]";
+
   return (
     <div className="rounded-lg border border-[#E6EBF1] dark:border-[#1F2A37] bg-[#F9FAFB] dark:bg-[#0a1018] mb-5 overflow-hidden">
       {collapsed && (
@@ -386,7 +398,7 @@ function StrategyCard({
             <span className="text-[#5750F1] text-xs">📋</span>
           </div>
           <span className="text-sm font-semibold text-[#111928] dark:text-white truncate">{strategy.title}</span>
-          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${strategy.status === "Active" ? "bg-[#2563eb]/10 border-[#2563eb]/20 text-[#2563eb]" : "bg-gray-100 border-gray-200 text-gray-600 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300"}`}>{strategy.status}</span>
+          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${statusClass}`}>{derivedStatus}</span>
           <p className="flex-1 text-[11px] text-[#6B7280] dark:text-[#9CA3AF] truncate hidden sm:block">
             {strategy.description}
           </p>
@@ -411,8 +423,14 @@ function StrategyCard({
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-sm font-semibold text-[#111928] dark:text-white">{strategy.title}</h3>
-                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${strategy.status === "Active" ? "bg-[#2563eb]/10 border-[#2563eb]/20 text-[#2563eb]" : "bg-gray-100 border-gray-200 text-gray-600 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300"}`}>{strategy.status}</span>
+                <h3
+                  className="text-sm font-semibold text-[#111928] dark:text-white cursor-pointer hover:text-[#5750F1] dark:hover:text-[#7c78f3] transition-colors"
+                  onClick={onEditTitle}
+                  title="Click to edit pathway name"
+                >
+                  {strategy.title}
+                </h3>
+                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${statusClass}`}>{derivedStatus}</span>
               </div>
               <p className="text-[11px] text-[#6B7280] dark:text-[#9CA3AF] mt-0.5 line-clamp-2">
                 {strategy.description}
@@ -444,6 +462,7 @@ export default function NumbersTab() {
   const [strategyActions, setStrategyActions] = useState<Record<string, ActionRow[]>>({ s1: INITIAL_ACTIONS });
   const [selectedAction, setSelectedAction] = useState<DrawerRow | null>(null);
   const [pendingStrategyId, setPendingStrategyId] = useState<string | null>(null);
+  const [editingStrategyId, setEditingStrategyId] = useState<string | null>(null);
 
   openActionDrawer = (row: ActionRow) => {
     let foundStrategyId = null;
@@ -479,7 +498,26 @@ export default function NumbersTab() {
 
   const handleOpenDrawer = (strategyId: string, row: DrawerRow) => {
     setPendingStrategyId(strategyId);
+    setEditingStrategyId(null);
     setSelectedAction(row);
+  };
+
+  const handleEditTitle = (strategyId: string) => {
+    const s = strategies.find(s => s.id === strategyId);
+    if (!s) return;
+    setEditingStrategyId(strategyId);
+    setPendingStrategyId(null);
+    setSelectedAction({
+      id: s.id,
+      action: "",
+      intendedOutcome: "",
+      status: s.status,
+      due: s.due,
+      accountable: s.accountable,
+      linkTo: "",
+      pathwayTitle: s.title,
+      pathwayDesc: s.description,
+    });
   };
 
   return (
@@ -526,6 +564,7 @@ export default function NumbersTab() {
             accountable: "",
             linkTo: "",
           })}
+          onEditTitle={() => handleEditTitle(strategy.id)}
         />
       ))}
 
@@ -552,10 +591,22 @@ export default function NumbersTab() {
       <ActionDrawer
         row={selectedAction}
         performance="numbers"
-        isPathway={selectedAction !== null && !pendingStrategyId}
+        isPathway={editingStrategyId !== null || (selectedAction !== null && !pendingStrategyId)}
         title={pendingStrategyId ? strategies.find(s => s.id === pendingStrategyId)?.title : undefined}
-        onClose={() => { setSelectedAction(null); setPendingStrategyId(null); }}
+        onClose={() => { setSelectedAction(null); setPendingStrategyId(null); setEditingStrategyId(null); }}
         onSave={(updated) => {
+          // Case 1: editing an existing strategy title
+          if (editingStrategyId) {
+            setStrategies(prev => prev.map(s =>
+              s.id === editingStrategyId
+                ? { ...s, title: updated.pathwayTitle || s.title, description: updated.pathwayDesc ?? s.description }
+                : s
+            ));
+            setSelectedAction(null);
+            setPendingStrategyId(null);
+            setEditingStrategyId(null);
+            return;
+          }
           const primaryAction = updated.action ? { ...updated, completed: false } : null;
           const extraActions = (updated.additionalActions || [])
             .filter(a => a.action.trim())

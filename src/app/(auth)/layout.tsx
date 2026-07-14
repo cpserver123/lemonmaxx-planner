@@ -17,16 +17,16 @@ export default function AuthLayout({
 
       {/* Header */}
       <div className="relative flex items-center justify-between p-6">
-        <Link href="/" className="flex items-center gap-2 text-foreground hover:text-primary transition-colors">
+        {/* <Link href="/" className="flex items-center gap-2 text-foreground hover:text-primary transition-colors">
           <ArrowLeft className="w-5 h-5" />
           <span className="font-medium">Back to home</span>
-        </Link>
-        <div className="flex items-center gap-2">
+        </Link> */}
+        {/* <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">Need help?</span>
           <Link href="/support" className="text-sm text-primary hover:text-primary/80 font-medium">
             Contact Support
           </Link>
-        </div>
+        </div> */}
       </div>
 
       {/* Main Content */}
@@ -49,9 +49,9 @@ export default function AuthLayout({
       {/* Footer */}
       <div className="relative z-20 text-center p-6 border-t bg-card/50 backdrop-blur">
         <p className="text-xs text-muted-foreground">
-          © 2025 Lemonmaxx. All rights reserved. |{' '}
-          <Link href="/terms-of-service" className="hover:text-foreground">Terms of Service</Link> |{' '}
-          <Link href="/privacy-policy" className="hover:text-foreground">Privacy Policy</Link>
+          © 2025 Lemonmaxx Planner. All rights reserved. {' '}
+          {/* <Link href="/terms-of-service" className="hover:text-foreground">Terms of Service</Link> |{' '}
+          <Link href="/privacy-policy" className="hover:text-foreground">Privacy Policy</Link> */}
         </p>
       </div>
     </div>

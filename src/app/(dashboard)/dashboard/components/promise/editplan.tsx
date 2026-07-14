@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { LuX, LuSave, LuChevronDown } from "react-icons/lu";
+import { LuX, LuSave, LuChevronDown, LuTarget } from "react-icons/lu";
+import GoalAssignModal, { type GoalRow } from "../goalassign";
 
 /* ---------- Types ---------------------------------------------------- */
 export interface PlanningRow {
@@ -192,6 +193,16 @@ export interface EditPlanDrawerProps {
 
 export default function EditPlanDrawer({ open, data, onClose, onUpdate }: EditPlanDrawerProps) {
   const [rows, setRows] = useState<PlanningRow[]>([]);
+  const [goalRow, setGoalRow] = useState<GoalRow | null>(null);
+  const [showGoalModal, setShowGoalModal] = useState(false);
+  const [savedGoalRowIds, setSavedGoalRowIds] = useState<Set<string>>(new Set());
+
+  const openGoalModal = (row: PlanningRow) => {
+    setGoalRow(row as GoalRow);
+    setShowGoalModal(true);
+  };
+  const handleGoalSave = (rowId: string) =>
+    setSavedGoalRowIds(prev => new Set(prev).add(rowId));
 
   // Reset to a fresh copy of data every time the drawer opens
   useEffect(() => {
@@ -227,6 +238,7 @@ export default function EditPlanDrawer({ open, data, onClose, onUpdate }: EditPl
     { key: "deltaLoss",   label: "Delta Loss",     w: 110 },
     { key: "netPromise",  label: "Net Promise",    w: 110 },
     { key: "resources",   label: "Resources",      w: 180 },
+    { key: "assignGoal",  label: "Assign Goal",    w: 100 },
   ] as const;
 
   return (
@@ -308,6 +320,7 @@ export default function EditPlanDrawer({ open, data, onClose, onUpdate }: EditPl
                                 </td>
                               ))}
                               <td className="px-3 py-2" />
+                              <td className="px-3 py-2" />
                             </tr>
                           );
                         }
@@ -341,6 +354,20 @@ export default function EditPlanDrawer({ open, data, onClose, onUpdate }: EditPl
                                 onChange={v => updateRow(row.id, "resources", v)}
                               />
                             </td>
+                            {/* Assign Goal */}
+                            <td className="px-3 py-2">
+                              <button
+                                onClick={() => openGoalModal(row)}
+                                className={`flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-semibold transition-colors ${
+                                  savedGoalRowIds.has(row.id)
+                                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20"
+                                    : "border-[#5750F1]/40 bg-[#5750F1]/5 text-[#5750F1] hover:bg-[#5750F1]/15"
+                                }`}
+                              >
+                                <LuTarget size={10} />
+                                {savedGoalRowIds.has(row.id) ? "Assigned" : "Goal"}
+                              </button>
+                            </td>
                           </tr>
                         );
                       })}
@@ -352,6 +379,13 @@ export default function EditPlanDrawer({ open, data, onClose, onUpdate }: EditPl
           </div>
         </div>
       </div>
+
+      <GoalAssignModal
+        open={showGoalModal}
+        onClose={() => setShowGoalModal(false)}
+        onSave={handleGoalSave}
+        row={goalRow}
+      />
     </>
   );
 }

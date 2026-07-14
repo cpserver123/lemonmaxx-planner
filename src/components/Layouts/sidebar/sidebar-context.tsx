@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
-import { ThemeProvider } from "next-themes";
+import { ThemeProvider } from "@/components/Layouts/theme-provider";
 
 type SidebarContextType = {
   state: "expanded" | "collapsed";
