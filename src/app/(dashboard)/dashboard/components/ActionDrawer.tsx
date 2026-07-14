@@ -628,6 +628,7 @@ export default function ActionDrawer({
           )}
 
           {/* Action Title */}
+          <span className="text-[10px] font-bold text-[#6B7280] dark:text-[#9CA3AF] uppercase tracking-widest block mb-2">Action Title</span>
           <textarea
             value={draft.action}
             onChange={e => setDraft(d => d ? { ...d, action: e.target.value } : d)}
