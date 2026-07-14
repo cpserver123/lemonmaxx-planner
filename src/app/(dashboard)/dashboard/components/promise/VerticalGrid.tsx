@@ -3,10 +3,10 @@
 import { useState, useRef, useEffect } from "react";
 import type { VerticalData } from "./VerticalCard";
 import PromiseFilters from "./PromiseFilters";
-import { LuPlus, LuX, LuChevronDown, LuTriangleAlert } from "react-icons/lu";
+import { LuPlus, LuX, LuChevronDown, LuTriangleAlert, LuPencil } from "react-icons/lu";
 
 /* --- Create Vertical Modal --------------------------------------------- */
-function CreateVerticalModal({
+export function CreateVerticalModal({
   open,
   onClose,
   onSave,
@@ -38,14 +38,25 @@ function CreateVerticalModal({
           <button onClick={onClose} className="text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white transition-colors"><LuX size={15} /></button>
         </div>
         <p className="text-[11px] text-[#9CA3AF] mb-4">Enter a name for the new vertical.</p>
-        <input
-          ref={inputRef}
-          value={name}
-          onChange={e => setName(e.target.value)}
-          onKeyDown={e => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") onClose(); }}
-          placeholder="e.g. Blood Sugar"
-          className="w-full rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-[#F9FAFB] dark:bg-[#0a1018] px-3 py-2 text-sm text-[#111928] dark:text-white placeholder:text-[#9CA3AF] outline-none focus:border-[#5750F1] transition-colors mb-4"
-        />
+        <div className="relative mb-4">
+          <select
+            ref={inputRef as any}
+            value={name}
+            onChange={e => setName(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") onClose(); }}
+            className="w-full appearance-none rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-[#F9FAFB] dark:bg-[#0a1018] px-3 py-2 text-sm text-[#111928] dark:text-white outline-none focus:border-[#5750F1] transition-colors cursor-pointer"
+          >
+            <option value="" disabled hidden>Select a vertical...</option>
+            <option value="Blood Sugar">Blood Sugar</option>
+            <option value="Weight Loss">Weight Loss</option>
+            <option value="Skin Care">Skin Care</option>
+            <option value="Hair Care">Hair Care</option>
+            <option value="Dental">Dental</option>
+            <option value="Vision">Vision</option>
+            <option value="Hearing">Hearing</option>
+          </select>
+          <LuChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]" />
+        </div>
         <div className="flex items-center justify-end gap-2">
           <button onClick={onClose} className="rounded-lg border border-[#E6EBF1] dark:border-[#374151] px-4 py-2 text-xs font-medium text-[#6B7280] dark:text-[#9CA3AF] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors">Cancel</button>
           <button onClick={handleSave} disabled={!name.trim()} className="rounded-lg bg-[#5750F1] px-4 py-2 text-xs font-semibold text-white hover:bg-[#4742d4] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">Save Vertical</button>
@@ -56,32 +67,36 @@ function CreateVerticalModal({
 }
 
 /* --- Create Offer Modal ------------------------------------------------- */
-function CreateOfferModal({
+export function CreateOfferModal({
   open,
   onClose,
   onSave,
   verticals,
   offerNames,
+  initialOfferName = "",
 }: {
   open: boolean;
   onClose: () => void;
   onSave: (offerName: string, verticalName: string) => void;
   verticals: string[];
   offerNames: string[];
+  initialOfferName?: string;
 }) {
   const [offerName, setOfferName] = useState("");
   const [selectedVertical, setSelectedVertical] = useState("");
-  const [selectedOffer, setSelectedOffer] = useState("");
+  const [selectedOffers, setSelectedOffers] = useState<string[]>([]);
+  const [offersOpen, setOffersOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
-      setOfferName("");
-      setSelectedOffer("");
+      setOfferName(initialOfferName);
+      setSelectedOffers([]);
+      setOffersOpen(false);
       setSelectedVertical(verticals[0] ?? "");
       setTimeout(() => inputRef.current?.focus(), 50);
     }
-  }, [open, verticals]);
+  }, [open, verticals, initialOfferName]);
 
   return (
     <>
@@ -112,15 +127,33 @@ function CreateOfferModal({
             <p className="text-xs text-[#9CA3AF] italic">No offers yet.</p>
           ) : (
             <div className="relative">
-              <select
-                value={selectedOffer}
-                onChange={e => setSelectedOffer(e.target.value)}
-                className="w-full appearance-none rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-[#F9FAFB] dark:bg-[#0a1018] px-3 py-2 text-sm text-[#111928] dark:text-white outline-none focus:border-[#5750F1] transition-colors cursor-pointer"
+              <div
+                onClick={() => setOffersOpen(!offersOpen)}
+                className="w-full flex items-center justify-between rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-[#F9FAFB] dark:bg-[#0a1018] px-3 py-2 text-sm text-[#111928] dark:text-white outline-none focus:border-[#5750F1] transition-colors cursor-pointer"
               >
-                <option value="">Select an offer…</option>
-                {offerNames.map(n => <option key={n} value={n}>{n}</option>)}
-              </select>
-              <LuChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9CA3AF] pointer-events-none" />
+                <span className={`truncate ${selectedOffers.length ? "" : "text-[#9CA3AF]"}`}>
+                  {selectedOffers.length ? selectedOffers.join(", ") : "Select offers..."}
+                </span>
+                <LuChevronDown size={13} className="text-[#9CA3AF] shrink-0 ml-2" />
+              </div>
+              {offersOpen && (
+                <div className="absolute z-10 w-full mt-1 max-h-40 overflow-y-auto rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] shadow-lg">
+                  {offerNames.map(n => (
+                    <label key={n} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332]">
+                      <input
+                        type="checkbox"
+                        checked={selectedOffers.includes(n)}
+                        onChange={e => {
+                          if (e.target.checked) setSelectedOffers([...selectedOffers, n]);
+                          else setSelectedOffers(selectedOffers.filter(x => x !== n));
+                        }}
+                        className="rounded border-[#D1D5DB] dark:border-[#374151] text-[#5750F1] focus:ring-[#5750F1]"
+                      />
+                      <span className="text-sm text-[#111928] dark:text-white truncate">{n}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -169,32 +202,20 @@ function TreeConnector({ offerCount }: { offerCount: number }) {
 function VerticalTree({
   vertical,
   onOfferClick,
+  onEditOffer,
 }: {
   vertical: VerticalData;
   onOfferClick: (verticalId: string) => void;
+  onEditOffer: (offerName: string, verticalName: string) => void;
 }) {
   const offers = vertical.offers ?? [];
-
-  // All nodes expanded by default
-  const [expandedOffers, setExpandedOffers] = useState<Set<string>>(
-    new Set((vertical.offers ?? []).map(o => o.id))
-  );
-  const [rootExpanded, setRootExpanded] = useState(true);
-
-  const toggleOffer = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setExpandedOffers(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  };
 
   const fmt = (n: number) => `$${n.toLocaleString("en-US")}`;
 
   // Totals for root
   const totalPromise    = offers.reduce((s, o) => s + (o.promise    ?? 0), 0);
   const totalNetPromise = offers.reduce((s, o) => s + (o.netPromise ?? 0), 0);
+  const totalActuals    = offers.reduce((s, o) => s + (o.actuals    ?? 0), 0);
 
   return (
     <div className="flex flex-col items-center">
@@ -211,26 +232,20 @@ function VerticalTree({
               {vertical.hasWarning && <LuTriangleAlert size={10} className="text-[#FBBF24] shrink-0" />}
             </div>
           </div>
-          {/* Expand toggle */}
-          <button
-            onClick={e => { e.stopPropagation(); setRootExpanded(p => !p); }}
-            className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-[#2563eb]/40 text-[#2563eb] hover:bg-[#2563eb]/10 transition-colors text-[10px] font-bold"
-          >
-            {rootExpanded ? "−" : "+"}
-          </button>
         </div>
 
-        {/* Expanded details */}
-        {rootExpanded && (
-          <div className="w-full px-4 pb-2.5 pt-0 border-t border-[#2563eb]/20">
-            <p className="text-[10px] text-[#6B7280] dark:text-[#9CA3AF] mt-1.5">
-              Promise: <span className="font-semibold text-[#111928] dark:text-white">{fmt(totalPromise)}</span>
-            </p>
-            <p className="text-[10px] text-[#6B7280] dark:text-[#9CA3AF]">
-              Net Promise: <span className="font-semibold text-[#111928] dark:text-white">{fmt(totalNetPromise)}</span>
-            </p>
-          </div>
-        )}
+        {/* Always-visible details */}
+        <div className="w-full px-4 pb-2.5 pt-0 border-t border-[#2563eb]/20">
+          <p className="text-[10px] text-[#6B7280] dark:text-[#9CA3AF] mt-1.5">
+            Promise: <span className="font-semibold text-[#111928] dark:text-white">{fmt(totalPromise)}</span>
+          </p>
+          <p className="text-[10px] text-[#6B7280] dark:text-[#9CA3AF]">
+            Net Promise: <span className="font-semibold text-[#111928] dark:text-white">{fmt(totalNetPromise)}</span>
+          </p>
+          <p className="text-[10px] text-[#6B7280] dark:text-[#9CA3AF]">
+            Actual Promise: <span className="font-semibold text-[#111928] dark:text-white">{fmt(vertical.actuals ?? totalActuals)}</span>
+          </p>
+        </div>
       </div>
 
       {offers.length > 0 && (
@@ -254,7 +269,6 @@ function VerticalTree({
 
             {/* Each offer column */}
             {offers.map(offer => {
-              const isExpanded = expandedOffers.has(offer.id);
               return (
                 <div key={offer.id} className="flex flex-col items-center flex-1">
                   {/* Vertical stem down to offer node */}
@@ -271,26 +285,28 @@ function VerticalTree({
                         {offer.name}
                       </button>
                       <span className="text-[#9CA3AF] text-xs shrink-0 pointer-events-none">›</span>
-                      {/* Expand toggle */}
+                      {/* Edit button */}
                       <button
-                        onClick={e => toggleOffer(offer.id, e)}
-                        className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-[#E6EBF1] dark:border-[#374151] text-[#6B7280] hover:border-[#2563eb]/50 hover:text-[#2563eb] transition-colors text-[10px] font-bold"
+                        onClick={e => { e.stopPropagation(); onEditOffer(offer.name, vertical.name); }}
+                        className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-[#E6EBF1] dark:border-[#374151] text-[#6B7280] hover:border-[#2563eb]/50 hover:text-[#2563eb] transition-colors"
+                        title="Edit offer"
                       >
-                        {isExpanded ? "−" : "+"}
+                        <LuPencil size={8} />
                       </button>
                     </div>
 
-                    {/* Expanded details */}
-                    {isExpanded && (
-                      <div className="px-2.5 pb-2 border-t border-[#E6EBF1] dark:border-[#374151] pt-1.5">
-                        <p className="text-[10px] text-[#6B7280] dark:text-[#9CA3AF]">
-                          Promise: <span className="font-semibold text-[#111928] dark:text-white">{fmt(offer.promise ?? 0)}</span>
-                        </p>
-                        <p className="text-[10px] text-[#6B7280] dark:text-[#9CA3AF]">
-                          Net Promise: <span className="font-semibold text-[#111928] dark:text-white">{fmt(offer.netPromise ?? 0)}</span>
-                        </p>
-                      </div>
-                    )}
+                    {/* Always-visible details */}
+                    <div className="px-2.5 pb-2 border-t border-[#E6EBF1] dark:border-[#374151] pt-1.5">
+                      <p className="text-[10px] text-[#6B7280] dark:text-[#9CA3AF]">
+                        Promise: <span className="font-semibold text-[#111928] dark:text-white">{fmt(offer.promise ?? 0)}</span>
+                      </p>
+                      <p className="text-[10px] text-[#6B7280] dark:text-[#9CA3AF]">
+                        Net Promise: <span className="font-semibold text-[#111928] dark:text-white">{fmt(offer.netPromise ?? 0)}</span>
+                      </p>
+                      <p className="text-[10px] text-[#6B7280] dark:text-[#9CA3AF]">
+                        Actual Promise: <span className="font-semibold text-[#111928] dark:text-white">{fmt(offer.actuals ?? 0)}</span>
+                      </p>
+                    </div>
                   </div>
                 </div>
               );
@@ -315,8 +331,51 @@ export default function VerticalGrid({
   // Locally created verticals (full VerticalData objects with their offers)
   const [localVerticals, setLocalVerticals] = useState<VerticalData[]>([]);
 
-  const [showCreateVertical, setShowCreateVertical] = useState(false);
-  const [showCreateOffer,    setShowCreateOffer]    = useState(false);
+  // Edit offer modal state
+  const [editOfferName, setEditOfferName] = useState("");
+  const [editOfferVertical, setEditOfferVertical] = useState("");
+  const [showEditOfferModal, setShowEditOfferModal] = useState(false);
+
+  const handleEditOffer = (offerName: string, verticalName: string) => {
+    setEditOfferName(offerName);
+    setEditOfferVertical(verticalName);
+    setShowEditOfferModal(true);
+  };
+
+  /** Renames an existing offer in place (does NOT create a new one). */
+  function handleEditOfferSave(newOfferName: string, _verticalName: string) {
+    const originalName = editOfferName;
+    const renameInOffers = (offers: VerticalData["offers"]) =>
+      (offers ?? []).map(o => o.name === originalName ? { ...o, name: newOfferName } : o);
+
+    // Try to update in localVerticals first
+    const inLocal = localVerticals.some(v => v.name === editOfferVertical);
+    if (inLocal) {
+      setLocalVerticals(prev =>
+        prev.map(v =>
+          v.name === editOfferVertical ? { ...v, offers: renameInOffers(v.offers) } : v
+        )
+      );
+    } else {
+      const base = verticals.find(v => v.name === editOfferVertical);
+      if (base) {
+        const existing = localVerticals.find(v => v.id === base.id);
+        if (existing) {
+          setLocalVerticals(prev =>
+            prev.map(v =>
+              v.id === base.id ? { ...v, offers: renameInOffers(v.offers) } : v
+            )
+          );
+        } else {
+          // Shadow the prop vertical with renamed offer
+          setLocalVerticals(prev => [
+            ...prev,
+            { ...base, offers: renameInOffers(base.offers) },
+          ]);
+        }
+      }
+    }
+  }
 
   // All verticals merged: prop ones first, then locally created
   const allVerticals = [...verticals, ...localVerticals];
@@ -384,20 +443,6 @@ export default function VerticalGrid({
         </div>
 
         <div className="shrink-0 pt-1 flex items-center gap-2">
-          <button
-            onClick={() => setShowCreateVertical(true)}
-            className="flex items-center gap-1.5 rounded-md border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] px-3 py-1.5 text-xs font-medium text-[#111928] dark:text-white hover:border-[#5750F1]/40 transition-colors"
-          >
-            <LuPlus size={13} />
-            Create Vertical
-          </button>
-          <button
-            onClick={() => setShowCreateOffer(true)}
-            className="flex items-center gap-1.5 rounded-md border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] px-3 py-1.5 text-xs font-medium text-[#111928] dark:text-white hover:border-[#5750F1]/40 transition-colors"
-          >
-            <LuPlus size={13} />
-            Create Offer
-          </button>
           <PromiseFilters activeFilter={activeFilter} onFilterChange={setActiveFilter} />
         </div>
       </div>
@@ -409,22 +454,19 @@ export default function VerticalGrid({
             key={v.id}
             vertical={v}
             onOfferClick={(id) => onSelect?.(id)}
+            onEditOffer={handleEditOffer}
           />
         ))}
       </div>
 
-      {/* Modals */}
-      <CreateVerticalModal
-        open={showCreateVertical}
-        onClose={() => setShowCreateVertical(false)}
-        onSave={handleSaveVertical}
-      />
+      {/* Edit Offer modal — pre-filled with the clicked offer name */}
       <CreateOfferModal
-        open={showCreateOffer}
-        onClose={() => setShowCreateOffer(false)}
-        onSave={handleSaveOffer}
+        open={showEditOfferModal}
+        onClose={() => setShowEditOfferModal(false)}
+        onSave={handleEditOfferSave}
         verticals={allVerticalNames}
         offerNames={mergedVerticals.flatMap(v => (v.offers ?? []).map(o => o.name))}
+        initialOfferName={editOfferName}
       />
     </div>
   );

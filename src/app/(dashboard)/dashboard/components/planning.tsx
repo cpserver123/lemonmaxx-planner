@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef } from "react";
+import { useAuth } from "@/context/AuthContext";
 import {
   useReactTable,
   getCoreRowModel,
@@ -12,10 +13,12 @@ import {
   type ColumnResizeMode,
   type ExpandedState,
 } from "@tanstack/react-table";
-import { LuArrowUpDown, LuArrowUp, LuArrowDown, LuChevronRight, LuChevronDown, LuChevronLeft, LuLayoutGrid, LuCalendar, LuFileText, LuPencil } from "react-icons/lu";
+import { LuArrowUpDown, LuArrowUp, LuArrowDown, LuChevronRight, LuChevronDown, LuChevronLeft, LuLayoutGrid, LuCalendar, LuFileText, LuPencil, LuPlus, LuTarget } from "react-icons/lu";
+import GoalAssignModal, { type GoalRow } from "./goalassign";
 import PlanSubmissionDrawer from "./PlanSubmissionDrawer";
 import EditPlanDrawer from "./promise/editplan";
 import type { PlanningRow as EditPlanRow } from "./promise/editplan";
+import { CreateVerticalModal, CreateOfferModal } from "./promise/VerticalGrid";
 
 /* --- Types ----------------------------------------------------------- */
 interface PlanningRow {
@@ -41,7 +44,7 @@ interface PlanningRow {
 /* --- Dummy Data ------------------------------------------------------ */
 const PLANNING_DATA: PlanningRow[] = [
   // Blood Sugar
-  { id: "bs-meta",    category: "Blood Sugar", platform: "Meta",      actuals: 34185,   promise: 30000,  perfCeiling: 20000,  perfDelta: 10000,  deltaLoss: 10000,  netPromise: 40000,  resources: "Arun, Satish, Kapil, Nityashish, Yash, Sahil...", hasExpand: true, expandCount: 1 },
+  { id: "bs-meta",    category: "Blood Sugar", platform: "Meta",      actuals: 34185,   promise: 30000,  perfCeiling: 20000,  perfDelta: 10000,  deltaLoss: 10000,  netPromise: 40000,  resources: "Arun, Satish, Kapil, Nityashish, Yash", hasExpand: true, expandCount: 1 },
   { id: "bs-meta-note", category: "Blood Sugar", platform: "",        actuals: null,    promise: null,   perfCeiling: null,   perfDelta: null,   deltaLoss: null,   netPromise: null,   resources: "", isPromiseNote: true, promiseNote: "Drive Blood Sugar revenue on Meta by scaling the top 2 proven angles across 10 hook/visual/script variants, hitting ≥$20K spend at ≥30% ROI with 5-day consistency by Jun 30, 2026.", promiseDate: "Jun 30, 2026" },
   { id: "bs-sub",     category: "Blood Sugar", platform: "Sub Total",  actuals: 34185,  promise: 30000,  perfCeiling: 20000,  perfDelta: 10000,  deltaLoss: 10000,  netPromise: 40000,  resources: "", isSubTotal: true },
 
@@ -172,12 +175,18 @@ const TEAM_MEMBERS = [
   "Arun", "Satish", "Kapil", "Nityashish", "Yash", "Sahil", "Komal", "Chris", "Sarah", "Lisa", "Raj", "Manish",
 ];
 
-function ResourceDropdownCell({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function ResourceDropdownCell({ value, onChange, promise }: { value: string; onChange: (v: string) => void; promise?: number | null }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const btnRef = useRef<HTMLButtonElement>(null);
 
   const selected = new Set(value.split(",").map(s => s.trim()).filter(Boolean));
+
+  const perUser = (promise != null && selected.size > 0)
+    ? Math.floor(promise / selected.size)
+    : null;
+
+  const fmtShort = (n: number) => `$${n.toLocaleString("en-US")}`;
 
   const toggle = (name: string) => {
     const next = new Set(selected);
@@ -211,7 +220,7 @@ function ResourceDropdownCell({ value, onChange }: { value: string; onChange: (v
         <>
           <div className="fixed inset-0 z-[9998]" onClick={() => setOpen(false)} />
           <div
-            className="fixed z-[9999] w-44 rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] shadow-xl py-1 max-h-52 overflow-y-auto"
+            className="fixed z-[9999] w-52 rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] shadow-xl py-1 max-h-52 overflow-y-auto"
             style={{ top: pos.top, left: pos.left }}
           >
             {TEAM_MEMBERS.map(name => (
@@ -221,7 +230,7 @@ function ResourceDropdownCell({ value, onChange }: { value: string; onChange: (v
                 className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"
               >
                 <span
-                  className={`flex h-3.5 w-3.5 items-center justify-center rounded border transition-colors ${
+                  className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border transition-colors ${
                     selected.has(name)
                       ? "border-[#5750F1] bg-[#5750F1]"
                       : "border-[#D1D5DB] dark:border-[#374151]"
@@ -233,7 +242,12 @@ function ResourceDropdownCell({ value, onChange }: { value: string; onChange: (v
                     </svg>
                   )}
                 </span>
-                <span className="text-xs text-[#111928] dark:text-[#D1D5DB]">{name}</span>
+                <span className="flex-1 text-xs text-[#111928] dark:text-[#D1D5DB]">{name}</span>
+                {selected.has(name) && perUser !== null && (
+                  <span className="text-[9px] font-semibold text-[#5750F1] bg-[#5750F1]/10 rounded px-1 py-0.5 shrink-0">
+                    {fmtShort(perUser)}
+                  </span>
+                )}
               </label>
             ))}
           </div>
@@ -263,7 +277,7 @@ const planColumns = [
     },
   }),
   columnHelper.accessor("actuals", {
-    header: "Actuals (May 2026)",
+    header: (info) => `Actuals (${(info.table.options.meta as any)?.actualsLabel ?? "May 2026"})`,
     size: 140,
     minSize: 100,
     cell: (info) => {
@@ -379,8 +393,41 @@ const planColumns = [
       return (
         <ResourceDropdownCell
           value={currentVal}
+          promise={row.promise}
           onChange={(v) => updateResources?.(row.id, v)}
         />
+      );
+    },
+  }),
+  // Assign Goal column — button rendered via meta callbacks
+  columnHelper.display({
+    id: "assignGoal",
+    header: "Assign Goal",
+    size: 100,
+    minSize: 80,
+    cell: (info) => {
+      const row = info.row.original;
+      if (row.isPromiseNote || row.isSubTotal) return null;
+      const meta = info.table.options.meta as {
+        openGoalModal?: (row: GoalRow) => void;
+        savedGoalRowIds?: Set<string>;
+        resourceOverrides?: Map<string, string>;
+      } | undefined;
+      const saved = meta?.savedGoalRowIds?.has(row.id) ?? false;
+      // Use the current resource selection (override > original data)
+      const currentResources = meta?.resourceOverrides?.get(row.id) ?? row.resources;
+      return (
+        <button
+          onClick={() => meta?.openGoalModal?.({ ...(row as GoalRow), resources: currentResources })}
+          className={`flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-semibold transition-colors ${
+            saved
+              ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20"
+              : "border-[#5750F1]/40 bg-[#5750F1]/5 text-[#5750F1] hover:bg-[#5750F1]/15"
+          }`}
+        >
+          <LuTarget size={10} />
+          {saved ? "Assigned" : "Goal"}
+        </button>
       );
     },
   }),
@@ -402,7 +449,7 @@ function groupByCategory(data: PlanningRow[]): Map<string, PlanningRow[]> {
 }
 
 /* --- Category Table ------------------------------------------------- */
-function CategoryTable({ category, rows }: { category: string; rows: PlanningRow[] }) {
+function CategoryTable({ category, rows, actualsLabel }: { category: string; rows: PlanningRow[]; actualsLabel: string }) {
   const [sorting, setSorting] = useState<SortingState>([]);
   /** Tracks which hasExpand row IDs are currently open */
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
@@ -410,6 +457,13 @@ function CategoryTable({ category, rows }: { category: string; rows: PlanningRow
   const [platformOverrides, setPlatformOverrides] = useState<Map<string, string>>(new Map());
   /** Tracks per-row resource overrides */
   const [resourceOverrides, setResourceOverrides] = useState<Map<string, string>>(new Map());
+  /** Goal assign modal state */
+  const [goalRow, setGoalRow] = useState<GoalRow | null>(null);
+  const [showGoalModal, setShowGoalModal] = useState(false);
+  const [savedGoalRowIds, setSavedGoalRowIds] = useState<Set<string>>(new Set());
+
+  const openGoalModal = (row: GoalRow) => { setGoalRow(row); setShowGoalModal(true); };
+  const handleGoalSave = (rowId: string) => setSavedGoalRowIds(prev => new Set(prev).add(rowId));
 
   const toggleRow = (id: string) =>
     setExpandedRows((prev) => {
@@ -433,7 +487,7 @@ function CategoryTable({ category, rows }: { category: string; rows: PlanningRow
     getCoreRowModel: coreModel,
     getSortedRowModel: sortedModel,
     getExpandedRowModel: expandedModel,
-    meta: { toggleRow, expandedRows, updatePlatform, platformOverrides, updateResources, resourceOverrides },
+    meta: { toggleRow, expandedRows, updatePlatform, platformOverrides, updateResources, resourceOverrides, actualsLabel, openGoalModal, savedGoalRowIds },
   });
 
   /**
@@ -483,6 +537,7 @@ function CategoryTable({ category, rows }: { category: string; rows: PlanningRow
   }, [table.getRowModel().rows]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
+    <>
     <div className="mb-1">
       {/* Category header */}
       <div className="px-4 py-2 border-b border-[#E6EBF1] dark:border-[#1F2A37]">
@@ -563,13 +618,24 @@ function CategoryTable({ category, rows }: { category: string; rows: PlanningRow
       </div>
     </div>
 
+    <GoalAssignModal
+      open={showGoalModal}
+      onClose={() => setShowGoalModal(false)}
+      onSave={handleGoalSave}
+      row={goalRow}
+    />
+    </>
   );
 }
 
 /* --- Main Component -------------------------------------------------- */
 export default function PlanningSection() {
+  const { user } = useAuth();
+  const isUser = user?.role === "user";
   const [showSubmitDrawer, setShowSubmitDrawer] = useState(false);
   const [showEditPlan, setShowEditPlan] = useState(false);
+  const [showCreateVertical, setShowCreateVertical] = useState(false);
+  const [showCreateOffer, setShowCreateOffer] = useState(false);
   const [vslFilter, setVslFilter] = useState("VSL");
   /** Live planning data — updated when user clicks Update in EditPlanDrawer */
   const [planningData, setPlanningData] = useState(PLANNING_DATA);
@@ -661,9 +727,22 @@ export default function PlanningSection() {
         {/* Spacer */}
         <div className="flex-1" />
 
-        {/* Grid icon */}
-        <button className="rounded-md border border-[#E6EBF1] dark:border-[#374151] p-1.5 text-[#6B7280] dark:text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white transition-colors">
-          <LuLayoutGrid size={14} />
+      
+
+        {/* Create Vertical / Create Offer buttons */}
+        <button
+          onClick={() => setShowCreateVertical(true)}
+          className="flex items-center gap-1.5 rounded-md border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] px-3 py-1.5 text-xs font-medium text-[#111928] dark:text-white hover:border-[#5750F1]/40 transition-colors"
+        >
+          <LuPlus size={13} />
+          Create Vertical
+        </button>
+        <button
+          onClick={() => setShowCreateOffer(true)}
+          className="flex items-center gap-1.5 rounded-md border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] px-3 py-1.5 text-xs font-medium text-[#111928] dark:text-white hover:border-[#5750F1]/40 transition-colors"
+        >
+          <LuPlus size={13} />
+          Create Offer
         </button>
 
         {/* VSL Dropdown */}
@@ -678,20 +757,22 @@ export default function PlanningSection() {
           Edit
         </button>
 
-        {/* Plan Submission button */}
-        <button
-          onClick={() => setShowSubmitDrawer(true)}
-          className="flex items-center gap-1.5 rounded-md border border-[#4B5563] dark:border-[#2563eb] px-3 py-1.5 text-xs font-medium text-[#111928] dark:text-[#2563eb] hover:bg-[#2563eb]/10 transition-colors"
-        >
-          <LuFileText size={13} />
-          Plan Submission
-        </button>
+        {/* Plan Creation button — hidden for role=user */}
+        {!isUser && (
+          <button
+            onClick={() => setShowSubmitDrawer(true)}
+            className="flex items-center gap-1.5 rounded-md border border-[#4B5563] dark:border-[#2563eb] px-3 py-1.5 text-xs font-medium text-[#111928] dark:text-[#2563eb] hover:bg-[#2563eb]/10 transition-colors"
+          >
+            <LuFileText size={13} />
+            Plan Creation
+          </button>
+        )}
       </div>
 
       {/* Grouped Tables */}
       <div className="rounded-lg border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] overflow-hidden">
         {Array.from(grouped.entries()).map(([category, rows]) => (
-          <CategoryTable key={category} category={category} rows={rows} />
+          <CategoryTable key={category} category={category} rows={rows} actualsLabel={actualsLabel.replace("  ", " ")} />
         ))}
 
         {/* Grand Total */}
@@ -722,6 +803,20 @@ export default function PlanningSection() {
         data={planningData as EditPlanRow[]}
         onClose={() => setShowEditPlan(false)}
         onUpdate={(updated) => setPlanningData(updated as typeof PLANNING_DATA)}
+      />
+
+      {/* Create Vertical / Offer Modals */}
+      <CreateVerticalModal
+        open={showCreateVertical}
+        onClose={() => setShowCreateVertical(false)}
+        onSave={() => setShowCreateVertical(false)}
+      />
+      <CreateOfferModal
+        open={showCreateOffer}
+        onClose={() => setShowCreateOffer(false)}
+        onSave={() => setShowCreateOffer(false)}
+        verticals={Array.from(new Set(planningData.map(r => r.category)))}
+        offerNames={planningData.filter(r => !r.isSubTotal && !r.isPromiseNote && r.platform).map(r => r.platform)}
       />
     </div>
   );

@@ -112,14 +112,15 @@ function StatusDropdown({ id, status }: { id: string, status: string }) {
 }
 
 /* --- Pathway Badge --------------------------------------------------- */
-function PathwayBadge({ status }: { status: Pathway["status"] }) {
-  const map = {
+function PathwayBadge({ status }: { status: string }) {
+  const map: Record<string, string> = {
     Active: "bg-[#2563eb]/10 border-[#2563eb]/20 text-[#2563eb]",
     Draft:  "bg-gray-100 border-gray-200 text-gray-600 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300",
     Paused: "bg-yellow-500/10 border-yellow-500/20 text-yellow-600 dark:text-yellow-400",
+    Done:   "bg-green-500/10 border-green-500/20 text-green-600 dark:text-green-400",
   };
   return (
-    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${map[status]}`}>
+    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${map[status] ?? map["Active"]}`}>
       {status}
     </span>
   );
@@ -312,13 +313,20 @@ function PathwayCard({
   actions,
   onActionsChange,
   onOpenDrawer,
+  onEditTitle,
 }: {
   pathway: Pathway;
   actions: ActionRow[];
   onActionsChange: (pathwayId: string, actions: ActionRow[]) => void;
   onOpenDrawer: (row: DrawerRow) => void;
+  onEditTitle: () => void;
 }) {
   const [collapsed, setCollapsed] = useState(false);
+
+  // Derive pathway status: "Done" only if every action row is "Done", else "Active"
+  const derivedStatus = actions.length > 0 && actions.every(a => a.status === "Done")
+    ? "Done"
+    : "Active";
 
   const handleAddAction = () => {
     onOpenDrawer({
@@ -346,7 +354,7 @@ function PathwayCard({
             <span className="text-[#5750F1] text-xs">🎨</span>
           </div>
           <span className="text-sm font-semibold text-[#111928] dark:text-white truncate">{pathway.title}</span>
-          <PathwayBadge status={pathway.status} />
+          <PathwayBadge status={derivedStatus} />
           <p className="flex-1 text-[11px] text-[#6B7280] dark:text-[#9CA3AF] truncate hidden sm:block">{pathway.description}</p>
           <div className="flex items-center gap-3 shrink-0 text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">
             <span>👤 {pathway.accountable}</span>
@@ -370,8 +378,14 @@ function PathwayCard({
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-sm font-semibold text-[#111928] dark:text-white">{pathway.title}</h3>
-                <PathwayBadge status={pathway.status} />
+                <h3
+                  className="text-sm font-semibold text-[#111928] dark:text-white cursor-pointer hover:text-[#5750F1] dark:hover:text-[#7c78f3] transition-colors"
+                  onClick={onEditTitle}
+                  title="Click to edit pathway name"
+                >
+                  {pathway.title}
+                </h3>
+                <PathwayBadge status={derivedStatus} />
               </div>
               <p className="text-[11px] text-[#6B7280] dark:text-[#9CA3AF] mt-0.5 line-clamp-2">{pathway.description}</p>
             </div>
@@ -394,6 +408,7 @@ export default function CreativeTab() {
   const [pathwayActions, setPathwayActions] = useState<Record<string, ActionRow[]>>(INITIAL_PATHWAY_ACTIONS);
   const [selectedAction, setSelectedAction] = useState<DrawerRow | null>(null);
   const [pendingPathwayId, setPendingPathwayId] = useState<string | null>(null);
+  const [editingPathwayId, setEditingPathwayId] = useState<string | null>(null);
 
   openCreativeDrawer = (row: ActionRow) => {
     let foundPathwayId = null;
@@ -429,7 +444,26 @@ export default function CreativeTab() {
 
   const handleOpenDrawer = (pathwayId: string, row: DrawerRow) => {
     setPendingPathwayId(pathwayId);
+    setEditingPathwayId(null);
     setSelectedAction(row);
+  };
+
+  const handleEditTitle = (pathwayId: string) => {
+    const p = pathways.find(p => p.id === pathwayId);
+    if (!p) return;
+    setEditingPathwayId(pathwayId);
+    setPendingPathwayId(null);
+    setSelectedAction({
+      id: p.id,
+      action: "",
+      intendedOutcome: "",
+      status: p.status,
+      due: p.due,
+      accountable: p.accountable,
+      linkTo: "",
+      pathwayTitle: p.title,
+      pathwayDesc: p.description,
+    });
   };
 
   return (
@@ -441,6 +475,7 @@ export default function CreativeTab() {
           actions={pathwayActions[pathway.id] ?? []}
           onActionsChange={(id, actions) => setPathwayActions(prev => ({ ...prev, [id]: actions }))}
           onOpenDrawer={(row) => handleOpenDrawer(pathway.id, row)}
+          onEditTitle={() => handleEditTitle(pathway.id)}
         />
       ))}
 
@@ -467,10 +502,22 @@ export default function CreativeTab() {
       <ActionDrawer
         row={selectedAction}
         performance="creatives"
-        isPathway={selectedAction !== null && !pendingPathwayId}
+        isPathway={editingPathwayId !== null || (selectedAction !== null && !pendingPathwayId)}
         title={pendingPathwayId ? pathways.find(p => p.id === pendingPathwayId)?.title : undefined}
-        onClose={() => { setSelectedAction(null); setPendingPathwayId(null); }}
+        onClose={() => { setSelectedAction(null); setPendingPathwayId(null); setEditingPathwayId(null); }}
         onSave={(updated) => {
+          // Case 1: editing an existing pathway title
+          if (editingPathwayId) {
+            setPathways(prev => prev.map(p =>
+              p.id === editingPathwayId
+                ? { ...p, title: updated.pathwayTitle || p.title, description: updated.pathwayDesc ?? p.description }
+                : p
+            ));
+            setSelectedAction(null);
+            setPendingPathwayId(null);
+            setEditingPathwayId(null);
+            return;
+          }
           const primaryAction = updated.action ? { ...updated, completed: false } : null;
           const extraActions = (updated.additionalActions || [])
             .filter(a => a.action.trim())

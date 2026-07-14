@@ -690,18 +690,9 @@ export default function ActionDrawer({
             Add another action
           </button>
 
-          {/* Performance / Category / Platform — only when opened from a bloodsugar tab */}
+          {/* Category / Platform — only when opened from a bloodsugar tab */}
           {initialPerformance != null && (
             <div className="flex flex-wrap items-center gap-3 mb-4 pb-4 border-b border-[#E6EBF1] dark:border-[#1F2A37]">
-              <div className="flex flex-col gap-1">
-                <span className="text-[10px] font-medium text-[#9CA3AF] uppercase tracking-wide">Performance</span>
-                <SimpleDropdown<PerformanceTab>
-                  label="Performance"
-                  value={perfTab}
-                  options={PERFORMANCE_OPTIONS}
-                  onChange={setPerfTab}
-                />
-              </div>
               <div className="flex flex-col gap-1">
                 <span className="text-[10px] font-medium text-[#9CA3AF] uppercase tracking-wide">Category</span>
                 <SimpleDropdown<Category>
@@ -732,7 +723,7 @@ export default function ActionDrawer({
               />
             </SectionRow>
 
-            <SectionRow label="📅 Dates">
+            <SectionRow label="📅Due Dates">
               <input
                 type="date"
                 value={draft.due}
@@ -759,75 +750,7 @@ export default function ActionDrawer({
           {/* Rich text editor */}
           <RichEditor />
 
-          {/* Checklist */}
-          <div className="mb-5">
-            <p className="text-xs font-semibold text-[#111928] dark:text-white mb-2">Checklist</p>
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                value={checkInput}
-                onChange={e => setCheckInput(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && addCheckItem()}
-                placeholder="Add checklist item..."
-                className="flex-1 rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0a1018] px-3 py-1.5 text-xs text-[#111928] dark:text-white placeholder:text-[#9CA3AF] outline-none focus:border-[#5750F1]"
-              />
-              <button
-                onClick={addCheckItem}
-                className="h-7 w-7 shrink-0 rounded-lg bg-[#2563eb] flex items-center justify-center hover:opacity-90 transition-opacity"
-              >
-                <LuPlus size={13} className="text-white" />
-              </button>
-            </div>
-            {checklist.length > 0 && (
-              <div className="mt-2 flex flex-col gap-1">
-                {checklist.map((item, i) => (
-                  <div key={i} className="flex items-center gap-2 text-xs text-[#6B7280] dark:text-[#9CA3AF] group">
-                    <LuCheck size={11} className="text-[#2563eb] shrink-0" />
-                    <span className="flex-1">{item}</span>
-                    <button
-                      onClick={() => setChecklist(c => c.filter((_, idx) => idx !== i))}
-                      className="opacity-0 group-hover:opacity-100 text-[#9CA3AF] hover:text-red-400 transition-all"
-                    >
-                      <LuX size={11} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Links */}
-          <ListSection
-            icon={<LuLink2 size={13} />}
-            title="Links"
-            items={links}
-            onAdd={v => setLinks(prev => [...prev, v])}
-            onRemove={i => setLinks(prev => prev.filter((_, idx) => idx !== i))}
-            placeholder="Paste a URL or type a link..."
-            emptyText="No links added yet"
-          />
-
-          {/* Watchers */}
-          <ListSection
-            icon={<LuEye size={13} />}
-            title="Watchers"
-            items={watchers}
-            onAdd={v => setWatchers(prev => [...prev, v])}
-            onRemove={i => setWatchers(prev => prev.filter((_, idx) => idx !== i))}
-            placeholder="Add a watcher name..."
-            emptyText="No watchers yet"
-          />
-
-          {/* Dependencies */}
-          <ListSection
-            icon={<LuLink size={13} />}
-            title="Dependencies"
-            items={dependencies}
-            onAdd={v => setDependencies(prev => [...prev, v])}
-            onRemove={i => setDependencies(prev => prev.filter((_, idx) => idx !== i))}
-            placeholder="Describe a dependency..."
-            emptyText="No dependencies defined"
-          />
+         
 
           {/* Attachments */}
           <div className="border-t border-[#E6EBF1] dark:border-[#1F2A37] pt-4 mb-4">

@@ -64,7 +64,7 @@ export function Sidebar() {
                   <span className="text-sm">L</span>
                 </div>
                 <span className="text-lg font-semibold tracking-tight">
-                  LEMONMAXX
+                  Lemonmaxx Planner
                 </span>
               </Link>
             ) : (

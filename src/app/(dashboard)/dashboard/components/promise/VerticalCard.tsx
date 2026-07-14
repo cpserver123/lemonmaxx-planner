@@ -6,6 +6,7 @@ export interface VerticalOffer {
   name: string;
   promise?: number;
   netPromise?: number;
+  actuals?: number;
 }
 
 export interface VerticalData {
@@ -13,6 +14,7 @@ export interface VerticalData {
   name: string;
   promise: number;
   netPromise: number;
+  actuals?: number;
   hasWarning?: boolean;
   platforms: { icon: "meta" | "taboola"; count?: number }[];
   offers?: VerticalOffer[];

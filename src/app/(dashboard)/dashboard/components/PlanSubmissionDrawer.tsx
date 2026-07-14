@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { LuX, LuSend, LuTriangleAlert, LuPlus, LuCalendar, LuChevronLeft, LuChevronRight, LuChevronDown } from "react-icons/lu";
+import { LuX, LuSend, LuTriangleAlert, LuPlus, LuCalendar, LuChevronLeft, LuChevronRight, LuChevronDown, LuTarget } from "react-icons/lu";
+import GoalAssignModal, { type GoalRow } from "./goalassign";
 
 /* --- Types ----------------------------------------------------------- */
 interface PlanRow {
@@ -24,21 +25,21 @@ interface PlanRow {
 /* --- Initial data (mirrors PLANNING_DATA) ---------------------------- */
 const INITIAL_ROWS: PlanRow[] = [
   // Blood Sugar
-  { id: "bs-meta",      category: "Blood Sugar", platform: "Meta",      actuals: 34185,  promise: 30000,  perfCeiling: 20000, perfDelta: 10000, deltaLoss: 10000, netPromise: 40000,  resources: "Arun, Satish, Kapil, Nityashish, Yash, Sahil...", hasExpand: true },
+  { id: "bs-meta",      category: "Blood Sugar", platform: "Meta",      actuals: 34185,  promise: 30000,  perfCeiling: 20000, perfDelta: 10000, deltaLoss: 10000, netPromise: 40000,  resources: "", hasExpand: true },
   { id: "bs-meta-note", category: "Blood Sugar", platform: "",          actuals: null,   promise: null,   perfCeiling: null,  perfDelta: null,  deltaLoss: null,  netPromise: null,   resources: "", isNote: true, note: "Drive Blood Sugar revenue on Meta by scaling the top 2 proven angles across 10 hook/visual/script variants, hitting ≥$20K spend at ≥30% ROI with 5-day consistency by Jun 30, 2026." },
   { id: "bs-sub",       category: "Blood Sugar", platform: "Sub Total", actuals: 34185,  promise: 30000,  perfCeiling: 20000, perfDelta: 10000, deltaLoss: 10000, netPromise: 40000,  resources: "", isSubTotal: true },
 
   // Memory
-  { id: "mem-tab",       category: "Memory", platform: "facebook",    actuals: 1744,    promise: 10000,  perfCeiling: null,  perfDelta: 10000, deltaLoss: 5000,  netPromise: 15000,  resources: "komal", hasExpand: true },
+  { id: "mem-tab",       category: "Memory", platform: "facebook",    actuals: 1744,    promise: 10000,  perfCeiling: null,  perfDelta: 10000, deltaLoss: 5000,  netPromise: 15000,  resources: "", hasExpand: true },
   { id: "mem-note",      category: "Memory", platform: "",           actuals: null,    promise: null,   perfCeiling: null,  perfDelta: null,  deltaLoss: null,  netPromise: null,   resources: "", isNote: true, note: "I will establish \"MediaGo\" as a validated platform by completing testing → platform setup → baseline test campaign → Go/No-Go decision, with documented learnings to inform July scale-or-kill decision, by June 30, 2026." },
-  { id: "mem-meta",      category: "Memory", platform: "Meta",      actuals: 101182,  promise: 106000, perfCeiling: 70000, perfDelta: 30000, deltaLoss: 20000, netPromise: 120000, resources: "Arun, Satish, Kapil, Nityashish, Yash, Sahil", hasExpand: true },
+  { id: "mem-meta",      category: "Memory", platform: "Meta",      actuals: 101182,  promise: 106000, perfCeiling: 70000, perfDelta: 30000, deltaLoss: 20000, netPromise: 120000, resources: "", hasExpand: true },
   { id: "mem-meta-note", category: "Memory", platform: "",           actuals: null,    promise: null,   perfCeiling: null,  perfDelta: null,  deltaLoss: null,  netPromise: null,   resources: "", isNote: true, note: "Scale Memory on Meta by testing 3 proven VSL angles across catalog and standard placements, achieving ≥$70K spend at ≥30% ROI with 5-day consistency by Jun 30, 2026." },
   { id: "mem-sub",       category: "Memory", platform: "Sub Total", actuals: 152926,  promise: 116000, perfCeiling: 70000, perfDelta: 40000, deltaLoss: 25000, netPromise: 135000, resources: "", isSubTotal: true },
 
   // Weight Loss
-  { id: "wl-tab",      category: "Weight Loss", platform: "google",    actuals: null,   promise: 10000,  perfCeiling: null,  perfDelta: 10000, deltaLoss: 5000,  netPromise: 15000,  resources: "Yash, komal", hasExpand: true },
+  { id: "wl-tab",      category: "Weight Loss", platform: "google",    actuals: null,   promise: 10000,  perfCeiling: null,  perfDelta: 10000, deltaLoss: 5000,  netPromise: 15000,  resources: "", hasExpand: true },
   { id: "wl-tab-note", category: "Weight Loss", platform: "",           actuals: null,   promise: null,   perfCeiling: null,  perfDelta: null,  deltaLoss: null,  netPromise: null,   resources: "", isNote: true, note: "Establish Weight Loss on Taboola by completing platform onboarding, launching baseline test campaign, and delivering a Go/No-Go decision with documented learnings to guide July scale-or-kill decision, by Jun 30, 2026." },
-  { id: "wl-meta",     category: "Weight Loss", platform: "Meta",       actuals: -82943, promise: 30000,  perfCeiling: null,  perfDelta: 30000, deltaLoss: 10000, netPromise: 40000,  resources: "Arun, Satish, Kapil, komal", hasExpand: true },
+  { id: "wl-meta",     category: "Weight Loss", platform: "Meta",       actuals: -82943, promise: 30000,  perfCeiling: null,  perfDelta: 30000, deltaLoss: 10000, netPromise: 40000,  resources: "", hasExpand: true },
   { id: "wl-note",     category: "Weight Loss", platform: "",           actuals: null,   promise: null,   perfCeiling: null,  perfDelta: null,  deltaLoss: null,  netPromise: null,   resources: "", isNote: true, note: "Promise: I will make catalog testing profitable on Weight Loss / Meta by delivering 2 winning creatives through catalog distribution, achieving ≥30% ROI at ≥$10K spend with 5-day consistency, generating $10K additional GM..." },
   { id: "wl-sub",      category: "Weight Loss", platform: "Sub Total",  actuals: -82943, promise: 40000,  perfCeiling: null,  perfDelta: 40000, deltaLoss: 15000, netPromise: 55000,  resources: "", isSubTotal: true },
 ];
@@ -234,6 +235,39 @@ export default function PlanSubmissionDrawer({
 }) {
   const [rows, setRows] = useState<PlanRow[]>(INITIAL_ROWS);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [goalRow, setGoalRow] = useState<GoalRow | null>(null);
+  const [showGoalModal, setShowGoalModal] = useState(false);
+  const [savedGoalRowIds, setSavedGoalRowIds] = useState<Set<string>>(new Set());
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const handleGoalSave = (rowId: string) => {
+    setSavedGoalRowIds(prev => new Set(prev).add(rowId));
+  };
+
+  const handleSubmit = () => {
+    const dataRows = rows.filter(r => !r.isSubTotal && !r.isNote);
+
+    // Step 1: check all data rows have resources selected
+    const noResources = dataRows.filter(r => !r.resources.trim());
+    if (noResources.length > 0) {
+      setSubmitError(
+        `Please select resources for: ${noResources.map(r => `${r.platform} (${r.category})`).join(", ")}`
+      );
+      return;
+    }
+
+    // Step 2: check all rows with resources have goals assigned
+    const noGoals = dataRows.filter(r => !savedGoalRowIds.has(r.id));
+    if (noGoals.length > 0) {
+      setSubmitError(
+        `Please assign goals for: ${noGoals.map(r => `${r.platform} (${r.category})`).join(", ")}`
+      );
+      return;
+    }
+
+    setSubmitError(null);
+    onClose();
+  };
 
   const toggleExpand = (id: string) =>
     setExpandedRows(prev => {
@@ -280,6 +314,55 @@ export default function PlanSubmissionDrawer({
   const addInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => { if (showAddModal) setTimeout(() => addInputRef.current?.focus(), 50); }, [showAddModal]);
 
+  /* --- Add Platform modal ---- */
+  const [showAddPlatform, setShowAddPlatform] = useState(false);
+  const [addPlatformCategory, setAddPlatformCategory] = useState("");
+  const [newPlatformForm, setNewPlatformForm] = useState({
+    platform: "",
+    promise: "",
+    perfCeiling: "",
+    perfDelta: "",
+    deltaLoss: "",
+    netPromise: "",
+  });
+
+  const openAddPlatform = (cat: string) => {
+    setAddPlatformCategory(cat);
+    setNewPlatformForm({ platform: "", promise: "", perfCeiling: "", perfDelta: "", deltaLoss: "", netPromise: "" });
+    setShowAddPlatform(true);
+  };
+
+  const saveAddPlatform = () => {
+    const p = newPlatformForm.platform.trim();
+    if (!p) return;
+    // Duplicate check within the same category
+    const catRows = rows.filter(r => r.category === addPlatformCategory && !r.isSubTotal && !r.isNote);
+    if (catRows.some(r => r.platform.toLowerCase() === p.toLowerCase())) return;
+    const parseNum = (s: string) => { const n = parseFloat(s.replace(/[$,]/g, "")); return isNaN(n) ? null : n; };
+    const newRow: PlanRow = {
+      id: `${addPlatformCategory.toLowerCase().replace(/\s+/g, "-")}-${p.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}`,
+      category: addPlatformCategory,
+      platform: p,
+      actuals: null,
+      promise: parseNum(newPlatformForm.promise),
+      perfCeiling: parseNum(newPlatformForm.perfCeiling),
+      perfDelta: parseNum(newPlatformForm.perfDelta),
+      deltaLoss: parseNum(newPlatformForm.deltaLoss),
+      netPromise: parseNum(newPlatformForm.netPromise),
+      resources: "",
+      hasExpand: false,
+    };
+    // Insert before the Sub Total row of this category
+    setRows(prev => {
+      const idx = prev.findIndex(r => r.category === addPlatformCategory && r.isSubTotal);
+      if (idx === -1) return [...prev, newRow];
+      const next = [...prev];
+      next.splice(idx, 0, newRow);
+      return next;
+    });
+    setShowAddPlatform(false);
+  };
+
   const saveVertical = () => {
     const v = newVertical.trim();
     if (v && !verticals.includes(v)) {
@@ -308,7 +391,7 @@ export default function PlanSubmissionDrawer({
         {/* Header row 1: title + close */}
         <div className="flex items-center justify-between px-5 pt-4 pb-2 border-b border-[#E6EBF1] dark:border-[#1F2A37] shrink-0">
           <div>
-            <h2 className="text-sm font-bold text-[#111928] dark:text-white">Plan Submission</h2>
+            <h2 className="text-sm font-bold text-[#111928] dark:text-white">Plan Creation</h2>
             <p className="text-[11px] text-[#9CA3AF] mt-0.5">Review and edit your plan before submitting. Actuals are read-only.</p>
           </div>
           <button
@@ -441,13 +524,25 @@ export default function PlanSubmissionDrawer({
 
                     {/* Column headers */}
                     <tr className="border-b border-[#E6EBF1] dark:border-[#1F2A37] bg-[#F9FAFB] dark:bg-[#0a1018]">
-                      <th className="text-left px-3 py-2 text-[10px] font-semibold text-[#9CA3AF] uppercase tracking-wide w-28">Platform</th>
+                      <th className="text-left px-3 py-2 text-[10px] font-semibold text-[#9CA3AF] uppercase tracking-wide w-28">
+                        <span className="flex items-center gap-1.5">
+                          Platform
+                          <button
+                            onClick={() => openAddPlatform(cat)}
+                            className="flex items-center justify-center h-4 w-4 rounded border border-[#5750F1]/40 text-[#5750F1] hover:bg-[#5750F1]/10 transition-colors"
+                            title="Add platform row"
+                          >
+                            <LuPlus size={9} />
+                          </button>
+                        </span>
+                      </th>
                       {COLS.map(c => (
                         <th key={String(c.key)} className={`text-left px-3 py-2 text-[10px] font-semibold uppercase tracking-wide ${c.key === "actuals" ? "text-[#9CA3AF] bg-[#F3F4F6] dark:bg-[#0a0f1a]" : "text-[#9CA3AF]"} ${c.w}`}>
                           {c.label}
                           {c.readOnly && <span className="ml-1 text-[8px] text-[#6B7280] normal-case">(locked)</span>}
                         </th>
                       ))}
+                      <th className="text-left px-3 py-2 text-[10px] font-semibold text-[#9CA3AF] uppercase tracking-wide w-20">Assign Goal</th>
                     </tr>
 
                     {catRows.map((row, rowIdx) => {
@@ -478,6 +573,7 @@ export default function PlanSubmissionDrawer({
                                 </td>
                               );
                             })}
+                            <td className="px-3 py-2" />
                           </tr>
                         );
                       }
@@ -509,6 +605,19 @@ export default function PlanSubmissionDrawer({
                               )}
                             </td>
                           ))}
+                          <td className="px-3 py-2">
+                            <button
+                              onClick={() => { setGoalRow(row as GoalRow); setShowGoalModal(true); setSubmitError(null); }}
+                              className={`flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-semibold transition-colors ${
+                                savedGoalRowIds.has(row.id)
+                                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20"
+                                  : "border-[#5750F1]/40 bg-[#5750F1]/5 text-[#5750F1] hover:bg-[#5750F1]/15"
+                              }`}
+                            >
+                              <LuTarget size={10} />
+                              {savedGoalRowIds.has(row.id) ? "Assigned" : "Goal"}
+                            </button>
+                          </td>
                         </tr>
                       );
                     })}
@@ -521,7 +630,16 @@ export default function PlanSubmissionDrawer({
 
         {/* Footer */}
         <div className="flex items-center justify-between gap-3 px-5 py-4 border-t border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] shrink-0">
-          <p className="text-[11px] text-[#9CA3AF]">Click any editable cell to modify the value. Press Enter or click away to confirm.</p>
+          <div className="flex-1">
+            {submitError ? (
+              <p className="text-[11px] text-red-500 dark:text-red-400 flex items-start gap-1.5">
+                <LuTriangleAlert size={12} className="mt-0.5 shrink-0" />
+                {submitError}
+              </p>
+            ) : (
+              <p className="text-[11px] text-[#9CA3AF]">Click any editable cell to modify the value. Press Enter or click away to confirm.</p>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <button
               onClick={onClose}
@@ -530,8 +648,8 @@ export default function PlanSubmissionDrawer({
               Cancel
             </button>
             <button
-              onClick={onClose}
-              className="flex items-center gap-1.5 rounded-lg bg-[#2563eb] px-5 py-2 text-xs font-bold text-[#111928] hover:opacity-90 transition-opacity"
+              onClick={handleSubmit}
+              className="flex items-center gap-1.5 rounded-lg bg-[#2563eb] px-5 py-2 text-xs font-bold text-white hover:opacity-90 transition-opacity"
             >
               <LuSend size={12} />
               Submit Plan
@@ -539,6 +657,80 @@ export default function PlanSubmissionDrawer({
           </div>
         </div>
       </div>
+
+      {/* Goal Assign Modal */}
+      <GoalAssignModal
+        open={showGoalModal}
+        onClose={() => setShowGoalModal(false)}
+        onSave={handleGoalSave}
+        row={goalRow}
+      />
+
+      {/* Add Platform modal */}
+      {showAddPlatform && (
+        <>
+          <div className="fixed inset-0 z-[60] bg-black/50" onClick={() => setShowAddPlatform(false)} />
+          <div className="fixed left-1/2 top-1/2 z-[70] -translate-x-1/2 -translate-y-1/2 w-[420px] rounded-2xl border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] shadow-2xl p-6">
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-sm font-bold text-[#111928] dark:text-white">Add Platform</h3>
+              <button onClick={() => setShowAddPlatform(false)} className="text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white transition-colors"><LuX size={15} /></button>
+            </div>
+            <p className="text-[11px] text-[#9CA3AF] mb-4">Adding to <span className="font-semibold text-[#5750F1]">{addPlatformCategory}</span>. Duplicate platforms are not allowed.</p>
+
+            {/* Platform dropdown */}
+            <div className="mb-3">
+              <label className="block text-xs font-semibold text-[#111928] dark:text-white mb-1">Platform <span className="text-[#5750F1]">*</span></label>
+              <div className="relative">
+                <select
+                  value={newPlatformForm.platform}
+                  onChange={e => setNewPlatformForm(f => ({ ...f, platform: e.target.value }))}
+                  className="w-full appearance-none rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-[#F9FAFB] dark:bg-[#0a1018] px-3 py-2 text-sm text-[#111928] dark:text-white outline-none focus:border-[#5750F1] transition-colors cursor-pointer"
+                >
+                  <option value="" disabled hidden>Select platform...</option>
+                  {PLATFORM_OPTIONS
+                    .filter(opt => !rows.filter(r => r.category === addPlatformCategory && !r.isSubTotal && !r.isNote).some(r => r.platform.toLowerCase() === opt.toLowerCase()))
+                    .map(opt => <option key={opt} value={opt}>{opt}</option>)
+                  }
+                </select>
+                <LuChevronDown size={13} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]" />
+              </div>
+            </div>
+
+            {/* Numeric fields grid */}
+            <div className="grid grid-cols-2 gap-3 mb-5">
+              {([
+                { key: "promise",     label: "Promise" },
+                { key: "perfCeiling", label: "Perf. Ceiling" },
+                { key: "perfDelta",   label: "Perf. Delta" },
+                { key: "deltaLoss",   label: "Delta Loss" },
+                { key: "netPromise",  label: "Net Promise" },
+              ] as { key: keyof typeof newPlatformForm; label: string }[]).map(({ key, label }) => (
+                <div key={key}>
+                  <label className="block text-xs font-semibold text-[#111928] dark:text-white mb-1">{label}</label>
+                  <input
+                    type="number"
+                    value={newPlatformForm[key]}
+                    onChange={e => setNewPlatformForm(f => ({ ...f, [key]: e.target.value }))}
+                    placeholder="e.g. 10000"
+                    className="w-full rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-[#F9FAFB] dark:bg-[#0a1018] px-3 py-2 text-sm text-[#111928] dark:text-white placeholder:text-[#9CA3AF] outline-none focus:border-[#5750F1] transition-colors"
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div className="flex items-center justify-end gap-2">
+              <button onClick={() => setShowAddPlatform(false)} className="rounded-lg border border-[#E6EBF1] dark:border-[#374151] px-4 py-2 text-xs font-medium text-[#6B7280] dark:text-[#9CA3AF] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors">Cancel</button>
+              <button
+                onClick={saveAddPlatform}
+                disabled={!newPlatformForm.platform.trim()}
+                className="rounded-lg bg-[#5750F1] px-4 py-2 text-xs font-semibold text-white hover:bg-[#4742d4] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Add Vertical modal */}
       {showAddModal && (

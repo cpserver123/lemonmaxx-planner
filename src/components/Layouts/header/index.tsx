@@ -4,6 +4,7 @@ import React from "react";
 import { usePathname } from "next/navigation";
 import { useSidebarContext } from "../sidebar/sidebar-context";
 import { ThemeToggleSwitch } from "./theme-toggle";
+import { WorkspaceDropdown } from "./WorkspaceDropdown";
 import { CiMenuBurger } from "react-icons/ci";
 import { useDashboardTab, DASHBOARD_TABS } from "@/context/DashboardTabContext";
 import { UserInfo } from "./user-info";
@@ -61,6 +62,7 @@ function HeaderComponent() {
 
         {/* Right — theme toggle + avatar with dropdown */}
         <div className="flex items-center gap-3 shrink-0">
+          <WorkspaceDropdown />
           <ThemeToggleSwitch />
           <UserInfo />
         </div>

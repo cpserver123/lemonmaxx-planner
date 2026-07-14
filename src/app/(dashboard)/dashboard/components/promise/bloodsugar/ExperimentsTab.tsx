@@ -38,12 +38,10 @@ interface Experiment {
 }
 
 /* --- Tab types ------------------------------------------------------- */
-type SubTab = "media-buying" | "funnel" | "offer";
+type SubTab = "offer";
 
 const SUB_TABS: { id: SubTab; label: string; icon: React.ReactNode }[] = [
-  { id: "media-buying", label: "Media Buying", icon: <LuShoppingBag size={13} /> },
-  { id: "funnel",       label: "Funnel",        icon: <LuFilter size={13} /> },
-  { id: "offer",        label: "Offer",          icon: <LuFlipVertical2 size={13} /> },
+  { id: "offer", label: "Offer", icon: <LuFlipVertical2 size={13} /> },
 ];
 
 /* --- Experiments data ------------------------------------------------ */
@@ -57,26 +55,6 @@ const EXPERIMENTS: Experiment[] = [
     count: 3,
     due: "Jun 30",
     tabId: "offer",
-  },
-  {
-    id: "e2",
-    title: "Media Buying Strategy",
-    description: "Test different audience segments and bidding strategies for optimal ROI.",
-    status: "Draft",
-    accountable: "Yash Poonia",
-    count: 2,
-    due: "Jul 15",
-    tabId: "media-buying",
-  },
-  {
-    id: "e3",
-    title: "Funnel Optimization",
-    description: "A/B test the checkout page and upsell sequences.",
-    status: "Active",
-    accountable: "Yash Poonia",
-    count: 2,
-    due: "Aug 01",
-    tabId: "funnel",
   },
 ];
 
@@ -196,14 +174,15 @@ function StatusDropdown({ id, status }: { id: string, status: string }) {
   );
 }
 
-function ExperimentBadge({ status }: { status: Experiment["status"] }) {
-  const map = {
+function ExperimentBadge({ status }: { status: string }) {
+  const map: Record<string, string> = {
     Active: "bg-[#2563eb]/10 border-[#2563eb]/20 text-[#2563eb]",
     Draft:  "bg-gray-100 border-gray-200 text-gray-600 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300",
     Paused: "bg-yellow-500/10 border-yellow-500/20 text-yellow-600 dark:text-yellow-400",
+    Done:   "bg-green-500/10 border-green-500/20 text-green-600 dark:text-green-400",
   };
   return (
-    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${map[status]}`}>
+    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${map[status] ?? map["Active"]}`}>
       {status}
     </span>
   );
@@ -395,12 +374,19 @@ function ExperimentCard({
   experiment,
   actions,
   onOpenDrawer,
+  onEditTitle,
 }: {
   experiment: Experiment;
   actions: ActionRow[];
   onOpenDrawer: (row: DrawerRow) => void;
+  onEditTitle: () => void;
 }) {
   const [collapsed, setCollapsed] = useState(false);
+
+  // Derive pathway status: "Done" only if every action row is "Done", else "Active"
+  const derivedStatus = actions.length > 0 && actions.every(a => a.status === "Done")
+    ? "Done"
+    : "Active";
 
   const handleAddAction = () => {
     onOpenDrawer({
@@ -427,7 +413,7 @@ function ExperimentCard({
             <span className="text-[#5750F1] text-xs">🧪</span>
           </div>
           <span className="text-sm font-semibold text-[#111928] dark:text-white truncate">{experiment.title}</span>
-          <ExperimentBadge status={experiment.status} />
+          <ExperimentBadge status={derivedStatus} />
           <p className="flex-1 text-[11px] text-[#6B7280] dark:text-[#9CA3AF] truncate hidden sm:block">{experiment.description}</p>
           <div className="flex items-center gap-3 shrink-0 text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">
             <span>👤 {experiment.accountable}</span>
@@ -450,8 +436,14 @@ function ExperimentCard({
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-sm font-semibold text-[#111928] dark:text-white">{experiment.title}</h3>
-                <ExperimentBadge status={experiment.status} />
+                <h3
+                  className="text-sm font-semibold text-[#111928] dark:text-white cursor-pointer hover:text-[#5750F1] dark:hover:text-[#7c78f3] transition-colors"
+                  onClick={onEditTitle}
+                  title="Click to edit pathway name"
+                >
+                  {experiment.title}
+                </h3>
+                <ExperimentBadge status={derivedStatus} />
               </div>
               <p className="text-[11px] text-[#6B7280] dark:text-[#9CA3AF] mt-0.5 line-clamp-2">{experiment.description}</p>
             </div>
@@ -470,11 +462,12 @@ function ExperimentCard({
 
 /* --- Main Component -------------------------------------------------- */
 export default function ExperimentsTab() {
-  const [activeTab, setActiveTab] = useState<SubTab>("media-buying");
+  // const [activeTab, setActiveTab] = useState<SubTab>("media-buying");
   const [experiments, setExperiments] = useState<Experiment[]>(EXPERIMENTS);
   const [experimentActions, setExperimentActions] = useState<Record<string, ActionRow[]>>(INITIAL_EXPERIMENT_ACTIONS);
   const [selectedAction, setSelectedAction] = useState<DrawerRow | null>(null);
   const [pendingExpId, setPendingExpId] = useState<string | null>(null);
+  const [editingExpId, setEditingExpId] = useState<string | null>(null);
 
   openExpDrawer = (row: ActionRow) => {
     let foundExpId = null;
@@ -510,37 +503,40 @@ export default function ExperimentsTab() {
 
   const handleOpenDrawer = (expId: string, row: DrawerRow) => {
     setPendingExpId(expId);
+    setEditingExpId(null);
     setSelectedAction(row);
+  };
+
+  const handleEditTitle = (expId: string) => {
+    const e = experiments.find(e => e.id === expId);
+    if (!e) return;
+    setEditingExpId(expId);
+    setPendingExpId(null);
+    setSelectedAction({
+      id: e.id,
+      action: "",
+      intendedOutcome: "",
+      status: e.status,
+      due: e.due,
+      accountable: e.accountable,
+      linkTo: "",
+      pathwayTitle: e.title,
+      pathwayDesc: e.description,
+    });
   };
 
   return (
     <div className="rounded-xl border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] overflow-hidden">
-      {/* Sub-tab bar */}
-      <div className="flex border-b border-[#E6EBF1] dark:border-[#1F2A37] bg-[#F9FAFB] dark:bg-[#0a1018]">
-        {SUB_TABS.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs font-medium transition-colors ${
-              activeTab === tab.id
-                ? "text-[#5750F1] border-b-2 border-[#5750F1] bg-white dark:bg-[#0d1520]"
-                : "text-[#6B7280] dark:text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white hover:bg-white dark:hover:bg-[#0d1520] border-b-2 border-transparent"
-            }`}
-          >
-            <span className={activeTab === tab.id ? "text-[#5750F1]" : "text-[#9CA3AF]"}>{tab.icon}</span>
-            {tab.label}
-          </button>
-        ))}
-      </div>
 
       {/* Experiment cards */}
       <div className="p-4 flex flex-col gap-4">
-        {experiments.filter(e => e.tabId === activeTab || (!e.tabId && activeTab === "media-buying")).map((exp) => (
+        {experiments.filter(e => e.tabId === "offer" || !e.tabId).map((exp) => (
           <ExperimentCard
             key={exp.id}
             experiment={exp}
             actions={experimentActions[exp.id] ?? []}
             onOpenDrawer={(row) => handleOpenDrawer(exp.id, row)}
+            onEditTitle={() => handleEditTitle(exp.id)}
           />
         ))}
 
@@ -568,10 +564,22 @@ export default function ExperimentsTab() {
       <ActionDrawer
         row={selectedAction}
         performance="experiments"
-        isPathway={selectedAction !== null && !pendingExpId}
+        isPathway={editingExpId !== null || (selectedAction !== null && !pendingExpId)}
         title={pendingExpId ? experiments.find(e => e.id === pendingExpId)?.title : undefined}
-        onClose={() => { setSelectedAction(null); setPendingExpId(null); }}
+        onClose={() => { setSelectedAction(null); setPendingExpId(null); setEditingExpId(null); }}
         onSave={(updated) => {
+          // Case 1: editing an existing experiment title
+          if (editingExpId) {
+            setExperiments(prev => prev.map(e =>
+              e.id === editingExpId
+                ? { ...e, title: updated.pathwayTitle || e.title, description: updated.pathwayDesc ?? e.description }
+                : e
+            ));
+            setSelectedAction(null);
+            setPendingExpId(null);
+            setEditingExpId(null);
+            return;
+          }
           const primaryAction = updated.action ? { ...updated, completed: false } : null;
           const extraActions = (updated.additionalActions || [])
             .filter(a => a.action.trim())
@@ -608,7 +616,7 @@ export default function ExperimentsTab() {
               accountable: updated.accountable || "Unassigned",
               count: 0,
               due: updated.due || "-",
-              tabId: activeTab,
+              // tabId: activeTab,
             };
             
             const allNewActions: ActionRow[] = [];
