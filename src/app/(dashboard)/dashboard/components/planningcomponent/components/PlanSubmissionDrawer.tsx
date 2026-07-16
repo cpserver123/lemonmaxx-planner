@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { LuX, LuSend, LuTriangleAlert, LuPlus, LuCalendar, LuChevronLeft, LuChevronRight, LuChevronDown, LuTarget, LuLoader, LuSearch } from "react-icons/lu";
-import GoalAssignModal, { type GoalRow } from "./goalassign";
+import GoalAssignModal, { type GoalRow, type ApiUserGoal, type ApiPlanTotals } from "./goalassign";
 import { useSelector } from "react-redux";
 import type { RootState } from "@/store";
 import api from "@/app/utils/axios";
@@ -209,7 +209,7 @@ function ResourceCell({ value, onChange }: { value: string; onChange: (v: string
 }
 
 /* --- Platform dropdown cell ------------------------------------------ */
-const PLATFORM_OPTIONS = ["Facebook", "Newsbreak", "Bigo", "TikTok"];
+const PLATFORM_OPTIONS = ["Google", "Facebook", "Newsbreak", "TikTok", "Bigo"];
 
 function PlatformCell({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [open, setOpen] = useState(false);
@@ -259,8 +259,13 @@ function PlatformCell({ value, onChange }: { value: string; onChange: (v: string
 }
 
 /* --- Plan Resource Cell -------------------------------------------- */
-function PlanResourceCell({ resources }: {
-  resources: { user_id: number; user_name: string; is_assigned: boolean }[];
+function PlanResourceCell({
+  planId, resources, workspaceId, token,
+}: {
+  planId: number;
+  resources: { user_id: number; user_name: string; is_assigned: boolean; promise?: number }[];
+  workspaceId: number | string;
+  token: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const [dropPos, setDropPos] = useState({ top: 0, left: 0 });
@@ -268,16 +273,36 @@ function PlanResourceCell({ resources }: {
     () => new Set(resources.filter(r => r.is_assigned).map(r => r.user_id))
   );
   const btnRef = useRef<HTMLButtonElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
 
+  // Sync API call
+  const syncResources = async (ids: Set<number>) => {
+    try {
+      await api.put(`/api/v1/planner/plans/${planId}/resources`, {
+        workspace_id: Number(workspaceId),
+        user_ids: [...ids],
+      }, { headers: { Authorization: `Bearer ${token}` } });
+    } catch (err) {
+      console.error("Failed to sync resources", err);
+    }
+  };
+
+  // Close on outside click — checks both trigger button and dropdown portal
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
       const target = e.target as Node;
-      if (btnRef.current && !btnRef.current.contains(target)) setOpen(false);
+      const clickedBtn  = btnRef.current?.contains(target);
+      const clickedDrop = dropRef.current?.contains(target);
+      if (!clickedBtn && !clickedDrop) {
+        setOpen(false);
+        syncResources(selected);
+      }
     };
     const tid = setTimeout(() => document.addEventListener("click", handler), 0);
     return () => { clearTimeout(tid); document.removeEventListener("click", handler); };
-  }, [open]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, selected]);
 
   const handleOpen = () => {
     if (btnRef.current) {
@@ -313,17 +338,18 @@ function PlanResourceCell({ resources }: {
       </button>
       {open && createPortal(
         <div
+          ref={dropRef}
           style={{ position: "fixed", top: dropPos.top, left: dropPos.left, zIndex: 9999 }}
           className="w-52 rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] shadow-xl overflow-hidden"
         >
           <div className="max-h-44 overflow-y-auto py-1">
             {resources.length > 0 ? resources.map(r => (
-              <label
+              <div
                 key={r.user_id}
-                onClick={() => toggle(r.user_id)}
-                className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"
+                onClick={e => { e.stopPropagation(); toggle(r.user_id); }}
+                className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors select-none"
               >
-                <span className={`flex h-3.5 w-3.5 items-center justify-center rounded border transition-colors ${
+                <span className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border transition-colors ${
                   selected.has(r.user_id) ? "border-[#5750F1] bg-[#5750F1]" : "border-[#D1D5DB] dark:border-[#374151]"
                 }`}>
                   {selected.has(r.user_id) && (
@@ -332,8 +358,15 @@ function PlanResourceCell({ resources }: {
                     </svg>
                   )}
                 </span>
-                <span className="text-xs text-[#111928] dark:text-[#D1D5DB]">{r.user_name}</span>
-              </label>
+                <span className="text-xs text-[#111928] dark:text-[#D1D5DB]">
+                  {r.user_name}
+                  {r.is_assigned && (r.promise ?? 0) > 0 && (
+                    <span className="ml-1.5 font-medium text-[#5750F1]">
+                      (${r.promise?.toLocaleString()})
+                    </span>
+                  )}
+                </span>
+              </div>
             )) : (
               <p className="px-3 py-2 text-xs text-[#9CA3AF] text-center">No users</p>
             )}
@@ -342,6 +375,55 @@ function PlanResourceCell({ resources }: {
         document.body
       )}
     </>
+  );
+}
+
+
+/* --- EditField type -------------------------------------------------- */
+type EditField = "platform" | "promise" | "perf_ceiling" | "perf_delta" | "delta_loss" | "net_promise";
+type EditingCell = { planId: number; field: EditField; value: string } | null;
+
+/* --- Editable number/text cell (outside parent to preserve cursor) --- */
+function EditableCell({
+  planId, field, value, isText = false, bold = false,
+  editingCell, setEditingCell, onCommit,
+}: {
+  planId: number;
+  field: EditField;
+  value: number | string;
+  isText?: boolean;
+  bold?: boolean;
+  editingCell: EditingCell;
+  setEditingCell: React.Dispatch<React.SetStateAction<EditingCell>>;
+  onCommit: () => void;
+}) {
+  const isEditing = editingCell?.planId === planId && editingCell?.field === field;
+  const displayVal = isText ? String(value) : `$${Number(value).toLocaleString()}`;
+
+  if (isEditing) {
+    return (
+      <input
+        autoFocus
+        type="text"
+        value={editingCell!.value}
+        onChange={e => setEditingCell(c => c ? { ...c, value: e.target.value } : c)}
+        onBlur={onCommit}
+        onKeyDown={e => { if (e.key === "Enter") onCommit(); if (e.key === "Escape") setEditingCell(null); }}
+        className="w-20 rounded border border-[#5750F1] bg-[#EEF2FF] dark:bg-[#1e2a44] px-1.5 py-0.5 text-xs text-[#111928] dark:text-white outline-none"
+      />
+    );
+  }
+
+  return (
+    <span
+      onClick={() => setEditingCell({ planId, field, value: String(value) })}
+      title="Click to edit"
+      className={`cursor-pointer rounded px-1 py-0.5 hover:bg-[#EEF2FF] dark:hover:bg-[#1e2a44] transition-colors ${
+        bold ? "font-medium text-[#111928] dark:text-[#D1D5DB]" : "text-[#111928] dark:text-[#D1D5DB]"
+      } text-xs`}
+    >
+      {displayVal}
+    </span>
   );
 }
 
@@ -360,30 +442,63 @@ export default function PlanSubmissionDrawer({
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [goalRow, setGoalRow] = useState<GoalRow | null>(null);
   const [showGoalModal, setShowGoalModal] = useState(false);
+  const [goalLoading, setGoalLoading] = useState(false);
+  const [goalInitialGoals, setGoalInitialGoals] = useState<ApiUserGoal[] | undefined>(undefined);
+  const [goalPlanTotals, setGoalPlanTotals] = useState<ApiPlanTotals | undefined>(undefined);
   const [savedGoalRowIds, setSavedGoalRowIds] = useState<Set<string>>(new Set());
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  const fetchAndOpenGoalModal = async (planId: number, row: GoalRow) => {
+    setGoalRow(row);
+    setGoalInitialGoals(undefined);
+    setGoalPlanTotals(undefined);
+    setGoalLoading(true);
+    setShowGoalModal(true);
+    try {
+      const res = await api.get(`/api/v1/planner/plans/${planId}/user-goals`, {
+        params: { workspace_id: Number(workspaceId) },
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = res.data?.data;
+      if (data?.plan_totals) setGoalPlanTotals(data.plan_totals as ApiPlanTotals);
+      if (data?.user_goals)  setGoalInitialGoals(data.user_goals as ApiUserGoal[]);
+    } catch (err) {
+      console.error("Failed to fetch user goals", err);
+    } finally {
+      setGoalLoading(false);
+    }
+  };
+
   const handleGoalSave = (rowId: string) => {
     setSavedGoalRowIds(prev => new Set(prev).add(rowId));
+    if (selectedVertical) {
+      fetchPlans(selectedVertical.id, planYear, planMonth);
+    }
   };
 
   const handleSubmit = () => {
-    const dataRows = rows.filter(r => !r.isSubTotal && !r.isNote);
+    // Flatten all platforms from plansByOffer
+    const allPlatforms = Object.entries(plansByOffer).flatMap(([offerId, platforms]) => 
+      platforms.map(p => ({
+        ...p,
+        offerName: ownOffers.find(o => o.id === Number(offerId))?.name || "Unknown Offer"
+      }))
+    );
 
     // Step 1: check all data rows have resources selected
-    const noResources = dataRows.filter(r => !r.resources.trim());
+    const noResources = allPlatforms.filter(p => !p.resources || p.resources.filter(r => r.is_assigned).length === 0);
     if (noResources.length > 0) {
       setSubmitError(
-        `Please select resources for: ${noResources.map(r => `${r.platform} (${r.category})`).join(", ")}`
+        `Please select resources for: ${noResources.map(p => `${p.platform} (${p.offerName})`).join(", ")}`
       );
       return;
     }
 
     // Step 2: check all rows with resources have goals assigned
-    const noGoals = dataRows.filter(r => !savedGoalRowIds.has(r.id));
+    const noGoals = allPlatforms.filter(p => !savedGoalRowIds.has(String(p.id)));
     if (noGoals.length > 0) {
       setSubmitError(
-        `Please assign goals for: ${noGoals.map(r => `${r.platform} (${r.category})`).join(", ")}`
+        `Please assign goals for: ${noGoals.map(p => `${p.platform} (${p.offerName})`).join(", ")}`
       );
       return;
     }
@@ -550,8 +665,7 @@ export default function PlanSubmissionDrawer({
   };
 
   /* --- Inline cell editing ---- */
-  type EditField = "platform" | "promise" | "perf_ceiling" | "perf_delta" | "delta_loss" | "net_promise";
-  const [editingCell, setEditingCell] = useState<{ planId: number; field: EditField; value: string } | null>(null);
+  const [editingCell, setEditingCell] = useState<EditingCell>(null);
 
   const startEdit = (planId: number, field: EditField, currentVal: string | number) => {
     setEditingCell({ planId, field, value: String(currentVal) });
@@ -600,34 +714,91 @@ export default function PlanSubmissionDrawer({
     }
   };
 
-  const EditableCell = ({
-    planId, field, value, isText = false, bold = false,
-  }: { planId: number; field: EditField; value: number | string; isText?: boolean; bold?: boolean }) => {
-    const isEditing = editingCell?.planId === planId && editingCell?.field === field;
-    const displayVal = isText ? String(value) : `$${Number(value).toLocaleString()}`;
-    if (isEditing) {
-      return (
-        <input
-          autoFocus
-          type={isText ? "text" : "number"}
-          value={editingCell!.value}
-          onChange={e => setEditingCell(c => c ? { ...c, value: e.target.value } : c)}
-          onBlur={commitEdit}
-          onKeyDown={e => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") setEditingCell(null); }}
-          className="w-full rounded border border-[#5750F1] bg-[#EEF2FF] dark:bg-[#1e2a44] px-1.5 py-0.5 text-xs text-[#111928] dark:text-white outline-none"
-        />
-      );
-    }
+  /* --- Inline platform dropdown cell for plan table rows -------------- */
+  const PlanPlatformCell = ({ planId, value }: { planId: number; value: string }) => {
+    const [open, setOpen] = useState(false);
+    const ref = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+      if (!open) return;
+      const handler = (e: MouseEvent) => {
+        if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      };
+      const tid = setTimeout(() => document.addEventListener("click", handler), 0);
+      return () => { clearTimeout(tid); document.removeEventListener("click", handler); };
+    }, [open]);
+
+    const handleSelect = async (opt: string) => {
+      setOpen(false);
+      if (opt === value) return;
+
+      // Optimistically update local state
+      setPlansByOffer(prev => {
+        const next = { ...prev };
+        for (const offerId of Object.keys(next)) {
+          next[Number(offerId)] = next[Number(offerId)].map(p =>
+            p.id !== planId ? p : { ...p, platform: opt }
+          );
+        }
+        return next;
+      });
+
+      // Find current row for full payload
+      let current: PlanPlatform | undefined;
+      for (const platforms of Object.values(plansByOffer)) {
+        current = platforms.find(p => p.id === planId);
+        if (current) break;
+      }
+      if (!current) return;
+
+      try {
+        await api.put(`/api/v1/planner/plans/${planId}`, {
+          workspace_id: workspaceId,
+          platform: opt,
+          promise: current.promise,
+          perf_ceiling: current.perf_ceiling,
+          perf_delta: current.perf_delta,
+          delta_loss: current.delta_loss,
+          net_promise: current.net_promise,
+        }, { headers: { Authorization: `Bearer ${token}` } });
+      } catch (err) {
+        console.error("Failed to update platform", err);
+        if (selectedVertical) fetchPlans(selectedVertical.id, planYear, planMonth);
+      }
+    };
+
     return (
-      <span
-        onClick={() => startEdit(planId, field, value)}
-        title="Click to edit"
-        className={`cursor-pointer rounded px-1 py-0.5 hover:bg-[#EEF2FF] dark:hover:bg-[#1e2a44] transition-colors ${
-          bold ? "font-medium text-[#111928] dark:text-[#D1D5DB]" : "text-[#111928] dark:text-[#D1D5DB]"
-        } text-xs`}
-      >
-        {displayVal}
-      </span>
+      <div ref={ref} className="relative inline-block">
+        <button
+          onClick={() => setOpen(p => !p)}
+          title="Click to change platform"
+          className="flex items-center gap-1 group text-xs font-semibold text-[#111928] dark:text-[#D1D5DB] hover:text-[#5750F1] dark:hover:text-[#818CF8] transition-colors rounded px-1 py-0.5 hover:bg-[#EEF2FF] dark:hover:bg-[#1e2a44]"
+        >
+          <span>{value || "—"}</span>
+          <LuChevronDown size={11} className="text-[#9CA3AF] group-hover:text-[#5750F1] transition-colors shrink-0" />
+        </button>
+
+        {open && (
+          <>
+            <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+            <div className="absolute left-0 top-full mt-1 z-40 w-36 rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] shadow-xl py-1 overflow-hidden">
+              {PLATFORM_OPTIONS.map(opt => (
+                <button
+                  key={opt}
+                  onClick={() => handleSelect(opt)}
+                  className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
+                    opt.toLowerCase() === value.toLowerCase()
+                      ? "bg-[#5750F1]/10 text-[#5750F1] font-semibold"
+                      : "text-[#111928] dark:text-[#D1D5DB] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332]"
+                  }`}
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
     );
   };
 
@@ -879,27 +1050,53 @@ export default function PlanSubmissionDrawer({
                     {(plansByOffer[offer.id] ?? []).map(platform => (
                       <tr key={platform.id} className="border-b border-[#E6EBF1] dark:border-[#1F2A37] hover:bg-[#F9FAFB] dark:hover:bg-[#0a1018] transition-colors">
                         <td className="px-3 py-2">
-                          <EditableCell planId={platform.id} field="platform" value={platform.platform} isText bold />
+                          <PlanPlatformCell planId={platform.id} value={platform.platform} />
                         </td>
                         <td className="px-3 py-2">
-                          <EditableCell planId={platform.id} field="promise" value={platform.promise} />
+                          <EditableCell planId={platform.id} field="promise" value={platform.promise} editingCell={editingCell} setEditingCell={setEditingCell} onCommit={commitEdit} />
                         </td>
                         <td className="px-3 py-2">
-                          <EditableCell planId={platform.id} field="perf_ceiling" value={platform.perf_ceiling} />
+                          <EditableCell planId={platform.id} field="perf_ceiling" value={platform.perf_ceiling} editingCell={editingCell} setEditingCell={setEditingCell} onCommit={commitEdit} />
                         </td>
                         <td className="px-3 py-2">
-                          <EditableCell planId={platform.id} field="perf_delta" value={platform.perf_delta} />
+                          <EditableCell planId={platform.id} field="perf_delta" value={platform.perf_delta} editingCell={editingCell} setEditingCell={setEditingCell} onCommit={commitEdit} />
                         </td>
                         <td className="px-3 py-2">
-                          <EditableCell planId={platform.id} field="delta_loss" value={platform.delta_loss} />
+                          <EditableCell planId={platform.id} field="delta_loss" value={platform.delta_loss} editingCell={editingCell} setEditingCell={setEditingCell} onCommit={commitEdit} />
                         </td>
                         <td className="px-3 py-2">
-                          <EditableCell planId={platform.id} field="net_promise" value={platform.net_promise} />
+                          <EditableCell planId={platform.id} field="net_promise" value={platform.net_promise} editingCell={editingCell} setEditingCell={setEditingCell} onCommit={commitEdit} />
                         </td>
                         <td className="px-3 py-2">
-                          <PlanResourceCell resources={platform.resources} />
+                          <PlanResourceCell planId={platform.id} resources={platform.resources} workspaceId={workspaceId} token={token} />
                         </td>
-                        <td className="px-3 py-2" />
+                        <td className="px-3 py-2">
+                          <button
+                            onClick={() => {
+                              fetchAndOpenGoalModal(platform.id, {
+                                id: String(platform.id),
+                                platform: platform.platform,
+                                promise: platform.promise,
+                                perfCeiling: platform.perf_ceiling,
+                                perfDelta: platform.perf_delta,
+                                deltaLoss: platform.delta_loss,
+                                netPromise: platform.net_promise,
+                                resources: platform.resources
+                                  .filter(r => r.is_assigned)
+                                  .map(r => r.user_name)
+                                  .join(", "),
+                              });
+                            }}
+                            title="Assign Goal"
+                            className={`flex items-center justify-center h-7 w-7 rounded-md border transition-colors ${
+                              savedGoalRowIds.has(String(platform.id))
+                                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-500"
+                                : "border-[#E6EBF1] dark:border-[#374151] text-[#9CA3AF] hover:border-[#5750F1]/50 hover:text-[#5750F1] hover:bg-[#5750F1]/5"
+                            }`}
+                          >
+                            <LuTarget size={13} />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -945,6 +1142,12 @@ export default function PlanSubmissionDrawer({
         onClose={() => setShowGoalModal(false)}
         onSave={handleGoalSave}
         row={goalRow}
+        loading={goalLoading}
+        initialGoals={goalInitialGoals}
+        planTotals={goalPlanTotals}
+        planId={goalRow ? Number(goalRow.id) : undefined}
+        workspaceId={workspaceId}
+        token={token}
       />
 
       {/* Add Platform modal */}
