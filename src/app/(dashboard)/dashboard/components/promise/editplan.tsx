@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { LuX, LuSave, LuChevronDown, LuTarget } from "react-icons/lu";
-import GoalAssignModal, { type GoalRow } from "../goalassign";
+import GoalAssignModal, { type GoalRow } from "../planningcomponent/components/goalassign";
 
 /* ---------- Types ---------------------------------------------------- */
 export interface PlanningRow {

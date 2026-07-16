@@ -29,13 +29,17 @@ function fmt(n: number | null): string {
   if (n === null || n === undefined) return "-";
   const neg = n < 0;
   const abs = Math.abs(n);
-  const str = abs >= 1000 ? `$${abs.toLocaleString("en-US")}` : `$${abs}`;
+  // Show up to 2 decimal places only when needed
+  const display = Number.isInteger(abs) ? abs.toLocaleString("en-US") : abs.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const str = `$${display}`;
   return neg ? `-${str}` : str;
 }
 
 function distributeEqually(total: number | null, count: number): number {
   if (!total || count === 0) return 0;
-  return Math.floor(total / count);
+  // Floor to 2 decimal places — ensures the per-user amount never causes
+  // the column total to exceed the original value (safe side rounding)
+  return Math.floor((total / count) * 100) / 100;
 }
 
 const NUM_FIELDS: (keyof Omit<UserGoal, "username">)[] = [
@@ -76,15 +80,31 @@ export default function GoalAssignModal({
       .map((s) => s.trim())
       .filter(Boolean);
     const count = users.length;
+
     setGoals(
-      users.map((username) => ({
-        username,
-        promise: distributeEqually(row.promise, count),
-        perfCeiling: distributeEqually(row.perfCeiling, count),
-        perfDelta: distributeEqually(row.perfDelta, count),
-        deltaLoss: distributeEqually(row.deltaLoss, count),
-        netPromise: distributeEqually(row.netPromise, count),
-      }))
+      users.map((username, idx) => {
+        // For each numeric field, give every user the floored equal share.
+        // The FIRST user gets the remainder so the column total is exact.
+        const calcField = (total: number | null): number => {
+          if (!total || count === 0) return 0;
+          const base = Math.floor((total / count) * 100) / 100;
+          if (idx === 0) {
+            // remainder = total - base * count, rounded to 2dp
+            const rest = Math.round((total - base * count) * 100) / 100;
+            return Math.round((base + rest) * 100) / 100;
+          }
+          return base;
+        };
+
+        return {
+          username,
+          promise:      calcField(row.promise),
+          perfCeiling:  calcField(row.perfCeiling),
+          perfDelta:    calcField(row.perfDelta),
+          deltaLoss:    calcField(row.deltaLoss),
+          netPromise:   calcField(row.netPromise),
+        };
+      })
     );
     setErrors({});
   }, [row, open]);
@@ -101,10 +121,12 @@ export default function GoalAssignModal({
     const newGoals = goals.map((g, i) =>
       i === idx ? { ...g, [field]: num } : g
     );
-    const colTotal = newGoals.reduce((s, g) => s + (g[field] ?? 0), 0);
+    const colTotal = Math.round(newGoals.reduce((s, g) => s + (g[field] ?? 0), 0) * 100) / 100;
     const max = row[field] ?? 0;
     if (colTotal > max) {
       setErrors((prev) => ({ ...prev, [`${idx}-${field}`]: `Total exceeds ${fmt(max)}` }));
+    } else if (colTotal < max) {
+      setErrors((prev) => ({ ...prev, [`${idx}-${field}`]: `Total under ${fmt(max)}` }));
     } else {
       setErrors((prev) => { const next = { ...prev }; delete next[`${idx}-${field}`]; return next; });
     }
@@ -184,6 +206,7 @@ export default function GoalAssignModal({
                           <td key={f} className="px-4 py-2">
                             <input
                               type="number"
+                              step="0.01"
                               value={g[f] ?? 0}
                               onChange={(e) => handleChange(idx, f, e.target.value)}
                               className={`w-24 rounded-lg border px-2 py-1 text-xs text-[#111928] dark:text-white bg-[#F9FAFB] dark:bg-[#0a1018] outline-none transition-colors ${hasErr ? "border-red-400 focus:border-red-400" : "border-[#E6EBF1] dark:border-[#374151] focus:border-[#5750F1]"}`}
@@ -197,13 +220,20 @@ export default function GoalAssignModal({
                   <tr className="bg-[#F3F4F6] dark:bg-[#0a0f1a] border-t-2 border-[#E6EBF1] dark:border-[#374151]">
                     <td className="px-4 py-2 text-[11px] font-bold text-[#6B7280] dark:text-[#9CA3AF]">Total</td>
                     {NUM_FIELDS.map((f) => {
-                      const total = columnTotal(f);
+                      const total = Math.round(columnTotal(f) * 100) / 100;
                       const max = row[f] ?? 0;
-                      const over = total > max;
+                      const over  = total > max;
+                      const under = total < max;
                       return (
                         <td key={f} className="px-4 py-2">
-                          <span className={`text-xs font-semibold ${over ? "text-red-500 dark:text-red-400" : "text-[#111928] dark:text-[#D1D5DB]"}`}>
-                            {fmt(total)}{over && <span className="ml-1 text-[9px]">(max {fmt(max)})</span>}
+                          <span className={`text-xs font-semibold ${
+                            over  ? "text-red-500 dark:text-red-400" :
+                            under ? "text-amber-500 dark:text-amber-400" :
+                            "text-[#111928] dark:text-[#D1D5DB]"
+                          }`}>
+                            {fmt(total)}
+                            {over  && <span className="ml-1 text-[9px]">({fmt(max)} max)</span>}
+                            {under && <span className="ml-1 text-[9px]">(under {fmt(max)})</span>}
                           </span>
                         </td>
                       );

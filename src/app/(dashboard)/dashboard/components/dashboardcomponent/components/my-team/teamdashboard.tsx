@@ -1,96 +1,63 @@
 "use client";
 
 import { useState } from "react";
-import { LuCalendar, LuChevronLeft, LuChevronRight, LuStar } from "react-icons/lu";
-import MyTeamPanel from "./my-team/MyTeamPanel";
+import { LuCalendar, LuChevronLeft, LuChevronRight } from "react-icons/lu";
 
 const TIME_FILTERS = ["Yest", "7D", "MTD", "LM"];
 
-const TEAM_LEADERS = ["All Leaders", "Gagan Brar", "Devinder", "Pankhuri Sharma", "Arun Kumar", "Riya Singh"];
-const MEDIA_BUYERS = ["All Buyers", "Bruno", "Alex M.", "Sara K.", "Ravi P.", "Naina T."];
-
 /* --- KPI Stat cards -------------------------------------------------- */
 const STATS = [
-  { label: "Members",       value: "9",    sub: null,                       color: "text-[#111928] dark:text-white" },
-  { label: "Promises",      value: "36",   sub: "36 on - 0 risk - 0 break", color: "text-[#2563eb]" },
-  { label: "Breakdowns",    value: "20",   sub: "19 over 7d",               color: "text-orange-400" },
-  { label: "Escalations",   value: "0",    sub: null,                       color: "text-[#111928] dark:text-white" },
-  { label: "Requests",      value: "0",    sub: null,                       color: "text-[#111928] dark:text-white" },
-  { label: "Due today",     value: "2",    sub: null,                       color: "text-[#111928] dark:text-white" },
-  { label: "Overdue",       value: "6",    sub: null,                       color: "text-orange-400" },
-  { label: "Check-in today",value: "0%",   sub: null,                       color: "text-orange-400" },
-  { label: "Performance",   value: "74%",  sub: "MTD avg",                  color: "text-[#2563eb]" },
+  { label: "Members",      value: "9",    sub: null,                  color: "text-[#111928] dark:text-white" },
+  { label: "Promises",     value: "36",   sub: "36 on - 0 risk - 0 break", color: "text-[#2563eb]" },
+  { label: "Breakdowns",   value: "20",   sub: "19 over 7d",           color: "text-orange-400" },
+  { label: "Escalations",  value: "0",    sub: null,                  color: "text-[#111928] dark:text-white" },
+  { label: "Requests",     value: "0",    sub: null,                  color: "text-[#111928] dark:text-white" },
+  { label: "Due today",    value: "2",    sub: null,                  color: "text-[#111928] dark:text-white" },
+  { label: "Overdue",      value: "6",    sub: null,                  color: "text-orange-400" },
+  { label: "Check-in today", value: "0%", sub: null,                  color: "text-orange-400" },
 ];
 
 /* --- Breakdowns data ------------------------------------------------- */
 const BREAKDOWNS = [
-  { title: "Manually launched and testing through l...", sub: "Bruno Strategy on Catalog",  age: "19d" },
+  { title: "Manually launched and testing through l...", sub: "Bruno Strategy on Catalog", age: "19d" },
   { title: "Untitled",  sub: "Existing Bruno Strategy", age: "41d" },
   { title: "Untitled",  sub: "Flexible - Bruno",        age: "55d" },
-  { title: "trying to find the strategy to increase th...", sub: "Performance Strategy",    age: "19d" },
+  { title: "trying to find the strategy to increase th...", sub: "Performance Strategy", age: "19d" },
 ];
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
 /* --- FilterBar ------------------------------------------------------- */
 function buildLabel(months: Set<number>, year: number): string {
-  if (months.size === 0) return `— ${year}`;
+  if (months.size === 0) return `${year}`;
   const sorted = [...months].sort((a, b) => a - b);
   if (sorted.length === 1) return `${MONTHS[sorted[0]]} ${year}`;
-  const isConsecutive = sorted.every((v, i) => i === 0 || v === sorted[i - 1] + 1);
-  if (isConsecutive) return `${MONTHS[sorted[0]]} – ${MONTHS[sorted[sorted.length - 1]]} ${year}`;
-  if (sorted.length <= 3) return sorted.map(i => MONTHS[i]).join(", ") + ` ${year}`;
-  return `${sorted.length} months ${year}`;
+  // Show first–last if contiguous, otherwise comma-list (max 3 then "…")
+  const isContiguous = sorted.every((v, i) => i === 0 || v === sorted[i - 1] + 1);
+  if (isContiguous) return `${MONTHS[sorted[0]]} – ${MONTHS[sorted[sorted.length - 1]]} ${year}`;
+  const labels = sorted.map(m => MONTHS[m]);
+  return labels.length <= 3 ? `${labels.join(", ")} ${year}` : `${labels.slice(0, 3).join(", ")}… ${year}`;
 }
 
 function FilterBar() {
   const [activeTime, setActiveTime] = useState(2); // MTD
   const [showPicker, setShowPicker] = useState(false);
-  const [selectedYear,   setSelectedYear]   = useState(2026);
-  const [selectedMonths, setSelectedMonths] = useState<Set<number>>(new Set([5])); // June
-  const [teamLeader, setTeamLeader] = useState("All Leaders");
-  const [mediaBuyer, setMediaBuyer] = useState("All Buyers");
+  const [selectedYear, setSelectedYear] = useState(2026);
+  // Multi-month: store a Set of 0-indexed month numbers
+  const [selectedMonths, setSelectedMonths] = useState<Set<number>>(new Set([5])); // default: June
 
   const label = buildLabel(selectedMonths, selectedYear);
 
-  const toggleMonth = (i: number) => {
+  const toggleMonth = (m: number) => {
     setSelectedMonths(prev => {
       const next = new Set(prev);
-      next.has(i) ? next.delete(i) : next.add(i);
+      next.has(m) ? next.delete(m) : next.add(m);
       return next;
     });
   };
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
-
-      {/* Team Leader dropdown */}
-      <div className="relative">
-        <select
-          value={teamLeader}
-          onChange={e => setTeamLeader(e.target.value)}
-          className="appearance-none rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] pl-2.5 pr-7 py-1.5 text-[11px] font-medium text-[#111928] dark:text-white outline-none cursor-pointer hover:border-[#5750F1]/40 transition-colors"
-        >
-          {TEAM_LEADERS.map(l => <option key={l} value={l}>{l}</option>)}
-        </select>
-        <LuChevronRight size={11} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rotate-90 text-[#9CA3AF]" />
-      </div>
-
-      {/* Media Buyer dropdown */}
-      <div className="relative">
-        <select
-          value={mediaBuyer}
-          onChange={e => setMediaBuyer(e.target.value)}
-          className="appearance-none rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] pl-2.5 pr-7 py-1.5 text-[11px] font-medium text-[#111928] dark:text-white outline-none cursor-pointer hover:border-[#5750F1]/40 transition-colors"
-        >
-          {MEDIA_BUYERS.map(b => <option key={b} value={b}>{b}</option>)}
-        </select>
-        <LuChevronRight size={11} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rotate-90 text-[#9CA3AF]" />
-      </div>
-
-      {/* Divider */}
-      <span className="h-4 w-px bg-[#E6EBF1] dark:bg-[#374151]" />
-
       {/* Time pills */}
       <div className="flex items-center gap-1 bg-[#F3F4F6] dark:bg-[#122031] rounded-lg p-0.5">
         {TIME_FILTERS.map((f, i) => (
@@ -105,7 +72,7 @@ function FilterBar() {
         ))}
       </div>
 
-      {/* Multi-month picker */}
+      {/* Month picker button */}
       <div className="ml-auto relative">
         <button
           onClick={() => setShowPicker(p => !p)}
@@ -141,44 +108,47 @@ function FilterBar() {
                 </button>
               </div>
 
-              {/* Month grid — multi-select */}
+              {/* Selection hint */}
+              <p className="text-[10px] text-[#9CA3AF] mb-2">
+                {selectedMonths.size === 0
+                  ? "Tap months to select"
+                  : `${selectedMonths.size} month${selectedMonths.size > 1 ? "s" : ""} selected`}
+              </p>
+
+              {/* Month grid */}
               <div className="grid grid-cols-3 gap-1.5">
                 {MONTHS.map((m, i) => {
-                  const active = selectedMonths.has(i);
+                  const isSelected = selectedMonths.has(i);
                   return (
                     <button
                       key={m}
                       onClick={() => toggleMonth(i)}
-                      className={`relative rounded-lg py-1.5 text-xs font-medium transition-colors ${
-                        active
-                          ? "bg-[#5750F1] text-white"
+                      className={`relative rounded-lg py-1.5 text-xs font-medium transition-all ${
+                        isSelected
+                          ? "bg-[#5750F1] text-white ring-2 ring-[#5750F1]/40"
                           : "text-[#111928] dark:text-[#D1D5DB] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332]"
                       }`}
                     >
                       {m}
-                      {active && (
-                        <span className="absolute -top-1 -right-1 flex h-3 w-3 items-center justify-center rounded-full bg-white">
-                          <svg width="6" height="5" viewBox="0 0 6 5" fill="none">
-                            <path d="M1 2.5L2.5 4L5 1" stroke="#5750F1" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                        </span>
+                      {isSelected && (
+                        <span className="absolute top-0.5 right-0.5 text-[8px] leading-none">✓</span>
                       )}
                     </button>
                   );
                 })}
               </div>
 
-              {/* Footer */}
-              <div className="flex items-center justify-between mt-3 pt-2 border-t border-[#E6EBF1] dark:border-[#27303E]">
+              {/* Footer actions */}
+              <div className="flex items-center justify-between mt-3 pt-3 border-t border-[#E6EBF1] dark:border-[#27303E]">
                 <button
                   onClick={() => setSelectedMonths(new Set())}
-                  className="text-[10px] text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white transition-colors"
+                  className="text-[11px] text-[#6B7280] dark:text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white transition-colors"
                 >
                   Clear
                 </button>
                 <button
                   onClick={() => setShowPicker(false)}
-                  className="rounded-md bg-[#5750F1] px-2.5 py-1 text-[10px] font-semibold text-white hover:bg-[#4742d4] transition-colors"
+                  className="px-3 py-1 rounded-lg bg-[#5750F1] text-white text-[11px] font-semibold hover:bg-[#4740d4] transition-colors"
                 >
                   Done
                 </button>
@@ -191,53 +161,20 @@ function FilterBar() {
   );
 }
 
-/* --- Review Score Card ----------------------------------------------- */
-function ReviewScoreCard() {
-  const score = 74;
-
-  const scoreColor = score >= 70 ? "text-green-500" : score >= 40 ? "text-orange-400" : "text-red-500";
-  const barColor   = score >= 70 ? "bg-green-500"   : score >= 40 ? "bg-orange-400"   : "bg-red-500";
-
-  return (
-    <div className="rounded-lg border border-[#E6EBF1] dark:border-[#1F2A37] bg-[#F9FAFB] dark:bg-[#0a1018] p-3 flex flex-col gap-1.5">
-      <div className="flex items-center gap-1">
-        <LuStar size={11} className="text-[#9CA3AF] shrink-0" />
-        <span className="text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">Review Score</span>
-      </div>
-      <p className={`text-2xl font-bold mt-0.5 ${scoreColor}`}>
-        {score}
-        <span className="text-sm font-normal text-[#9CA3AF] ml-0.5">/100</span>
-      </p>
-      <div className="h-1.5 rounded-full bg-[#E6EBF1] dark:bg-[#1F2A37] overflow-hidden">
-        <div className={`h-full rounded-full ${barColor}`} style={{ width: `${score}%` }} />
-      </div>
-    </div>
-  );
-}
-
-/* --- Performance Dashboard ------------------------------------------- */
-export default function PerformanceSection() {
-  const [showBreakdowns, setShowBreakdowns] = useState(false);
-
-  if (showBreakdowns) {
-    return (
-      <div className="fixed inset-0 z-50 bg-[#F3F4F6] dark:bg-[#020d1a]">
-        <MyTeamPanel initialTab="breakdown" onClose={() => setShowBreakdowns(false)} />
-      </div>
-    );
-  }
-
+/* --- Team Dashboard Tab Content -------------------------------------- */
+export default function TeamDashboard() {
   return (
     <div className="flex flex-col gap-5">
+   
 
       {/* Section title + filter bar */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h2 className="text-base font-semibold text-[#111928] dark:text-white">Performance Dashboard</h2>
+        <h2 className="text-base font-semibold text-[#111928] dark:text-white">Team Dashboard</h2>
         <FilterBar />
       </div>
 
-      {/* KPI stat strip — 9 cards (wraps gracefully on small screens) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-3">
+      {/* KPI stat strip */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
         {STATS.map((s) => (
           <div key={s.label} className="rounded-xl border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] p-3 flex flex-col gap-0.5">
             <span className="text-[10px] text-[#6B7280] dark:text-[#9CA3AF] font-medium">{s.label}</span>
@@ -268,8 +205,8 @@ export default function PerformanceSection() {
             </div>
           </div>
 
-          {/* On track / At risk / Breaking / Review Score */}
-          <div className="grid grid-cols-4 gap-3 mt-4">
+          {/* On track / At risk / Breaking */}
+          <div className="grid grid-cols-3 gap-3 mt-4">
             {[
               { label: "On track", value: "36", color: "text-[#2563eb]" },
               { label: "At risk",  value: "0",  color: "text-orange-400" },
@@ -280,9 +217,6 @@ export default function PerformanceSection() {
                 <p className={`text-2xl font-bold mt-0.5 ${item.color}`}>{item.value}</p>
               </div>
             ))}
-
-            {/* Review Score KPI */}
-            <ReviewScoreCard />
           </div>
 
           <p className="text-[11px] text-[#2563eb] mt-4">21 active promises have no pathway yet.</p>
@@ -301,7 +235,7 @@ export default function PerformanceSection() {
             <div className="flex items-end gap-1.5 h-10">
               {["M","T","W","T","F","S","S"].map((day, i) => (
                 <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                  <div className="w-full rounded-sm bg-[#2563eb]/20 dark:bg-[#2563eb]/10" style={{ height: `${[18,28,12,32,8,5,5][i]}px` }} />
+                  <div className="w-full rounded-sm bg-[#2563eb]/20 dark:bg-[#2563eb]/10" style={{ height: `${Math.random() * 28 + 4}px` }} />
                   <span className="text-[9px] text-[#9CA3AF]">{day}</span>
                 </div>
               ))}
@@ -328,12 +262,7 @@ export default function PerformanceSection() {
         <div className="rounded-xl border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] p-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-[#111928] dark:text-white">Breakdowns</h3>
-            <button
-              onClick={() => setShowBreakdowns(true)}
-              className="text-[11px] text-[#5750F1] hover:underline"
-            >
-              View all
-            </button>
+            <button className="text-[11px] text-[#5750F1] hover:underline">View all</button>
           </div>
           <div className="flex flex-col gap-2">
             {BREAKDOWNS.map((b, i) => (
@@ -371,7 +300,6 @@ export default function PerformanceSection() {
           <p className="text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">No open requests.</p>
         </div>
       </div>
-
     </div>
   );
 }

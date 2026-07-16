@@ -1,14 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import PromiseFilters from "./promise/PromiseFilters";
-import VerticalGrid from "./promise/VerticalGrid";
-import type { VerticalData } from "./promise/VerticalCard";
-import BloodSugarPage from "./promise/bloodsugar";
-import GLP1Page from "./promise/glp1";
-import MemoryPage from "./promise/memory";
-import NADPage from "./promise/nad";
-import WeighLosePage from "./promise/weighlose";
+import PromiseFilters from "./PromiseFilters";
+import VerticalGrid from "./VerticalGrid";
+import type { VerticalData } from "./VerticalCard";
+import BloodSugarPage from "./bloodsugar";
+import GLP1Page from "./glp1";
+import MemoryPage from "./memory";
+import NADPage from "./nad";
+import WeighLosePage from "./weighlose";
 import { LuArrowLeft } from "react-icons/lu";
 
 /* --- Dummy Data ------------------------------------------------------ */
