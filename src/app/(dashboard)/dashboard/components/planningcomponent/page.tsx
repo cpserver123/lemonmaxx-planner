@@ -1,7 +1,11 @@
 "use client";
 
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useAuth } from "@/context/AuthContext";
+import { useSelector } from "react-redux";
+import type { RootState } from "@/store";
+import api from "@/app/utils/axios";
 import {
   useReactTable,
   getCoreRowModel,
@@ -13,7 +17,7 @@ import {
   type ColumnResizeMode,
   type ExpandedState,
 } from "@tanstack/react-table";
-import { LuArrowUpDown, LuArrowUp, LuArrowDown, LuChevronRight, LuChevronDown, LuChevronLeft, LuLayoutGrid, LuCalendar, LuFileText, LuPencil, LuPlus, LuTarget } from "react-icons/lu";
+import { LuArrowUpDown, LuArrowUp, LuArrowDown, LuChevronRight, LuChevronDown, LuChevronLeft, LuLayoutGrid, LuCalendar, LuFileText, LuPencil, LuPlus, LuTarget, LuSearch, LuLoader, LuRefreshCw } from "react-icons/lu";
 import GoalAssignModal, { type GoalRow } from "./components/goalassign";
 import PlanSubmissionDrawer from "./components/PlanSubmissionDrawer";
 import EditPlanDrawer from "../promise/editplan";
@@ -32,6 +36,8 @@ interface PlanningRow {
   deltaLoss: number | null;
   netPromise: number | null;
   resources: string;
+  planId?: number;
+  rawResources?: { user_id: number; user_name: string; is_assigned: boolean }[];
   isSubTotal?: boolean;
   isPromiseNote?: boolean;
   promiseNote?: string;
@@ -63,14 +69,7 @@ const PLANNING_DATA: PlanningRow[] = [
   { id: "wl-sub",     category: "Weight Loss", platform: "Sub Total",  actuals: -82943, promise: 40000, perfCeiling: null,   perfDelta: 40000,  deltaLoss: 15000,  netPromise: 55000,  resources: "", isSubTotal: true },
 ];
 
-const TOTALS = {
-  actuals: 194168,
-  promise: 180000,
-  perfCeiling: 90000,
-  perfDelta: 90000,
-  deltaLoss: 50000,
-  netPromise: 230000,
-};
+
 
 /* --- Helpers -------------------------------------------------------- */
 function fmt(n: number | null): string {
@@ -84,10 +83,14 @@ function fmt(n: number | null): string {
 /* --- VSL Dropdown --------------------------------------------------- */
 function Dropdown({ value, options, onChange }: { value: string; options: string[]; onChange: (v: string) => void }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const filtered = options.filter(opt => opt.toLowerCase().includes(search.toLowerCase()));
+
   return (
     <div className="relative">
       <button
-        onClick={() => setOpen(!open)}
+        onClick={() => { setOpen(!open); setSearch(""); }}
         className="flex items-center gap-2 rounded-md border border-[#4B5563] dark:border-[#2563eb] px-3 py-1.5 text-xs font-medium text-[#111928] dark:text-[#2563eb] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"
       >
         {value}
@@ -96,20 +99,35 @@ function Dropdown({ value, options, onChange }: { value: string; options: string
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full mt-1 z-20 min-w-[120px] rounded-md border border-[#E6EBF1] dark:border-[#27303E] bg-white dark:bg-[#122031] shadow-lg py-1">
-            {options.map((opt) => (
-              <button
-                key={opt}
-                onClick={() => { onChange(opt); setOpen(false); }}
-                className={`block w-full text-left px-3 py-1.5 text-xs transition-colors ${
-                  opt === value
-                    ? "bg-[#5750F1]/10 text-[#5750F1]"
-                    : "text-[#6B7280] dark:text-[#9CA3AF] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332]"
-                }`}
-              >
-                {opt}
-              </button>
-            ))}
+          <div className="absolute right-0 top-full mt-1 z-20 min-w-[200px] rounded-md border border-[#E6EBF1] dark:border-[#27303E] bg-white dark:bg-[#122031] shadow-lg flex flex-col max-h-[300px] overflow-hidden">
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-[#E6EBF1] dark:border-[#27303E] shrink-0">
+              <LuSearch size={12} className="text-[#9CA3AF] shrink-0" />
+              <input
+                autoFocus
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search..."
+                className="flex-1 bg-transparent text-xs text-[#111928] dark:text-white placeholder:text-[#9CA3AF] outline-none"
+                onClick={e => e.stopPropagation()}
+              />
+            </div>
+            <div className="overflow-y-auto py-1">
+              {filtered.length > 0 ? filtered.map((opt) => (
+                <button
+                  key={opt}
+                  onClick={() => { onChange(opt); setOpen(false); }}
+                  className={`block w-full text-left px-3 py-1.5 text-xs transition-colors ${
+                    opt === value
+                      ? "bg-[#5750F1]/10 text-[#5750F1]"
+                      : "text-[#6B7280] dark:text-[#9CA3AF] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332]"
+                  }`}
+                >
+                  {opt}
+                </button>
+              )) : (
+                <p className="px-3 py-2 text-xs text-[#9CA3AF] text-center">No results</p>
+              )}
+            </div>
           </div>
         </>
       )}
@@ -170,119 +188,125 @@ function PlatformDropdownCell({ value, onChange }: { value: string; onChange: (v
   );
 }
 
-/* --- Resource multi-select dropdown cell ---------------------------- */
-const TEAM_MEMBERS = [
-  "Arun", "Satish", "Kapil", "Nityashish", "Yash", "Sahil", "Komal", "Chris", "Sarah", "Lisa", "Raj", "Manish",
-];
-
-function ResourceDropdownCell({ value, onChange, promise }: { value: string; onChange: (v: string) => void; promise?: number | null }) {
+/* --- Resource multi-select dropdown cell ------------- */
+function ResourceDropdownCell({
+  planId, resources, workspaceId, token,
+}: {
+  planId: number;
+  resources: { user_id: number; user_name: string; is_assigned: boolean; promise?: number }[];
+  workspaceId: number | string;
+  token: string | null;
+}) {
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState({ top: 0, left: 0 });
-  const [search, setSearch] = useState("");
-  const btnRef = useRef<HTMLButtonElement>(null);
-
-  const selected = new Set(value.split(",").map(s => s.trim()).filter(Boolean));
-
-  const perUser = (promise != null && selected.size > 0)
-    ? Math.floor(promise / selected.size)
-    : null;
-
-  const fmtShort = (n: number) => `$${n.toLocaleString("en-US")}`;
-
-  const filteredMembers = TEAM_MEMBERS.filter(name =>
-    name.toLowerCase().includes(search.toLowerCase())
+  const [dropPos, setDropPos] = useState({ top: 0, left: 0 });
+  const [selected, setSelected] = useState<Set<number>>(
+    () => new Set(resources.filter(r => r.is_assigned).map(r => r.user_id))
   );
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
 
-  const toggle = (name: string) => {
-    const next = new Set(selected);
-    next.has(name) ? next.delete(name) : next.add(name);
-    onChange([...next].join(", "));
+  // Sync API call
+  const syncResources = async (ids: Set<number>) => {
+    try {
+      await api.put(`/api/v1/planner/plans/${planId}/resources`, {
+        workspace_id: Number(workspaceId),
+        user_ids: [...ids],
+      }, { headers: { Authorization: `Bearer ${token}` } });
+    } catch (err) {
+      console.error("Failed to sync resources", err);
+    }
   };
+
+  // Close on outside click — checks both trigger button and dropdown portal
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Node;
+      const clickedBtn  = btnRef.current?.contains(target);
+      const clickedDrop = dropRef.current?.contains(target);
+      if (!clickedBtn && !clickedDrop) {
+        setOpen(false);
+        syncResources(selected);
+      }
+    };
+    const tid = setTimeout(() => document.addEventListener("click", handler), 0);
+    return () => { clearTimeout(tid); document.removeEventListener("click", handler); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, selected]);
 
   const handleOpen = () => {
     if (btnRef.current) {
       const rect = btnRef.current.getBoundingClientRect();
-      setPos({ top: rect.bottom + 4, left: rect.left });
+      setDropPos({ top: rect.bottom + 4, left: rect.left });
     }
     setOpen(p => !p);
-    setSearch("");
   };
 
-  const label = selected.size === 0
-    ? <span className="text-[#9CA3AF] text-[10px]">Select...</span>
-    : <span className="text-[10px] text-[#5750F1] font-medium truncate">{[...selected].join(", ")}</span>;
+  const toggle = (userId: number) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(userId) ? next.delete(userId) : next.add(userId);
+      return next;
+    });
+  };
+
+  const selectedNames = resources.filter(r => selected.has(r.user_id)).map(r => r.user_name);
 
   return (
-    <div className="relative inline-block">
+    <>
       <button
         ref={btnRef}
         onClick={handleOpen}
         className="flex items-center gap-1 rounded border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] px-2 py-1 text-left w-36 hover:border-[#5750F1]/50 transition-colors"
       >
-        <span className="flex-1 truncate leading-none">{label}</span>
+        <span className="flex-1 truncate leading-none text-[10px]">
+          {selected.size === 0
+            ? <span className="text-[#9CA3AF]">Select...</span>
+            : <span className="text-[#5750F1] font-medium">{selectedNames.join(", ")}</span>}
+        </span>
         <LuChevronDown size={11} className="shrink-0 text-[#9CA3AF]" />
       </button>
-      {open && (
-        <>
-          <div className="fixed inset-0 z-[9998]" onClick={() => { setOpen(false); setSearch(""); }} />
-          <div
-            className="fixed z-[9999] w-52 rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] shadow-xl overflow-hidden"
-            style={{ top: pos.top, left: pos.left }}
-          >
-            {/* Search box */}
-            <div className="flex items-center gap-2 px-3 py-2 border-b border-[#E6EBF1] dark:border-[#374151]">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="text-[#9CA3AF] shrink-0">
-                <circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2"/>
-                <path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-              </svg>
-              <input
-                autoFocus
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Search members..."
-                className="flex-1 bg-transparent text-xs text-[#111928] dark:text-white placeholder:text-[#9CA3AF] outline-none"
-                onClick={e => e.stopPropagation()}
-              />
-            </div>
-            {/* List */}
-            <div className="max-h-44 overflow-y-auto py-1">
-              {filteredMembers.length > 0 ? filteredMembers.map(name => (
-                <label
-                  key={name}
-                  onClick={(e) => { e.stopPropagation(); toggle(name); }}
-                  className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"
-                >
-                  <span
-                    className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border transition-colors ${
-                      selected.has(name)
-                        ? "border-[#5750F1] bg-[#5750F1]"
-                        : "border-[#D1D5DB] dark:border-[#374151]"
-                    }`}
-                  >
-                    {selected.has(name) && (
-                      <svg width="8" height="6" viewBox="0 0 8 6" fill="none">
-                        <path d="M1 3L3 5L7 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    )}
-                  </span>
-                  <span className="flex-1 text-xs text-[#111928] dark:text-[#D1D5DB]">{name}</span>
-                  {selected.has(name) && perUser !== null && (
-                    <span className="text-[9px] font-semibold text-[#5750F1] bg-[#5750F1]/10 rounded px-1 py-0.5 shrink-0">
-                      {fmtShort(perUser)}
+      {open && createPortal(
+        <div
+          ref={dropRef}
+          style={{ position: "fixed", top: dropPos.top, left: dropPos.left, zIndex: 9999 }}
+          className="w-52 rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] shadow-xl overflow-hidden"
+        >
+          <div className="max-h-44 overflow-y-auto py-1">
+            {resources.length > 0 ? resources.map(r => (
+              <div
+                key={r.user_id}
+                onClick={e => { e.stopPropagation(); toggle(r.user_id); }}
+                className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors select-none"
+              >
+                <span className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border transition-colors ${
+                  selected.has(r.user_id) ? "border-[#5750F1] bg-[#5750F1]" : "border-[#D1D5DB] dark:border-[#374151]"
+                }`}>
+                  {selected.has(r.user_id) && (
+                    <svg width="8" height="6" viewBox="0 0 8 6" fill="none">
+                      <path d="M1 3L3 5L7 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </span>
+                <span className="text-xs text-[#111928] dark:text-[#D1D5DB]">
+                  {r.user_name}
+                  {r.is_assigned && (r.promise ?? 0) > 0 && (
+                    <span className="ml-1.5 font-medium text-[#5750F1]">
+                      (${r.promise?.toLocaleString()})
                     </span>
                   )}
-                </label>
-              )) : (
-                <p className="px-3 py-2 text-xs text-[#9CA3AF] text-center">No results</p>
-              )}
-            </div>
+                </span>
+              </div>
+            )) : (
+              <p className="px-3 py-2 text-xs text-[#9CA3AF] text-center">No users</p>
+            )}
           </div>
-        </>
+        </div>,
+        document.body
       )}
-    </div>
+    </>
   );
 }
-
 
 const columnHelper = createColumnHelper<PlanningRow>();
 
@@ -412,15 +436,18 @@ const planColumns = [
     minSize: 100,
     cell: (info) => {
       const row = info.row.original;
-      if (row.isPromiseNote || row.isSubTotal) return null;
-      const updateResources = (info.table.options.meta as { updateResources?: (id: string, v: string) => void } | undefined)?.updateResources;
-      const resourceOverrides = (info.table.options.meta as { resourceOverrides?: Map<string, string> } | undefined)?.resourceOverrides;
-      const currentVal = resourceOverrides?.get(row.id) ?? (info.getValue() || "");
+      if (row.isPromiseNote || row.isSubTotal || !row.planId || !row.rawResources) return null;
+      
+      const meta = info.table.options.meta as any;
+      const workspaceId = meta?.workspaceId ?? 1;
+      const token = meta?.token ?? null;
+      
       return (
         <ResourceDropdownCell
-          value={currentVal}
-          promise={row.promise}
-          onChange={(v) => updateResources?.(row.id, v)}
+          planId={row.planId}
+          resources={row.rawResources}
+          workspaceId={workspaceId}
+          token={token}
         />
       );
     },
@@ -437,14 +464,11 @@ const planColumns = [
       const meta = info.table.options.meta as {
         openGoalModal?: (row: GoalRow) => void;
         savedGoalRowIds?: Set<string>;
-        resourceOverrides?: Map<string, string>;
       } | undefined;
       const saved = meta?.savedGoalRowIds?.has(row.id) ?? false;
-      // Use the current resource selection (override > original data)
-      const currentResources = meta?.resourceOverrides?.get(row.id) ?? row.resources;
       return (
         <button
-          onClick={() => meta?.openGoalModal?.({ ...(row as GoalRow), resources: currentResources })}
+          onClick={() => meta?.openGoalModal?.(row as GoalRow)}
           className={`flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-semibold transition-colors ${
             saved
               ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20"
@@ -475,7 +499,7 @@ function groupByCategory(data: PlanningRow[]): Map<string, PlanningRow[]> {
 }
 
 /* --- Category Table ------------------------------------------------- */
-function CategoryTable({ category, rows, actualsLabel }: { category: string; rows: PlanningRow[]; actualsLabel: string }) {
+function CategoryTable({ category, rows, actualsLabel, workspaceId, token, onRefresh }: { category: string; rows: PlanningRow[]; actualsLabel: string; workspaceId: number | string; token: string | null; onRefresh: () => void }) {
   const [sorting, setSorting] = useState<SortingState>([]);
   /** Tracks which hasExpand row IDs are currently open */
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
@@ -488,8 +512,38 @@ function CategoryTable({ category, rows, actualsLabel }: { category: string; row
   const [showGoalModal, setShowGoalModal] = useState(false);
   const [savedGoalRowIds, setSavedGoalRowIds] = useState<Set<string>>(new Set());
 
-  const openGoalModal = (row: GoalRow) => { setGoalRow(row); setShowGoalModal(true); };
-  const handleGoalSave = (rowId: string) => setSavedGoalRowIds(prev => new Set(prev).add(rowId));
+  const [goalLoading, setGoalLoading] = useState(false);
+  const [goalInitialGoals, setGoalInitialGoals] = useState<any[] | undefined>(undefined);
+  const [goalPlanTotals, setGoalPlanTotals] = useState<any | undefined>(undefined);
+
+  const openGoalModal = async (row: GoalRow & { planId?: number }) => {
+    setGoalRow(row);
+    if (!row.planId) {
+      setShowGoalModal(true);
+      return;
+    }
+    setGoalInitialGoals(undefined);
+    setGoalPlanTotals(undefined);
+    setGoalLoading(true);
+    setShowGoalModal(true);
+    try {
+      const res = await api.get(`/api/v1/planner/plans/${row.planId}/user-goals`, {
+        params: { workspace_id: Number(workspaceId) },
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = res.data?.data;
+      if (data?.plan_totals) setGoalPlanTotals(data.plan_totals);
+      if (data?.user_goals)  setGoalInitialGoals(data.user_goals);
+    } catch (err) {
+      console.error("Failed to fetch user goals", err);
+    } finally {
+      setGoalLoading(false);
+    }
+  };
+  const handleGoalSave = (rowId: string) => {
+    setSavedGoalRowIds(prev => new Set(prev).add(rowId));
+    onRefresh();
+  };
 
   const toggleRow = (id: string) =>
     setExpandedRows((prev) => {
@@ -513,7 +567,7 @@ function CategoryTable({ category, rows, actualsLabel }: { category: string; row
     getCoreRowModel: coreModel,
     getSortedRowModel: sortedModel,
     getExpandedRowModel: expandedModel,
-    meta: { toggleRow, expandedRows, updatePlatform, platformOverrides, updateResources, resourceOverrides, actualsLabel, openGoalModal, savedGoalRowIds },
+    meta: { toggleRow, expandedRows, updatePlatform, platformOverrides, updateResources, resourceOverrides, actualsLabel, openGoalModal, savedGoalRowIds, workspaceId, token },
   });
 
   /**
@@ -644,6 +698,12 @@ function CategoryTable({ category, rows, actualsLabel }: { category: string; row
       onClose={() => setShowGoalModal(false)}
       onSave={handleGoalSave}
       row={goalRow}
+      initialGoals={goalInitialGoals}
+      planTotals={goalPlanTotals}
+      loading={goalLoading}
+      planId={(goalRow as any)?.planId}
+      workspaceId={workspaceId}
+      token={token}
     />
     </>
   );
@@ -651,20 +711,129 @@ function CategoryTable({ category, rows, actualsLabel }: { category: string; row
 
 /* --- Main Component -------------------------------------------------- */
 export default function PlanningSection() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const isUser = user?.role === "user";
+  const workspaceId = useSelector((state: RootState) => state.workspace.selectedId ?? 1);
   const [showSubmitDrawer, setShowSubmitDrawer] = useState(false);
   const [showEditPlan, setShowEditPlan] = useState(false);
   const [showCreateVertical, setShowCreateVertical] = useState(false);
   const [showCreateOffer, setShowCreateOffer] = useState(false);
+  
+  const [rawVerticals, setRawVerticals] = useState<{ id: number; name: string }[]>([]);
+  const [verticalsList, setVerticalsList] = useState<string[]>(["VSL", "Supplement", "E-Commerce", "All"]);
   const [vslFilter, setVslFilter] = useState("VSL");
-  /** Live planning data — updated when user clicks Update in EditPlanDrawer */
-  const [planningData, setPlanningData] = useState(PLANNING_DATA);
 
   /* Planning month */
   const [planningYear,  setPlanningYear]  = useState(2026);
   const [planningMonth, setPlanningMonth] = useState(5); // June
   const [showPlanningPicker, setShowPlanningPicker] = useState(false);
+
+  useEffect(() => {
+    const fetchVerticals = async () => {
+      try {
+        const res = await api.get("/api/v1/planner/verticals", {
+          params: { workspace_id: workspaceId, with_own_offers: false },
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const verts = res.data?.data?.verticals || [];
+        setRawVerticals(verts);
+        const names = verts.map((v: { name: string }) => v.name);
+        
+        if (names.length > 0) {
+          setVerticalsList(names);
+          setVslFilter(names[0]); // Select first vertical by default
+        }
+      } catch (err) {
+        console.error("Failed to fetch verticals", err);
+      }
+    };
+    if (token) fetchVerticals();
+  }, [token, workspaceId]);
+
+  /** Live planning data */
+  const [planningData, setPlanningData] = useState<PlanningRow[]>([]);
+  const [isLoadingPlans, setIsLoadingPlans] = useState(false);
+  const [refreshToggle, setRefreshToggle] = useState(0);
+
+  // Fetch plans when vertical or date changes
+  useEffect(() => {
+    const vertical = rawVerticals.find(v => v.name === vslFilter);
+    if (!vertical || !token) return;
+
+    const fetchPlans = async () => {
+      const monthStr = `${planningYear}-${String(planningMonth + 1).padStart(2, "0")}`;
+      setIsLoadingPlans(true);
+      try {
+        const res = await api.get("/api/v1/planner/plans", {
+          params: { workspace_id: workspaceId, vertical_id: vertical.id, month_year: monthStr },
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        const offers = res.data?.data?.own_offers || [];
+        const rows: PlanningRow[] = [];
+        
+        offers.forEach((offer: any) => {
+          const category = offer.own_offer_name || "Unknown";
+          const platforms = offer.platforms || [];
+          
+          let catPromise = 0, catPerfCeiling = 0, catPerfDelta = 0, catDeltaLoss = 0, catNetPromise = 0;
+          
+          platforms.forEach((p: any) => {
+             const assigned = (p.resources || [])
+               .filter((r: any) => r.is_assigned)
+               .map((r: any) => r.user_name)
+               .join(", ");
+               
+             rows.push({
+               id: `${category}-${p.id}`,
+               planId: p.id,
+               category,
+               platform: p.platform,
+               actuals: null,
+               promise: p.promise ?? null,
+               perfCeiling: p.perf_ceiling ?? null,
+               perfDelta: p.perf_delta ?? null,
+               deltaLoss: p.delta_loss ?? null,
+               netPromise: p.net_promise ?? null,
+               resources: assigned,
+               rawResources: p.resources || [],
+               hasExpand: true,
+               expandCount: 1,
+             });
+             
+             catPromise += p.promise || 0;
+             catPerfCeiling += p.perf_ceiling || 0;
+             catPerfDelta += p.perf_delta || 0;
+             catDeltaLoss += p.delta_loss || 0;
+             catNetPromise += p.net_promise || 0;
+          });
+          
+          if (platforms.length > 0) {
+            rows.push({
+               id: `${category}-sub`,
+               category,
+               platform: "Sub Total",
+               actuals: null,
+               promise: catPromise,
+               perfCeiling: catPerfCeiling,
+               perfDelta: catPerfDelta,
+               deltaLoss: catDeltaLoss,
+               netPromise: catNetPromise,
+               resources: "",
+               isSubTotal: true
+            });
+          }
+        });
+        
+        setPlanningData(rows);
+      } catch (err) {
+        console.error("Failed to fetch plans", err);
+      } finally {
+        setIsLoadingPlans(false);
+      }
+    };
+    fetchPlans();
+  }, [rawVerticals, vslFilter, planningYear, planningMonth, workspaceId, token, refreshToggle]);
 
   /* Actuals month */
   const [actualsYear,  setActualsYear]  = useState(2026);
@@ -672,6 +841,21 @@ export default function PlanningSection() {
   const [showActualsPicker, setShowActualsPicker] = useState(false);
 
   const grouped = useMemo(() => groupByCategory(planningData), [planningData]);
+
+  const grandTotals = useMemo(() => {
+    let actuals = 0, promise = 0, perfCeiling = 0, perfDelta = 0, deltaLoss = 0, netPromise = 0;
+    for (const r of planningData) {
+      if (!r.isSubTotal && !r.isPromiseNote) {
+        actuals += r.actuals || 0;
+        promise += r.promise || 0;
+        perfCeiling += r.perfCeiling || 0;
+        perfDelta += r.perfDelta || 0;
+        deltaLoss += r.deltaLoss || 0;
+        netPromise += r.netPromise || 0;
+      }
+    }
+    return { actuals, promise, perfCeiling, perfDelta, deltaLoss, netPromise };
+  }, [planningData]);
 
   const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const planningLabel = `${MONTHS[planningMonth]} ${planningYear}`;
@@ -748,6 +932,15 @@ export default function PlanningSection() {
         {/* Spacer */}
         <div className="flex-1" />
 
+        {/* Refresh Button */}
+        <button
+          onClick={() => setRefreshToggle(p => p + 1)}
+          className="flex items-center justify-center rounded-md border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] p-1.5 text-[#6B7280] dark:text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white hover:border-[#5750F1]/40 transition-colors"
+          title="Refresh Plans"
+        >
+          <LuRefreshCw size={15} className={isLoadingPlans ? "animate-spin text-[#5750F1]" : ""} />
+        </button>
+
         {/* Create Vertical / Create Offer buttons */}
         <button
           onClick={() => setShowCreateVertical(true)}
@@ -765,7 +958,7 @@ export default function PlanningSection() {
         </button>
 
         {/* VSL Dropdown */}
-        <Dropdown value={vslFilter} options={["VSL", "Supplement", "E-Commerce", "All"]} onChange={setVslFilter} />
+        <Dropdown value={vslFilter} options={verticalsList} onChange={setVslFilter} />
 
         {/* Edit button */}
         <button
@@ -790,21 +983,32 @@ export default function PlanningSection() {
 
       {/* Grouped Tables */}
       <div className="rounded-lg border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] overflow-hidden">
-        {Array.from(grouped.entries()).map(([category, rows]) => (
-          <CategoryTable key={category} category={category} rows={rows} actualsLabel={actualsLabel.replace("  ", " ")} />
-        ))}
+        {isLoadingPlans ? (
+          <div className="flex flex-col items-center justify-center py-20 px-4">
+            <LuLoader size={24} className="animate-spin text-[#5750F1] mb-3" />
+            <span className="text-[#6B7280] dark:text-[#9CA3AF] text-sm font-medium">Loading plans...</span>
+          </div>
+        ) : planningData.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 px-4">
+            <span className="text-[#6B7280] dark:text-[#9CA3AF] text-sm">No plans for this vertical</span>
+          </div>
+        ) : (
+          Array.from(grouped.entries()).map(([category, rows]) => (
+            <CategoryTable key={category} category={category} rows={rows} actualsLabel={actualsLabel.replace("  ", " ")} workspaceId={workspaceId} token={token} onRefresh={() => setRefreshToggle(p => p + 1)} />
+          ))
+        )}
 
         {/* Grand Total */}
         <div className="border-t border-[#E6EBF1] dark:border-[#374151] bg-[#F3F4F6] dark:bg-[#0a0f1a]">
           <div className="flex items-center gap-6 px-4 py-3 overflow-x-auto">
             <span className="text-xs font-bold text-[#111928] dark:text-white shrink-0">Total</span>
             <div className="flex items-center gap-6 text-[11px]">
-              <span className="text-[#6B7280] dark:text-[#9CA3AF]">Actuals <span className="text-[#111928] dark:text-white font-medium">{fmt(TOTALS.actuals)}</span></span>
-              <span className="text-[#6B7280] dark:text-[#9CA3AF]">Promise <span className="text-[#111928] dark:text-white font-medium">{fmt(TOTALS.promise)}</span></span>
-              <span className="text-[#6B7280] dark:text-[#9CA3AF]">Perf. Ceiling <span className="text-[#111928] dark:text-white font-medium">{fmt(TOTALS.perfCeiling)}</span></span>
-              <span className="text-[#6B7280] dark:text-[#9CA3AF]">Perf. Delta <span className="text-[#111928] dark:text-white font-medium">{fmt(TOTALS.perfDelta)}</span></span>
-              <span className="text-[#6B7280] dark:text-[#9CA3AF]">Delta Loss <span className="text-[#111928] dark:text-white font-medium">{fmt(TOTALS.deltaLoss)}</span></span>
-              <span className="text-[#6B7280] dark:text-[#9CA3AF]">Net Promise <span className="text-[#111928] dark:text-white font-medium">{fmt(TOTALS.netPromise)}</span></span>
+              <span className="text-[#6B7280] dark:text-[#9CA3AF]">Actuals <span className="text-[#111928] dark:text-white font-medium">{fmt(grandTotals.actuals)}</span></span>
+              <span className="text-[#6B7280] dark:text-[#9CA3AF]">Promise <span className="text-[#111928] dark:text-white font-medium">{fmt(grandTotals.promise)}</span></span>
+              <span className="text-[#6B7280] dark:text-[#9CA3AF]">Perf. Ceiling <span className="text-[#111928] dark:text-white font-medium">{fmt(grandTotals.perfCeiling)}</span></span>
+              <span className="text-[#6B7280] dark:text-[#9CA3AF]">Perf. Delta <span className="text-[#111928] dark:text-white font-medium">{fmt(grandTotals.perfDelta)}</span></span>
+              <span className="text-[#6B7280] dark:text-[#9CA3AF]">Delta Loss <span className="text-[#111928] dark:text-white font-medium">{fmt(grandTotals.deltaLoss)}</span></span>
+              <span className="text-[#6B7280] dark:text-[#9CA3AF]">Net Promise <span className="text-[#111928] dark:text-white font-medium">{fmt(grandTotals.netPromise)}</span></span>
             </div>
           </div>
         </div>
