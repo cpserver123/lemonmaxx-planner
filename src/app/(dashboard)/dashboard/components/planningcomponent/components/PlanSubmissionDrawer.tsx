@@ -1,8 +1,13 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { LuX, LuSend, LuTriangleAlert, LuPlus, LuCalendar, LuChevronLeft, LuChevronRight, LuChevronDown, LuTarget } from "react-icons/lu";
+import { createPortal } from "react-dom";
+import { LuX, LuSend, LuTriangleAlert, LuPlus, LuCalendar, LuChevronLeft, LuChevronRight, LuChevronDown, LuTarget, LuLoader, LuSearch } from "react-icons/lu";
 import GoalAssignModal, { type GoalRow } from "./goalassign";
+import { useSelector } from "react-redux";
+import type { RootState } from "@/store";
+import api from "@/app/utils/axios";
+import { useAuth } from "@/context/AuthContext";
 
 /* --- Types ----------------------------------------------------------- */
 interface PlanRow {
@@ -253,6 +258,93 @@ function PlatformCell({ value, onChange }: { value: string; onChange: (v: string
   );
 }
 
+/* --- Plan Resource Cell -------------------------------------------- */
+function PlanResourceCell({ resources }: {
+  resources: { user_id: number; user_name: string; is_assigned: boolean }[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [dropPos, setDropPos] = useState({ top: 0, left: 0 });
+  const [selected, setSelected] = useState<Set<number>>(
+    () => new Set(resources.filter(r => r.is_assigned).map(r => r.user_id))
+  );
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (btnRef.current && !btnRef.current.contains(target)) setOpen(false);
+    };
+    const tid = setTimeout(() => document.addEventListener("click", handler), 0);
+    return () => { clearTimeout(tid); document.removeEventListener("click", handler); };
+  }, [open]);
+
+  const handleOpen = () => {
+    if (btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setDropPos({ top: rect.bottom + 4, left: rect.left });
+    }
+    setOpen(p => !p);
+  };
+
+  const toggle = (userId: number) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(userId) ? next.delete(userId) : next.add(userId);
+      return next;
+    });
+  };
+
+  const selectedNames = resources.filter(r => selected.has(r.user_id)).map(r => r.user_name);
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        onClick={handleOpen}
+        className="flex items-center gap-1 rounded border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] px-2 py-1 text-left w-36 hover:border-[#5750F1]/50 transition-colors"
+      >
+        <span className="flex-1 truncate leading-none text-[10px]">
+          {selected.size === 0
+            ? <span className="text-[#9CA3AF]">Select...</span>
+            : <span className="text-[#5750F1] font-medium">{selectedNames.join(", ")}</span>}
+        </span>
+        <LuChevronDown size={11} className="shrink-0 text-[#9CA3AF]" />
+      </button>
+      {open && createPortal(
+        <div
+          style={{ position: "fixed", top: dropPos.top, left: dropPos.left, zIndex: 9999 }}
+          className="w-52 rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] shadow-xl overflow-hidden"
+        >
+          <div className="max-h-44 overflow-y-auto py-1">
+            {resources.length > 0 ? resources.map(r => (
+              <label
+                key={r.user_id}
+                onClick={() => toggle(r.user_id)}
+                className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"
+              >
+                <span className={`flex h-3.5 w-3.5 items-center justify-center rounded border transition-colors ${
+                  selected.has(r.user_id) ? "border-[#5750F1] bg-[#5750F1]" : "border-[#D1D5DB] dark:border-[#374151]"
+                }`}>
+                  {selected.has(r.user_id) && (
+                    <svg width="8" height="6" viewBox="0 0 8 6" fill="none">
+                      <path d="M1 3L3 5L7 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </span>
+                <span className="text-xs text-[#111928] dark:text-[#D1D5DB]">{r.user_name}</span>
+              </label>
+            )) : (
+              <p className="px-3 py-2 text-xs text-[#9CA3AF] text-center">No users</p>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
+  );
+}
+
 /* --- PlanSubmissionDrawer -------------------------------------------- */
 export default function PlanSubmissionDrawer({
   open,
@@ -261,6 +353,9 @@ export default function PlanSubmissionDrawer({
   open:    boolean;
   onClose: () => void;
 }) {
+  const workspaceId = useSelector((state: RootState) => state.workspace.selectedId ?? 1);
+  const { token } = useAuth();
+
   const [rows, setRows] = useState<PlanRow[]>(INITIAL_ROWS);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [goalRow, setGoalRow] = useState<GoalRow | null>(null);
@@ -322,14 +417,105 @@ export default function PlanSubmissionDrawer({
   const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
   /* --- Vertical dropdown ---- */
-  const [verticals, setVerticals] = useState(["VSL", "Supplement", "E-Commerce"]);
-  const [selectedVertical, setSelectedVertical] = useState("VSL");
+  const [verticals, setVerticals] = useState<{ id: number; name: string }[]>([]);
+  const [selectedVertical, setSelectedVertical] = useState<{ id: number; name: string } | null>(null);
   const [showVerticalDrop, setShowVerticalDrop] = useState(false);
+  const [loadingVerticals, setLoadingVerticals] = useState(false);
+  const [verticalSearch, setVerticalSearch] = useState("");
 
-  /* --- Planning month picker ---- */
+  const filteredVerticals = verticals.filter(v => v.name.toLowerCase().includes(verticalSearch.toLowerCase()));
+
+  useEffect(() => {
+    if (open) {
+      const fetchVerticals = async () => {
+        setLoadingVerticals(true);
+        try {
+          const res = await api.get("/api/v1/planner/verticals", {
+            params: { workspace_id: workspaceId, with_own_offers: false },
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          const verts: { id: number; name: string }[] = res.data?.data?.verticals || [];
+          setVerticals(verts);
+          setSelectedVertical(null);
+          setOwnOffers([]);
+        } catch (err) {
+          console.error("Failed to fetch verticals", err);
+        } finally {
+          setLoadingVerticals(false);
+        }
+      };
+      fetchVerticals();
+    }
+  }, [open, workspaceId, token]);
+
+  /* --- Own Offers ---- */
+  interface OwnOffer { id: number; name: string; vertical_id: number; vertical_name: string; }
+  const [ownOffers, setOwnOffers] = useState<OwnOffer[]>([]);
+  const [loadingOffers, setLoadingOffers] = useState(false);
+
+  useEffect(() => {
+    if (!selectedVertical) { setOwnOffers([]); return; }
+    const fetchOffers = async () => {
+      setLoadingOffers(true);
+      try {
+        const res = await api.get("/api/v1/planner/own-offers", {
+          params: { workspace_id: workspaceId, vertical_id: selectedVertical.id },
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setOwnOffers(res.data?.data?.own_offers || []);
+      } catch (err) {
+        console.error("Failed to fetch own offers", err);
+        setOwnOffers([]);
+      } finally {
+        setLoadingOffers(false);
+      }
+    };
+    fetchOffers();
+  }, [selectedVertical, workspaceId, token]);
+
+  /* --- Plans fetched from API, grouped by own_offer_id ---- */
+  interface PlanResource { user_id: number; user_name: string; is_assigned: boolean; }
+  interface PlanPlatform {
+    id: number;
+    platform: string;
+    promise: number;
+    perf_ceiling: number;
+    perf_delta: number;
+    delta_loss: number;
+    net_promise: number;
+    resources: PlanResource[];
+  }
+  const [plansByOffer, setPlansByOffer] = useState<Record<number, PlanPlatform[]>>({});
   const [planYear,  setPlanYear]  = useState(2026);
   const [planMonth, setPlanMonth] = useState(5); // June
   const [showPlanPicker, setShowPlanPicker] = useState(false);
+
+  /* --- Fetch plans from API ---- */
+  const fetchPlans = async (verticalId: number, year: number, month: number) => {
+    const monthStr = `${year}-${String(month + 1).padStart(2, "0")}`;
+    try {
+      const res = await api.get("/api/v1/planner/plans", {
+        params: { workspace_id: workspaceId, vertical_id: verticalId, month_year: monthStr },
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const offers: { own_offer_id: number; platforms: PlanPlatform[] }[] = res.data?.data?.own_offers || [];
+      const byOffer: Record<number, PlanPlatform[]> = {};
+      offers.forEach(o => { byOffer[o.own_offer_id] = o.platforms || []; });
+      setPlansByOffer(byOffer);
+    } catch (err) {
+      console.error("Failed to fetch plans", err);
+    }
+  };
+
+  // Auto-fetch plans when vertical or month changes
+  useEffect(() => {
+    if (selectedVertical) {
+      fetchPlans(selectedVertical.id, planYear, planMonth);
+    } else {
+      setPlansByOffer({});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedVertical, planYear, planMonth]);
 
   /* --- Actuals month picker ---- */
   const [actYear,  setActYear]  = useState(2026);
@@ -344,7 +530,7 @@ export default function PlanSubmissionDrawer({
 
   /* --- Add Platform modal ---- */
   const [showAddPlatform, setShowAddPlatform] = useState(false);
-  const [addPlatformCategory, setAddPlatformCategory] = useState("");
+  const [addPlatformOffer, setAddPlatformOffer] = useState<OwnOffer | null>(null);
   const [newPlatformForm, setNewPlatformForm] = useState({
     platform: "",
     promise: "",
@@ -353,53 +539,132 @@ export default function PlanSubmissionDrawer({
     deltaLoss: "",
     netPromise: "",
   });
+  const [platformSaving, setPlatformSaving] = useState(false);
+  const [platformSaveError, setPlatformSaveError] = useState<string | null>(null);
 
-  const openAddPlatform = (cat: string) => {
-    setAddPlatformCategory(cat);
+  const openAddPlatform = (offer: OwnOffer) => {
+    setAddPlatformOffer(offer);
     setNewPlatformForm({ platform: "", promise: "", perfCeiling: "", perfDelta: "", deltaLoss: "", netPromise: "" });
+    setPlatformSaveError(null);
     setShowAddPlatform(true);
   };
 
-  const saveAddPlatform = () => {
-    const p = newPlatformForm.platform.trim();
-    if (!p) return;
-    // Duplicate check within the same category
-    const catRows = rows.filter(r => r.category === addPlatformCategory && !r.isSubTotal && !r.isNote);
-    if (catRows.some(r => r.platform.toLowerCase() === p.toLowerCase())) return;
-    const parseNum = (s: string) => { const n = parseFloat(s.replace(/[$,]/g, "")); return isNaN(n) ? null : n; };
-    const newRow: PlanRow = {
-      id: `${addPlatformCategory.toLowerCase().replace(/\s+/g, "-")}-${p.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}`,
-      category: addPlatformCategory,
-      platform: p,
-      actuals: null,
-      promise: parseNum(newPlatformForm.promise),
-      perfCeiling: parseNum(newPlatformForm.perfCeiling),
-      perfDelta: parseNum(newPlatformForm.perfDelta),
-      deltaLoss: parseNum(newPlatformForm.deltaLoss),
-      netPromise: parseNum(newPlatformForm.netPromise),
-      resources: "",
-      hasExpand: false,
-    };
-    // Insert before the Sub Total row of this category
-    setRows(prev => {
-      const idx = prev.findIndex(r => r.category === addPlatformCategory && r.isSubTotal);
-      if (idx === -1) return [...prev, newRow];
-      const next = [...prev];
-      next.splice(idx, 0, newRow);
-      return next;
-    });
-    setShowAddPlatform(false);
+  /* --- Inline cell editing ---- */
+  type EditField = "platform" | "promise" | "perf_ceiling" | "perf_delta" | "delta_loss" | "net_promise";
+  const [editingCell, setEditingCell] = useState<{ planId: number; field: EditField; value: string } | null>(null);
+
+  const startEdit = (planId: number, field: EditField, currentVal: string | number) => {
+    setEditingCell({ planId, field, value: String(currentVal) });
   };
 
-  const saveVertical = () => {
-    const v = newVertical.trim();
-    if (v && !verticals.includes(v)) {
-      setVerticals(prev => [...prev, v]);
-      setSelectedVertical(v);
+  const commitEdit = async () => {
+    if (!editingCell) return;
+    const { planId, field, value } = editingCell;
+    setEditingCell(null);
+
+    // Optimistically update local state
+    const numVal = field !== "platform" ? (parseFloat(value) || 0) : undefined;
+    setPlansByOffer(prev => {
+      const next = { ...prev };
+      for (const offerId of Object.keys(next)) {
+        next[Number(offerId)] = next[Number(offerId)].map(p => {
+          if (p.id !== planId) return p;
+          return { ...p, [field]: numVal !== undefined ? numVal : value };
+        });
+      }
+      return next;
+    });
+
+    // Find current platform row for full payload
+    let current: PlanPlatform | undefined;
+    for (const platforms of Object.values(plansByOffer)) {
+      current = platforms.find(p => p.id === planId);
+      if (current) break;
     }
-    setNewVertical("");
-    setShowAddModal(false);
+    if (!current) return;
+
+    try {
+      await api.put(`/api/v1/planner/plans/${planId}`, {
+        workspace_id: workspaceId,
+        platform: field === "platform" ? value : current.platform,
+        promise: field === "promise" ? numVal : current.promise,
+        perf_ceiling: field === "perf_ceiling" ? numVal : current.perf_ceiling,
+        perf_delta: field === "perf_delta" ? numVal : current.perf_delta,
+        delta_loss: field === "delta_loss" ? numVal : current.delta_loss,
+        net_promise: field === "net_promise" ? numVal : current.net_promise,
+      }, { headers: { Authorization: `Bearer ${token}` } });
+    } catch (err) {
+      console.error("Failed to update plan", err);
+      // Re-fetch to restore correct data on error
+      if (selectedVertical) fetchPlans(selectedVertical.id, planYear, planMonth);
+    }
   };
+
+  const EditableCell = ({
+    planId, field, value, isText = false, bold = false,
+  }: { planId: number; field: EditField; value: number | string; isText?: boolean; bold?: boolean }) => {
+    const isEditing = editingCell?.planId === planId && editingCell?.field === field;
+    const displayVal = isText ? String(value) : `$${Number(value).toLocaleString()}`;
+    if (isEditing) {
+      return (
+        <input
+          autoFocus
+          type={isText ? "text" : "number"}
+          value={editingCell!.value}
+          onChange={e => setEditingCell(c => c ? { ...c, value: e.target.value } : c)}
+          onBlur={commitEdit}
+          onKeyDown={e => { if (e.key === "Enter") commitEdit(); if (e.key === "Escape") setEditingCell(null); }}
+          className="w-full rounded border border-[#5750F1] bg-[#EEF2FF] dark:bg-[#1e2a44] px-1.5 py-0.5 text-xs text-[#111928] dark:text-white outline-none"
+        />
+      );
+    }
+    return (
+      <span
+        onClick={() => startEdit(planId, field, value)}
+        title="Click to edit"
+        className={`cursor-pointer rounded px-1 py-0.5 hover:bg-[#EEF2FF] dark:hover:bg-[#1e2a44] transition-colors ${
+          bold ? "font-medium text-[#111928] dark:text-[#D1D5DB]" : "text-[#111928] dark:text-[#D1D5DB]"
+        } text-xs`}
+      >
+        {displayVal}
+      </span>
+    );
+  };
+
+  const saveAddPlatform = async () => {
+    const p = newPlatformForm.platform.trim();
+    if (!p || !addPlatformOffer || !selectedVertical) return;
+    const parseNum = (s: string) => { const n = parseFloat(s.replace(/[$,]/g, "")); return isNaN(n) ? 0 : n; };
+    const monthStr = `${planYear}-${String(planMonth + 1).padStart(2, "0")}`;
+
+    setPlatformSaving(true);
+    setPlatformSaveError(null);
+    try {
+      const res = await api.post("/api/v1/planner/plans", {
+        workspace_id: workspaceId,
+        own_offer_id: addPlatformOffer.id,
+        vertical_id: selectedVertical.id,
+        platform: p,
+        month_year: monthStr,
+        promise: parseNum(newPlatformForm.promise),
+        perf_ceiling: parseNum(newPlatformForm.perfCeiling),
+        perf_delta: parseNum(newPlatformForm.perfDelta),
+        delta_loss: parseNum(newPlatformForm.deltaLoss),
+        net_promise: parseNum(newPlatformForm.netPromise),
+      }, { headers: { Authorization: `Bearer ${token}` } });
+
+
+      setShowAddPlatform(false);
+      // Re-fetch plans to get server data with users
+      if (selectedVertical) fetchPlans(selectedVertical.id, planYear, planMonth);
+
+    } catch (err: any) {
+      setPlatformSaveError(err.response?.data?.message || "Failed to save plan");
+    } finally {
+      setPlatformSaving(false);
+    }
+  };
+
 
 
   return (
@@ -439,19 +704,40 @@ export default function PlanSubmissionDrawer({
               onClick={() => { setShowVerticalDrop(p => !p); setShowPlanPicker(false); setShowActPicker(false); }}
               className="flex items-center gap-1.5 rounded-md border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] px-2.5 py-1.5 text-xs font-medium text-[#111928] dark:text-white hover:border-[#5750F1]/40 transition-colors"
             >
-              {selectedVertical}
-              <LuChevronDown size={12} />
+              {loadingVerticals ? (
+                <><LuLoader size={12} className="animate-spin text-[#9CA3AF]" /> Loading...</>
+              ) : (
+                <>
+                  {selectedVertical?.name || "Select vertical"}
+                  <LuChevronDown size={12} className="text-[#9CA3AF]" />
+                </>
+              )}
             </button>
             {showVerticalDrop && (
               <>
                 <div className="fixed inset-0 z-30" onClick={() => setShowVerticalDrop(false)} />
-                <div className="absolute left-0 top-full mt-1 z-40 min-w-[140px] rounded-xl border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] shadow-xl py-1">
-                  {verticals.map(v => (
-                    <button key={v} onClick={() => { setSelectedVertical(v); setShowVerticalDrop(false); }}
-                      className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
-                        v === selectedVertical ? "bg-[#5750F1]/10 text-[#5750F1] font-medium" : "text-[#111928] dark:text-[#D1D5DB] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332]"
-                      }`}>{v}</button>
-                  ))}
+                <div className="absolute left-0 top-full mt-1 z-40 w-56 rounded-xl border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] shadow-xl overflow-hidden">
+                  <div className="flex items-center gap-2 px-3 py-2 border-b border-[#E6EBF1] dark:border-[#374151]">
+                    <LuSearch size={13} className="text-[#9CA3AF] shrink-0" />
+                    <input
+                      autoFocus
+                      value={verticalSearch}
+                      onChange={e => setVerticalSearch(e.target.value)}
+                      placeholder="Search verticals..."
+                      className="flex-1 bg-transparent text-xs text-[#111928] dark:text-white placeholder:text-[#9CA3AF] outline-none"
+                      onClick={e => e.stopPropagation()}
+                    />
+                  </div>
+                  <div className="max-h-40 overflow-y-auto py-1">
+                    {filteredVerticals.length > 0 ? filteredVerticals.map(v => (
+                      <button key={v.id} onClick={() => { setSelectedVertical(v); setShowVerticalDrop(false); setVerticalSearch(""); }}
+                        className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
+                          selectedVertical?.id === v.id ? "bg-[#5750F1]/10 text-[#5750F1] font-medium" : "text-[#111928] dark:text-[#D1D5DB] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332]"
+                        }`}>{v.name}</button>
+                    )) : (
+                      <p className="px-3 py-2 text-xs text-[#9CA3AF] text-center">No results</p>
+                    )}
+                  </div>
                 </div>
               </>
             )}
@@ -537,26 +823,43 @@ export default function PlanSubmissionDrawer({
 
         {/* Scrollable table */}
         <div className="flex-1 overflow-auto px-5 py-4">
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse min-w-[700px]">
-              {categories.map(cat => {
-                const catRows = rows.filter(r => r.category === cat);
-                return (
-                  <tbody key={cat}>
-                    {/* Category header */}
+          {!selectedVertical ? (
+            <div className="flex flex-col items-center justify-center h-full text-center gap-3 py-20">
+              <div className="w-12 h-12 rounded-full bg-[#5750F1]/10 flex items-center justify-center">
+                <LuTarget size={22} className="text-[#5750F1]" />
+              </div>
+              <p className="text-sm font-semibold text-[#111928] dark:text-white">Select a Vertical</p>
+              <p className="text-xs text-[#9CA3AF] max-w-xs">Choose a vertical from the dropdown above to load its offers and begin planning.</p>
+            </div>
+          ) : loadingOffers ? (
+            <div className="flex items-center justify-center h-full gap-2 py-20">
+              <LuLoader size={16} className="animate-spin text-[#5750F1]" />
+              <span className="text-xs text-[#9CA3AF]">Loading offers...</span>
+            </div>
+          ) : ownOffers.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-center gap-3 py-20">
+              <p className="text-sm font-semibold text-[#111928] dark:text-white">No Offers Found</p>
+              <p className="text-xs text-[#9CA3AF]">No own offers have been created for <span className="text-[#5750F1] font-medium">{selectedVertical.name}</span> yet.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse min-w-[700px]">
+                {ownOffers.map(offer => (
+                  <tbody key={offer.id}>
+                    {/* Offer name header */}
                     <tr>
-                      <td colSpan={COLS.length + 1} className="pt-5 pb-1">
-                        <span className="text-xs font-bold text-[#5750F1] uppercase tracking-wide">{cat}</span>
+                      <td colSpan={COLS.length + 2} className="pt-5 pb-1">
+                        <span className="text-xs font-bold text-[#5750F1] uppercase tracking-wide">{offer.name}</span>
                       </td>
                     </tr>
 
-                    {/* Column headers */}
+                    {/* Column headers only */}
                     <tr className="border-b border-[#E6EBF1] dark:border-[#1F2A37] bg-[#F9FAFB] dark:bg-[#0a1018]">
                       <th className="text-left px-3 py-2 text-[10px] font-semibold text-[#9CA3AF] uppercase tracking-wide w-28">
                         <span className="flex items-center gap-1.5">
                           Platform
                           <button
-                            onClick={() => openAddPlatform(cat)}
+                            onClick={() => openAddPlatform(offer)}
                             className="flex items-center justify-center h-4 w-4 rounded border border-[#5750F1]/40 text-[#5750F1] hover:bg-[#5750F1]/10 transition-colors"
                             title="Add platform row"
                           >
@@ -565,95 +868,45 @@ export default function PlanSubmissionDrawer({
                         </span>
                       </th>
                       {COLS.map(c => (
-                        <th key={String(c.key)} className={`text-left px-3 py-2 text-[10px] font-semibold uppercase tracking-wide ${c.key === "actuals" ? "text-[#9CA3AF] bg-[#F3F4F6] dark:bg-[#0a0f1a]" : "text-[#9CA3AF]"} ${c.w}`}>
+                        <th key={String(c.key)} className={`text-left px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-[#9CA3AF] ${c.w}`}>
                           {c.label}
-                          {c.readOnly && <span className="ml-1 text-[8px] text-[#6B7280] normal-case">(locked)</span>}
                         </th>
                       ))}
                       <th className="text-left px-3 py-2 text-[10px] font-semibold text-[#9CA3AF] uppercase tracking-wide w-20">Assign Goal</th>
                     </tr>
 
-                    {catRows.map((row, rowIdx) => {
-                      // Skip note rows entirely
-                      if (row.isNote) return null;
-
-                      if (row.isSubTotal) {
-                        // Compute totals live from the editable data rows in this category
-                        const dataRows = catRows.filter(r => !r.isSubTotal && !r.isNote);
-                        const sumOf = (key: keyof PlanRow) =>
-                          dataRows.reduce((acc, r) => acc + (typeof r[key] === "number" ? (r[key] as number) : 0), 0);
-
-                        return (
-                          <tr key={row.id} className="border-b-2 border-[#E6EBF1] dark:border-[#374151] bg-[#F3F4F6] dark:bg-[#0a0f1a]">
-                            <td className="px-3 py-2 text-[11px] font-bold text-[#6B7280] dark:text-[#9CA3AF]">Sub Total</td>
-                            {COLS.map(c => {
-                              const isNumeric = c.key !== "resources";
-                              const total = isNumeric ? sumOf(c.key) : null;
-                              return (
-                                <td key={String(c.key)} className={`px-3 py-2 ${c.key === "actuals" ? "bg-[#EDEEF0] dark:bg-[#060a10]" : ""}`}>
-                                  {isNumeric ? (
-                                    <span className={`text-xs font-semibold ${total !== null && total < 0 ? "text-red-400" : "text-[#111928] dark:text-[#D1D5DB]"}`}>
-                                      {fmt(total)}
-                                    </span>
-                                  ) : (
-                                    <span className="text-xs text-[#9CA3AF]">-</span>
-                                  )}
-                                </td>
-                              );
-                            })}
-                            <td className="px-3 py-2" />
-                          </tr>
-                        );
-                      }
-
-                      return (
-                        <tr key={row.id} className="border-b border-[#E6EBF1] dark:border-[#1F2A37] hover:bg-[#F9FAFB] dark:hover:bg-[#0a1018] transition-colors">
-                          <td className="px-3 py-2">
-                            <div className="flex items-center gap-1.5">
-                            
-                              <PlatformCell
-                                value={row.platform}
-                                onChange={v => update(row.id, "platform", v)}
-                              />
-                            </div>
-                          </td>
-                          {COLS.map(c => (
-                            <td key={String(c.key)} className={`px-3 py-2 ${c.key === "actuals" ? "bg-[#F3F4F6]/50 dark:bg-[#060a10]" : ""}`}>
-                              {c.key === "resources" ? (
-                                <ResourceCell
-                                  value={row.resources}
-                                  onChange={v => update(row.id, "resources", v)}
-                                />
-                              ) : (
-                                <NumCell
-                                  value={row[c.key] as number | null}
-                                  onChange={v => update(row.id, c.key, v)}
-                                  readOnly={c.readOnly}
-                                />
-                              )}
-                            </td>
-                          ))}
-                          <td className="px-3 py-2">
-                            <button
-                              onClick={() => { setGoalRow(row as GoalRow); setShowGoalModal(true); setSubmitError(null); }}
-                              className={`flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-semibold transition-colors ${
-                                savedGoalRowIds.has(row.id)
-                                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20"
-                                  : "border-[#5750F1]/40 bg-[#5750F1]/5 text-[#5750F1] hover:bg-[#5750F1]/15"
-                              }`}
-                            >
-                              <LuTarget size={10} />
-                              {savedGoalRowIds.has(row.id) ? "Assigned" : "Goal"}
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {/* Plan rows for this offer */}
+                    {(plansByOffer[offer.id] ?? []).map(platform => (
+                      <tr key={platform.id} className="border-b border-[#E6EBF1] dark:border-[#1F2A37] hover:bg-[#F9FAFB] dark:hover:bg-[#0a1018] transition-colors">
+                        <td className="px-3 py-2">
+                          <EditableCell planId={platform.id} field="platform" value={platform.platform} isText bold />
+                        </td>
+                        <td className="px-3 py-2">
+                          <EditableCell planId={platform.id} field="promise" value={platform.promise} />
+                        </td>
+                        <td className="px-3 py-2">
+                          <EditableCell planId={platform.id} field="perf_ceiling" value={platform.perf_ceiling} />
+                        </td>
+                        <td className="px-3 py-2">
+                          <EditableCell planId={platform.id} field="perf_delta" value={platform.perf_delta} />
+                        </td>
+                        <td className="px-3 py-2">
+                          <EditableCell planId={platform.id} field="delta_loss" value={platform.delta_loss} />
+                        </td>
+                        <td className="px-3 py-2">
+                          <EditableCell planId={platform.id} field="net_promise" value={platform.net_promise} />
+                        </td>
+                        <td className="px-3 py-2">
+                          <PlanResourceCell resources={platform.resources} />
+                        </td>
+                        <td className="px-3 py-2" />
+                      </tr>
+                    ))}
                   </tbody>
-                );
-              })}
-            </table>
-          </div>
+                ))}
+              </table>
+            </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -703,7 +956,7 @@ export default function PlanSubmissionDrawer({
               <h3 className="text-sm font-bold text-[#111928] dark:text-white">Add Platform</h3>
               <button onClick={() => setShowAddPlatform(false)} className="text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white transition-colors"><LuX size={15} /></button>
             </div>
-            <p className="text-[11px] text-[#9CA3AF] mb-4">Adding to <span className="font-semibold text-[#5750F1]">{addPlatformCategory}</span>. Duplicate platforms are not allowed.</p>
+            <p className="text-[11px] text-[#9CA3AF] mb-4">Adding to <span className="font-semibold text-[#5750F1]">{addPlatformOffer?.name}</span>. Duplicate platforms are not allowed.</p>
 
             {/* Platform dropdown */}
             <div className="mb-3">
@@ -716,7 +969,7 @@ export default function PlanSubmissionDrawer({
                 >
                   <option value="" disabled hidden>Select platform...</option>
                   {PLATFORM_OPTIONS
-                    .filter(opt => !rows.filter(r => r.category === addPlatformCategory && !r.isSubTotal && !r.isNote).some(r => r.platform.toLowerCase() === opt.toLowerCase()))
+                    .filter(opt => !(plansByOffer[addPlatformOffer?.id ?? -1] ?? []).some(r => r.platform.toLowerCase() === opt.toLowerCase()))
                     .map(opt => <option key={opt} value={opt}>{opt}</option>)
                   }
                 </select>
@@ -746,14 +999,15 @@ export default function PlanSubmissionDrawer({
               ))}
             </div>
 
-            <div className="flex items-center justify-end gap-2">
-              <button onClick={() => setShowAddPlatform(false)} className="rounded-lg border border-[#E6EBF1] dark:border-[#374151] px-4 py-2 text-xs font-medium text-[#6B7280] dark:text-[#9CA3AF] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors">Cancel</button>
+            <div className="flex items-center justify-end gap-2 mt-1">
+              {platformSaveError && <span className="text-[11px] text-red-400 mr-2">{platformSaveError}</span>}
+              <button onClick={() => setShowAddPlatform(false)} disabled={platformSaving} className="rounded-lg border border-[#E6EBF1] dark:border-[#374151] px-4 py-2 text-xs font-medium text-[#6B7280] dark:text-[#9CA3AF] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors disabled:opacity-50">Cancel</button>
               <button
                 onClick={saveAddPlatform}
-                disabled={!newPlatformForm.platform.trim()}
-                className="rounded-lg bg-[#5750F1] px-4 py-2 text-xs font-semibold text-white hover:bg-[#4742d4] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                disabled={!newPlatformForm.platform.trim() || platformSaving}
+                className="flex items-center gap-2 rounded-lg bg-[#5750F1] px-4 py-2 text-xs font-semibold text-white hover:bg-[#4742d4] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
-                Save
+                {platformSaving ? <><LuLoader size={13} className="animate-spin" /> Saving...</> : "Save"}
               </button>
             </div>
           </div>
@@ -771,7 +1025,7 @@ export default function PlanSubmissionDrawer({
               ref={addInputRef}
               value={newVertical}
               onChange={e => setNewVertical(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter") saveVertical(); if (e.key === "Escape") setShowAddModal(false); }}
+              onKeyDown={e => { if (e.key === "Escape") setShowAddModal(false); }}
               placeholder="e.g. Weight Management"
               className="w-full rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-[#F9FAFB] dark:bg-[#0a1018] px-3 py-2 text-sm text-[#111928] dark:text-white placeholder:text-[#9CA3AF] outline-none focus:border-[#5750F1] transition-colors mb-4"
             />
@@ -783,7 +1037,7 @@ export default function PlanSubmissionDrawer({
                 Cancel
               </button>
               <button
-                onClick={saveVertical}
+                onClick={() => setShowAddModal(false)}
                 disabled={!newVertical.trim()}
                 className="rounded-lg bg-[#5750F1] px-4 py-2 text-xs font-semibold text-white hover:bg-[#4742d4] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >

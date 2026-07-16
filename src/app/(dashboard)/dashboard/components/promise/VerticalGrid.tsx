@@ -1,9 +1,14 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { useSelector } from "react-redux";
+import type { RootState } from "@/store";
+import api from "@/app/utils/axios";
+import { useAuth } from "@/context/AuthContext";
+import { toast } from "react-toastify";
 import type { VerticalData } from "./VerticalCard";
 import PromiseFilters from "./PromiseFilters";
-import { LuPlus, LuX, LuChevronDown, LuTriangleAlert, LuPencil, LuSearch } from "react-icons/lu";
+import { LuPlus, LuX, LuChevronDown, LuTriangleAlert, LuPencil, LuSearch, LuLoader } from "react-icons/lu";
 
 /* --- Create Vertical Modal --------------------------------------------- */
 export function CreateVerticalModal({
@@ -15,18 +20,45 @@ export function CreateVerticalModal({
   onClose: () => void;
   onSave: (name: string) => void;
 }) {
+  const workspaceId = useSelector((state: RootState) => state.workspace.selectedId ?? 1);
+  const { token } = useAuth();
+
   const [name, setName] = useState("");
   const [verticalSearch, setVerticalSearch] = useState("");
   const [verticalOpen, setVerticalOpen] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [verticals, setVerticals] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const dropRef = useRef<HTMLDivElement>(null);
 
-  const VERTICALS = ["Blood Sugar", "Weight Loss", "Skin Care", "Hair Care", "Dental", "Vision", "Hearing"];
-  const filteredVerticals = VERTICALS.filter(v => v.toLowerCase().includes(verticalSearch.toLowerCase()));
+  const filteredVerticals = verticals.filter(v => v.toLowerCase().includes(verticalSearch.toLowerCase()));
+
+  const fetchVerticals = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.get("/api/v1/planner/verticals-offer-list-from-redtrack", {
+        params: { workspace_id: workspaceId, type: "vertical" },
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setVerticals(res.data?.data?.verticals ?? []);
+    } catch {
+      setError("Failed to load verticals.");
+    } finally {
+      setLoading(false);
+    }
+  }, [workspaceId, token]);
 
   useEffect(() => {
-    if (open) { setName(""); setVerticalSearch(""); setVerticalOpen(false); setTimeout(() => inputRef.current?.focus(), 50); }
-  }, [open]);
+    if (open) {
+      setName("");
+      setVerticalSearch("");
+      setVerticalOpen(false);
+      fetchVerticals();
+    }
+  }, [open, fetchVerticals]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -37,11 +69,27 @@ export function CreateVerticalModal({
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const v = name.trim();
     if (!v) return;
-    onSave(v);
-    onClose();
+
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await api.post("/api/v1/planner/verticals", {
+        workspace_id: workspaceId,
+        name: v
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      toast.success("Vertical created successfully");
+      onSave(v);
+      onClose();
+    } catch (err: any) {
+      setSaveError(err.response?.data?.message || "Failed to save vertical");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -57,18 +105,18 @@ export function CreateVerticalModal({
         {/* Searchable vertical dropdown */}
         <div className="relative mb-4" ref={dropRef}>
           <div
-            ref={inputRef as any}
-            onClick={() => setVerticalOpen(p => !p)}
+            onClick={() => !loading && setVerticalOpen(p => !p)}
             className="w-full flex items-center justify-between rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-[#F9FAFB] dark:bg-[#0a1018] px-3 py-2 text-sm cursor-pointer select-none transition-colors focus-within:border-[#5750F1]"
           >
             <span className={name ? "text-[#111928] dark:text-white" : "text-[#9CA3AF]"}>
-              {name || "Select a vertical..."}
+              {loading ? "Loading..." : (name || "Select a vertical...")}
             </span>
-            <LuChevronDown size={14} className={`text-[#9CA3AF] transition-transform ${verticalOpen ? "rotate-180" : ""}`} />
+            {loading
+              ? <LuLoader size={14} className="text-[#9CA3AF] animate-spin" />
+              : <LuChevronDown size={14} className={`text-[#9CA3AF] transition-transform ${verticalOpen ? "rotate-180" : ""}`} />}
           </div>
           {verticalOpen && (
             <div className="absolute left-0 top-full mt-1 z-20 w-full rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] shadow-lg overflow-hidden">
-              {/* Search box */}
               <div className="flex items-center gap-2 px-3 py-2 border-b border-[#E6EBF1] dark:border-[#374151]">
                 <LuSearch size={13} className="text-[#9CA3AF] shrink-0" />
                 <input
@@ -81,7 +129,12 @@ export function CreateVerticalModal({
                 />
               </div>
               <div className="max-h-40 overflow-y-auto">
-                {filteredVerticals.length > 0 ? filteredVerticals.map(v => (
+                {error ? (
+                  <div className="px-3 py-2 text-center">
+                    <p className="text-xs text-red-400 mb-1">{error}</p>
+                    <button onClick={fetchVerticals} className="text-xs text-[#5750F1] underline">Retry</button>
+                  </div>
+                ) : filteredVerticals.length > 0 ? filteredVerticals.map(v => (
                   <button
                     key={v}
                     onClick={() => { setName(v); setVerticalOpen(false); setVerticalSearch(""); }}
@@ -100,8 +153,19 @@ export function CreateVerticalModal({
         </div>
 
         <div className="flex items-center justify-end gap-2">
-          <button onClick={onClose} className="rounded-lg border border-[#E6EBF1] dark:border-[#374151] px-4 py-2 text-xs font-medium text-[#6B7280] dark:text-[#9CA3AF] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors">Cancel</button>
-          <button onClick={handleSave} disabled={!name.trim()} className="rounded-lg bg-[#5750F1] px-4 py-2 text-xs font-semibold text-white hover:bg-[#4742d4] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">Save Vertical</button>
+          {saveError && <span className="text-[11px] text-red-400 mr-2">{saveError}</span>}
+          <button onClick={onClose} disabled={saving} className="rounded-lg border border-[#E6EBF1] dark:border-[#374151] px-4 py-2 text-xs font-medium text-[#6B7280] dark:text-[#9CA3AF] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors disabled:opacity-50">Cancel</button>
+          <button
+            onClick={handleSave}
+            disabled={!name.trim() || saving}
+            className="flex items-center gap-2 rounded-lg bg-[#5750F1] px-4 py-2 text-xs font-semibold text-white hover:bg-[#4742d4] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {saving ? (
+              <>
+                <LuLoader size={14} className="animate-spin" /> Saving...
+              </>
+            ) : "Save Vertical"}
+          </button>
         </div>
       </div>
     </>
@@ -113,17 +177,18 @@ export function CreateOfferModal({
   open,
   onClose,
   onSave,
-  verticals,
-  offerNames,
+  verticals: verticalsProp,
   initialOfferName = "",
 }: {
   open: boolean;
   onClose: () => void;
   onSave: (offerName: string, verticalName: string) => void;
   verticals: string[];
-  offerNames: string[];
   initialOfferName?: string;
 }) {
+  const workspaceId = useSelector((state: RootState) => state.workspace.selectedId ?? 1);
+  const { token } = useAuth();
+
   const [offerName, setOfferName] = useState("");
   const [selectedVertical, setSelectedVertical] = useState("");
   const [selectedOffers, setSelectedOffers] = useState<string[]>([]);
@@ -135,6 +200,48 @@ export function CreateOfferModal({
   const offersDropRef = useRef<HTMLDivElement>(null);
   const verticalDropRef = useRef<HTMLDivElement>(null);
 
+  // API-fetched offers
+  const [apiOffers, setApiOffers] = useState<{ id: string; title: string }[]>([]);
+  const [offersLoading, setOffersLoading] = useState(false);
+  const [offersError, setOffersError] = useState<string | null>(null);
+
+  const fetchOffers = useCallback(async () => {
+    setOffersLoading(true);
+    setOffersError(null);
+    try {
+      const res = await api.get("/api/v1/planner/verticals-offer-list-from-redtrack", {
+        params: { workspace_id: workspaceId, type: "offer" },
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setApiOffers(res.data?.data?.offers ?? []);
+    } catch {
+      setOffersError("Failed to load offers.");
+    } finally {
+      setOffersLoading(false);
+    }
+  }, [workspaceId, token]);
+
+  // API-fetched verticals
+  const [apiVerticals, setApiVerticals] = useState<{ id: number; name: string }[]>([]);
+  const [verticalsLoading, setVerticalsLoading] = useState(false);
+  const [verticalsError, setVerticalsError] = useState<string | null>(null);
+
+  const fetchApiVerticals = useCallback(async () => {
+    setVerticalsLoading(true);
+    setVerticalsError(null);
+    try {
+      const res = await api.get("/api/v1/planner/verticals", {
+        params: { workspace_id: workspaceId, with_own_offers: false },
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setApiVerticals(res.data?.data?.verticals ?? []);
+    } catch {
+      setVerticalsError("Failed to load verticals.");
+    } finally {
+      setVerticalsLoading(false);
+    }
+  }, [workspaceId, token]);
+
   useEffect(() => {
     if (open) {
       setOfferName(initialOfferName);
@@ -143,10 +250,12 @@ export function CreateOfferModal({
       setOffersSearch("");
       setVerticalOpen(false);
       setVerticalSearch("");
-      setSelectedVertical(verticals[0] ?? "");
+      setSelectedVertical("");
       setTimeout(() => inputRef.current?.focus(), 50);
+      fetchOffers();
+      fetchApiVerticals();
     }
-  }, [open, verticals, initialOfferName]);
+  }, [open, initialOfferName, fetchOffers, fetchApiVerticals]);
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -158,9 +267,50 @@ export function CreateOfferModal({
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const uniqueOfferNames = [...new Set(offerNames)];
-  const filteredOffers = uniqueOfferNames.filter(n => n.toLowerCase().includes(offersSearch.toLowerCase()));
-  const filteredVerticals = verticals.filter(v => v.toLowerCase().includes(verticalSearch.toLowerCase()));
+  const filteredOffers    = apiOffers.filter(o => o.title.toLowerCase().includes(offersSearch.toLowerCase()));
+  const filteredVerticals = apiVerticals.filter(v => v.name.toLowerCase().includes(verticalSearch.toLowerCase()));
+
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const handleSave = async () => {
+    const trimmedOfferName = offerName.trim();
+    if (!trimmedOfferName || !selectedVertical) return;
+
+    // Map selected offer titles back to their IDs
+    const offerIds = selectedOffers
+      .map(title => apiOffers.find(o => o.title === title)?.id)
+      .filter(Boolean);
+
+    // Find the ID of the selected vertical
+    const verticalId = apiVerticals.find(v => v.name === selectedVertical)?.id;
+
+    if (!verticalId) {
+      setSaveError("Invalid vertical selected");
+      return;
+    }
+
+    setSaving(true);
+    setSaveError(null);
+
+    try {
+      const res = await api.post("/api/v1/planner/own-offers", {
+        workspace_id: workspaceId,
+        name: trimmedOfferName,
+        offer_ids: offerIds,
+        vertical_id: verticalId
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      toast.success(res.data?.message || "Own offer created successfully");
+      onSave(trimmedOfferName, selectedVertical);
+      onClose();
+    } catch (err: any) {
+      setSaveError(err.response?.data?.message || "Failed to save offer");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <>
@@ -187,115 +337,124 @@ export function CreateOfferModal({
         {/* Offers dropdown */}
         <div className="mb-4">
           <label className="block text-xs font-semibold text-[#111928] dark:text-white mb-1.5">Offers</label>
-          {offerNames.length === 0 ? (
-            <p className="text-xs text-[#9CA3AF] italic">No offers yet.</p>
-          ) : (
-            <div className="relative" ref={offersDropRef}>
-              <div
-                onClick={() => setOffersOpen(!offersOpen)}
-                className="w-full flex items-center justify-between rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-[#F9FAFB] dark:bg-[#0a1018] px-3 py-2 text-sm text-[#111928] dark:text-white outline-none focus:border-[#5750F1] transition-colors cursor-pointer"
-              >
-                <span className={`truncate ${selectedOffers.length ? "" : "text-[#9CA3AF]"}`}>
-                  {selectedOffers.length ? selectedOffers.join(", ") : "Select offers..."}
-                </span>
-                <LuChevronDown size={13} className={`text-[#9CA3AF] shrink-0 ml-2 transition-transform ${offersOpen ? "rotate-180" : ""}`} />
-              </div>
-              {offersOpen && (
-                <div className="absolute left-0 top-full mt-1 z-20 w-full rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] shadow-lg overflow-hidden">
-                  {/* Search box */}
-                  <div className="flex items-center gap-2 px-3 py-2 border-b border-[#E6EBF1] dark:border-[#374151]">
-                    <LuSearch size={13} className="text-[#9CA3AF] shrink-0" />
-                    <input
-                      autoFocus
-                      value={offersSearch}
-                      onChange={e => setOffersSearch(e.target.value)}
-                      placeholder="Search offers..."
-                      className="flex-1 bg-transparent text-xs text-[#111928] dark:text-white placeholder:text-[#9CA3AF] outline-none"
-                      onClick={e => e.stopPropagation()}
-                    />
-                  </div>
-                  <div className="max-h-36 overflow-y-auto">
-                    {filteredOffers.length > 0 ? filteredOffers.map(n => (
-                      <label key={n} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332]">
-                        <input
-                          type="checkbox"
-                          checked={selectedOffers.includes(n)}
-                          onChange={e => {
-                            if (e.target.checked) setSelectedOffers([...selectedOffers, n]);
-                            else setSelectedOffers(selectedOffers.filter(x => x !== n));
-                          }}
-                          className="rounded border-[#D1D5DB] dark:border-[#374151] text-[#5750F1] focus:ring-[#5750F1]"
-                        />
-                        <span className="text-sm text-[#111928] dark:text-white truncate">{n}</span>
-                      </label>
-                    )) : (
-                      <p className="px-3 py-2 text-xs text-[#9CA3AF] text-center">No results</p>
-                    )}
-                  </div>
-                </div>
-              )}
+          <div className="relative" ref={offersDropRef}>
+            <div
+              onClick={() => !offersLoading && setOffersOpen(!offersOpen)}
+              className="w-full flex items-center justify-between rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-[#F9FAFB] dark:bg-[#0a1018] px-3 py-2 text-sm text-[#111928] dark:text-white outline-none focus:border-[#5750F1] transition-colors cursor-pointer"
+            >
+              <span className={`truncate ${selectedOffers.length ? "" : "text-[#9CA3AF]"}`}>
+                {offersLoading ? "Loading..." : (selectedOffers.length ? selectedOffers.join(", ") : "Select offers...")}
+              </span>
+              {offersLoading
+                ? <LuLoader size={13} className="text-[#9CA3AF] shrink-0 ml-2 animate-spin" />
+                : <LuChevronDown size={13} className={`text-[#9CA3AF] shrink-0 ml-2 transition-transform ${offersOpen ? "rotate-180" : ""}`} />}
             </div>
-          )}
+            {offersOpen && (
+              <div className="absolute left-0 top-full mt-1 z-20 w-full rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] shadow-lg overflow-hidden">
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-[#E6EBF1] dark:border-[#374151]">
+                  <LuSearch size={13} className="text-[#9CA3AF] shrink-0" />
+                  <input
+                    autoFocus
+                    value={offersSearch}
+                    onChange={e => setOffersSearch(e.target.value)}
+                    placeholder="Search offers..."
+                    className="flex-1 bg-transparent text-xs text-[#111928] dark:text-white placeholder:text-[#9CA3AF] outline-none"
+                    onClick={e => e.stopPropagation()}
+                  />
+                </div>
+                <div className="max-h-36 overflow-y-auto">
+                  {offersError ? (
+                    <div className="px-3 py-2 text-center">
+                      <p className="text-xs text-red-400 mb-1">{offersError}</p>
+                      <button onClick={fetchOffers} className="text-xs text-[#5750F1] underline">Retry</button>
+                    </div>
+                  ) : filteredOffers.length > 0 ? filteredOffers.map(o => (
+                    <label key={o.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332]">
+                      <input
+                        type="checkbox"
+                        checked={selectedOffers.includes(o.title)}
+                        onChange={e => {
+                          if (e.target.checked) setSelectedOffers([...selectedOffers, o.title]);
+                          else setSelectedOffers(selectedOffers.filter(x => x !== o.title));
+                        }}
+                        className="rounded border-[#D1D5DB] dark:border-[#374151] text-[#5750F1] focus:ring-[#5750F1]"
+                      />
+                      <span className="text-sm text-[#111928] dark:text-white truncate">{o.title}</span>
+                    </label>
+                  )) : (
+                    <p className="px-3 py-2 text-xs text-[#9CA3AF] text-center">No results</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="mb-5">
           <label className="block text-xs font-semibold text-[#111928] dark:text-white mb-1.5">Vertical <span className="text-[#5750F1]">*</span></label>
-          {verticals.length === 0 ? (
-            <p className="text-xs text-[#9CA3AF] italic">No verticals yet — create one first.</p>
-          ) : (
-            <div className="relative" ref={verticalDropRef}>
-              <div
-                onClick={() => setVerticalOpen(p => !p)}
-                className="w-full flex items-center justify-between rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-[#F9FAFB] dark:bg-[#0a1018] px-3 py-2 text-sm cursor-pointer select-none transition-colors"
-              >
-                <span className={selectedVertical ? "text-[#111928] dark:text-white" : "text-[#9CA3AF]"}>
-                  {selectedVertical || "Select vertical..."}
-                </span>
-                <LuChevronDown size={13} className={`text-[#9CA3AF] pointer-events-none transition-transform ${verticalOpen ? "rotate-180" : ""}`} />
-              </div>
-              {verticalOpen && (
-                <div className="absolute left-0 top-full mt-1 z-20 w-full rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] shadow-lg overflow-hidden">
-                  {/* Search box */}
-                  <div className="flex items-center gap-2 px-3 py-2 border-b border-[#E6EBF1] dark:border-[#374151]">
-                    <LuSearch size={13} className="text-[#9CA3AF] shrink-0" />
-                    <input
-                      autoFocus
-                      value={verticalSearch}
-                      onChange={e => setVerticalSearch(e.target.value)}
-                      placeholder="Search verticals..."
-                      className="flex-1 bg-transparent text-xs text-[#111928] dark:text-white placeholder:text-[#9CA3AF] outline-none"
-                      onClick={e => e.stopPropagation()}
-                    />
-                  </div>
-                  <div className="max-h-36 overflow-y-auto">
-                    {filteredVerticals.length > 0 ? filteredVerticals.map(v => (
-                      <button
-                        key={v}
-                        onClick={() => { setSelectedVertical(v); setVerticalOpen(false); setVerticalSearch(""); }}
-                        className={`w-full text-left px-3 py-2 text-sm transition-colors hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] ${
-                          selectedVertical === v ? "text-[#5750F1] font-medium" : "text-[#111928] dark:text-white"
-                        }`}
-                      >
-                        {v}
-                      </button>
-                    )) : (
-                      <p className="px-3 py-2 text-xs text-[#9CA3AF] text-center">No results</p>
-                    )}
-                  </div>
-                </div>
-              )}
+          <div className="relative" ref={verticalDropRef}>
+            <div
+              onClick={() => !verticalsLoading && setVerticalOpen(p => !p)}
+              className="w-full flex items-center justify-between rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-[#F9FAFB] dark:bg-[#0a1018] px-3 py-2 text-sm cursor-pointer select-none transition-colors"
+            >
+              <span className={selectedVertical ? "text-[#111928] dark:text-white" : "text-[#9CA3AF]"}>
+                {verticalsLoading ? "Loading..." : (selectedVertical || "Select vertical...")}
+              </span>
+              {verticalsLoading
+                ? <LuLoader size={13} className="text-[#9CA3AF] pointer-events-none animate-spin" />
+                : <LuChevronDown size={13} className={`text-[#9CA3AF] pointer-events-none transition-transform ${verticalOpen ? "rotate-180" : ""}`} />}
             </div>
-          )}
+            {verticalOpen && (
+              <div className="absolute left-0 top-full mt-1 z-20 w-full rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] shadow-lg overflow-hidden">
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-[#E6EBF1] dark:border-[#374151]">
+                  <LuSearch size={13} className="text-[#9CA3AF] shrink-0" />
+                  <input
+                    autoFocus
+                    value={verticalSearch}
+                    onChange={e => setVerticalSearch(e.target.value)}
+                    placeholder="Search verticals..."
+                    className="flex-1 bg-transparent text-xs text-[#111928] dark:text-white placeholder:text-[#9CA3AF] outline-none"
+                    onClick={e => e.stopPropagation()}
+                  />
+                </div>
+                <div className="max-h-36 overflow-y-auto">
+                  {verticalsError ? (
+                    <div className="px-3 py-2 text-center">
+                      <p className="text-xs text-red-400 mb-1">{verticalsError}</p>
+                      <button onClick={fetchApiVerticals} className="text-xs text-[#5750F1] underline">Retry</button>
+                    </div>
+                  ) : filteredVerticals.length > 0 ? filteredVerticals.map(v => (
+                    <button
+                      key={v.id}
+                      onClick={() => { setSelectedVertical(v.name); setVerticalOpen(false); setVerticalSearch(""); }}
+                      className={`w-full text-left px-3 py-2 text-sm transition-colors hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] ${
+                        selectedVertical === v.name ? "text-[#5750F1] font-medium" : "text-[#111928] dark:text-white"
+                      }`}
+                    >
+                      {v.name}
+                    </button>
+                  )) : (
+                    <p className="px-3 py-2 text-xs text-[#9CA3AF] text-center">No results</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="flex items-center justify-end gap-2">
-          <button onClick={onClose} className="rounded-lg border border-[#E6EBF1] dark:border-[#374151] px-4 py-2 text-xs font-medium text-[#6B7280] dark:text-[#9CA3AF] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors">Cancel</button>
+        <div className="flex items-center justify-end gap-2 mt-4">
+          {saveError && <span className="text-[11px] text-red-400 mr-2">{saveError}</span>}
+          <button onClick={onClose} disabled={saving} className="rounded-lg border border-[#E6EBF1] dark:border-[#374151] px-4 py-2 text-xs font-medium text-[#6B7280] dark:text-[#9CA3AF] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors disabled:opacity-50">Cancel</button>
           <button
-            onClick={() => { onSave(offerName.trim(), selectedVertical); onClose(); }}
-            disabled={!offerName.trim() || !selectedVertical}
-            className="rounded-lg bg-[#5750F1] px-4 py-2 text-xs font-semibold text-white hover:bg-[#4742d4] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            onClick={handleSave}
+            disabled={!offerName.trim() || !selectedVertical || saving}
+            className="flex items-center gap-2 rounded-lg bg-[#5750F1] px-4 py-2 text-xs font-semibold text-white hover:bg-[#4742d4] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
-            Save Offer
+            {saving ? (
+              <>
+                <LuLoader size={14} className="animate-spin" /> Saving...
+              </>
+            ) : "Save Offer"}
           </button>
         </div>
       </div>
@@ -581,7 +740,6 @@ export default function VerticalGrid({
         onClose={() => setShowEditOfferModal(false)}
         onSave={handleEditOfferSave}
         verticals={allVerticalNames}
-        offerNames={[...new Set(mergedVerticals.flatMap(v => (v.offers ?? []).map(o => o.name)))]}
         initialOfferName={editOfferName}
       />
     </div>
