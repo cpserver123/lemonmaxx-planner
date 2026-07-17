@@ -76,7 +76,7 @@ function SidebarContent({
 }
 
 /* --- Main Component -------------------------------------------------- */
-export default function BloodSugarPage() {
+export default function BloodSugarPage({ ownOfferId }: { ownOfferId?: string | null }) {
   const [activeTab, setActiveTab] = useState<TabId>("numbers");
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -100,10 +100,6 @@ export default function BloodSugarPage() {
           <LuMenu size={16} />
         </button>
 
-        {/* <h2 className="text-lg font-bold text-[#111928] dark:text-white">Blood Sugar</h2> */}
-        <span className="rounded-full bg-[#2563eb]/10 border border-[#2563eb]/20 px-2.5 py-0.5 text-[11px] font-medium text-[#2563eb]">
-          Meta
-        </span>
 
         {/* Mobile: show current active tab name */}
         <span className="lg:hidden ml-auto text-xs text-[#6B7280] dark:text-[#9CA3AF]">
@@ -145,9 +141,9 @@ export default function BloodSugarPage() {
 
         {/* Main content — full width on mobile */}
         <div className="flex-1 min-w-0">
-          {activeTab === "numbers" && <NumbersTab />}
-          {activeTab === "creative" && <CreativeTab />}
-          {activeTab === "experiments" && <ExperimentsTab />}
+          {activeTab === "numbers" && <NumbersTab ownOfferId={ownOfferId} />}
+          {activeTab === "creative" && <CreativeTab ownOfferId={ownOfferId} />}
+          {activeTab === "experiments" && <ExperimentsTab ownOfferId={ownOfferId} />}
         </div>
       </div>
     </div>

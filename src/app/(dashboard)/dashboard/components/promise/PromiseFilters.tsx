@@ -21,12 +21,18 @@ function buildLabel(months: Set<number>, year: number): string {
 export default function PromiseFilters({
   activeFilter,
   onFilterChange,
+  selectedYear,
+  setSelectedYear,
+  selectedMonths,
+  setSelectedMonths,
 }: {
-  activeFilter: "org-promises";
-  onFilterChange: (f: "org-promises") => void;
+  activeFilter: "org-promises" | "my-items";
+  onFilterChange: (f: "org-promises" | "my-items") => void;
+  selectedYear: number;
+  setSelectedYear: (y: number | ((prev: number) => number)) => void;
+  selectedMonths: Set<number>;
+  setSelectedMonths: (m: Set<number> | ((prev: Set<number>) => Set<number>)) => void;
 }) {
-  const [selectedYear,   setSelectedYear]   = useState(2026);
-  const [selectedMonths, setSelectedMonths] = useState<Set<number>>(new Set([5])); // June
   const [showPicker, setShowPicker] = useState(false);
 
   const toggleMonth = (i: number) => {

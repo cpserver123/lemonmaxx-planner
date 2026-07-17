@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback,useEffect } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -12,7 +12,11 @@ import {
 } from "@tanstack/react-table";
 import { LuArrowUpDown, LuArrowUp, LuArrowDown, LuPencil, LuX } from "react-icons/lu";
 import { RxDragHandleDots2 } from "react-icons/rx";
-import ActionDrawer, { type DrawerRow } from "../../ActionDrawer";
+import ActionDrawer, { type DrawerRow, type Category, type Platform } from "../../ActionDrawer";
+import { useSelector } from "react-redux";
+import type { RootState } from "@/store";
+import api from "@/app/utils/axios";
+import { useAuth } from "@/context/AuthContext";
 
 /* --- Types ----------------------------------------------------------- */
 interface ActionRow {
@@ -24,17 +28,12 @@ interface ActionRow {
   accountable: string;
   linkTo: string;
   completed: boolean;
+  category?: Category;
+  platform?: Platform;
 }
 
 /* --- Dummy Data ------------------------------------------------------ */
-const WEEKLY_DATA = [
-  { week: "Week 1", amount: 2000 },
-  { week: "Week 2", amount: 5000 },
-  { week: "Week 3", amount: 10000 },
-  { week: "Week 4", amount: 15000 },
-  { week: "Week 5 (2)", amount: 8000 },
-];
-const TOTAL = 40000;
+/* --- Dummy Data ------------------------------------------------------ */
 
 const INITIAL_ACTIONS: ActionRow[] = [
   {
@@ -172,60 +171,7 @@ const columns = [
 const coreModel = getCoreRowModel();
 const sortedModel = getSortedRowModel();
 
-/* --- Edit distribution modal ---------------------------------------- */
-function EditDistributionModal({
-  open, onClose, weeks, onSave,
-}: {
-  open: boolean;
-  onClose: () => void;
-  weeks: { week: string; amount: number }[];
-  onSave: (values: number[]) => void;
-}) {
-  const [values, setValues] = useState(weeks.map((w) => w.amount));
 
-  const weeklySum = values.reduce((a, b) => a + b, 0);
-  const remaining = TOTAL - weeklySum;
-
-  return (
-    <>
-      {open && <div className="fixed inset-0 z-40 bg-black/30 dark:bg-black/50" onClick={onClose} />}
-      <div className={`fixed top-0 right-0 z-50 h-full w-full max-w-[420px] bg-white dark:bg-[#111928] shadow-2xl flex flex-col transition-transform duration-300 ${open ? "translate-x-0" : "translate-x-full"}`}>
-        <div className="flex items-start justify-between px-6 pt-8 pb-4 border-b border-[#E6EBF1] dark:border-[#1F2A37]">
-          <div>
-            <h2 className="text-lg font-bold text-[#111928] dark:text-white">Edit Weekly Distribution</h2>
-            <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF] mt-0.5">For: Performance Promise</p>
-          </div>
-          <button onClick={onClose} className="text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white transition-colors mt-1">
-            <LuX size={18} />
-          </button>
-        </div>
-        <div className="mx-6 mt-5 mb-6 rounded-lg bg-[#F3F4F6] dark:bg-[#1a2332] border border-[#E6EBF1] dark:border-[#1F2A37] divide-y divide-[#E6EBF1] dark:divide-[#1F2A37]">
-          <div className="flex justify-between px-4 py-2.5"><span className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">Net Promise</span><span className="text-sm font-semibold text-[#111928] dark:text-white">{fmt(TOTAL)}</span></div>
-          <div className="flex justify-between px-4 py-2.5"><span className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">Weekly Sum</span><span className="text-sm font-semibold text-[#111928] dark:text-white">{fmt(weeklySum)}</span></div>
-          <div className="flex justify-between px-4 py-2.5">
-            <span className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">Remaining</span>
-            <span className={`text-sm font-semibold ${remaining === 0 ? "text-[#111928] dark:text-white" : remaining < 0 ? "text-red-500" : "text-green-500"}`}>{fmt(remaining)}</span>
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto px-6 flex flex-col gap-4">
-          {weeks.map((w, i) => (
-            <div key={w.week} className="flex items-center gap-4">
-              <span className="w-14 text-sm font-medium text-[#111928] dark:text-white shrink-0">{w.week}</span>
-              <div className="flex-1 flex items-center gap-2 rounded-lg border border-[#D1D5DB] dark:border-[#374151] px-3 py-2.5 bg-[#F9FAFB] dark:bg-[#1a2332] focus-within:border-[#5750F1]">
-                <span className="text-[#9CA3AF] text-sm">$</span>
-                <input type="number" value={values[i]} onChange={(e) => { const next = [...values]; next[i] = Number(e.target.value) || 0; setValues(next); }} className="flex-1 bg-transparent text-[#111928] dark:text-white text-sm outline-none" />
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="flex gap-3 px-6 py-5 border-t border-[#E6EBF1] dark:border-[#1F2A37]">
-          <button onClick={onClose} className="flex-1 rounded-lg border border-[#D1D5DB] dark:border-[#374151] py-2.5 text-sm font-medium text-[#111928] dark:text-white hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors">Cancel</button>
-          <button onClick={() => { onSave(values); onClose(); }} className="flex-1 rounded-lg bg-[#5750F1] py-2.5 text-sm font-bold text-white hover:bg-[#4742d4] transition-colors">Save Changes</button>
-        </div>
-      </div>
-    </>
-  );
-}
 
 /* --- Actions Table --------------------------------------------------- */
 function ActionsTable({
@@ -370,7 +316,7 @@ function StrategyCard({
 }: {
   strategy: Strategy;
   actions: ActionRow[];
-  onOpenDrawer: (row: DrawerRow) => void;
+  onOpenDrawer: (row: ActionRow) => void;
   onAddAction: () => void;
   onEditTitle: () => void;
 }) {
@@ -455,14 +401,68 @@ function StrategyCard({
 }
 
 /* --- Main Component -------------------------------------------------- */
-export default function NumbersTab() {
-  const [editOpen, setEditOpen] = useState(false);
-  const [weeklyData, setWeeklyData] = useState(WEEKLY_DATA);
-  const [strategies, setStrategies] = useState<Strategy[]>(INITIAL_STRATEGIES);
-  const [strategyActions, setStrategyActions] = useState<Record<string, ActionRow[]>>({ s1: INITIAL_ACTIONS });
+export default function NumbersTab({ ownOfferId }: { ownOfferId?: string | null }) {
+  const workspaceId = useSelector((state: RootState) => state.workspace.selectedId ?? 1);
+  const { token } = useAuth();
+
+  const [strategies, setStrategies] = useState<Strategy[]>([]);
+  const [strategyActions, setStrategyActions] = useState<Record<string, ActionRow[]>>({});
   const [selectedAction, setSelectedAction] = useState<DrawerRow | null>(null);
   const [pendingStrategyId, setPendingStrategyId] = useState<string | null>(null);
   const [editingStrategyId, setEditingStrategyId] = useState<string | null>(null);
+
+  const fetchPathways = useCallback(async () => {
+    if (!ownOfferId) return;
+    try {
+      const res = await api.get("/api/v1/planner/pathways", {
+        params: {
+          workspace_id: workspaceId,
+          own_offer_id: ownOfferId,
+          category: "numbers"
+        },
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.data?.success) {
+        const categories = res.data.data.categories;
+        const pathwaysData = categories.numbers || [];
+        
+        const newStrategies: Strategy[] = pathwaysData.map((p: any) => ({
+          id: String(p.id),
+          title: p.name,
+          description: p.description || "",
+          status: p.status === "active" ? "Active" : p.status,
+          accountable: p.accountable_name || p.to_whom_name || "Unassigned",
+          count: p.actions?.length || 0,
+          due: p.due_date || "-",
+        }));
+
+        const newActions: Record<string, ActionRow[]> = {};
+        pathwaysData.forEach((p: any) => {
+          newActions[String(p.id)] = (p.actions || []).map((a: any) => ({
+            id: String(a.id),
+            action: a.title,
+            intendedOutcome: a.intended_outcome,
+            status: a.status === "todo" ? "Todo" : a.status,
+            due: "-",
+            accountable: p.accountable_name || p.to_whom_name || "Unassigned",
+            linkTo: "",
+            completed: false,
+            category: a.category || "",
+            platform: a.platform || ""
+          }));
+        });
+
+        setStrategies(newStrategies);
+        setStrategyActions(newActions);
+      }
+    } catch (err) {
+      console.error("Failed to fetch pathways:", err);
+    }
+  }, [workspaceId, ownOfferId, token]);
+
+  useEffect(() => {
+    fetchPathways();
+  }, [fetchPathways]);
 
   openActionDrawer = (row: ActionRow) => {
     let foundStrategyId = null;
@@ -481,6 +481,8 @@ export default function NumbersTab() {
       due:             row.due,
       accountable:     row.accountable,
       linkTo:          row.linkTo,
+      category:        row.category,
+      platform:        row.platform,
     });
   };
 
@@ -496,10 +498,20 @@ export default function NumbersTab() {
     });
   };
 
-  const handleOpenDrawer = (strategyId: string, row: DrawerRow) => {
+  const handleOpenDrawer = (strategyId: string, row: ActionRow) => {
     setPendingStrategyId(strategyId);
     setEditingStrategyId(null);
-    setSelectedAction(row);
+    setSelectedAction({
+      id:              row.id,
+      action:          row.action,
+      intendedOutcome: row.intendedOutcome,
+      status:          row.status,
+      due:             row.due,
+      accountable:     row.accountable,
+      linkTo:          row.linkTo,
+      category:        row.category,
+      platform:        row.platform,
+    });
   };
 
   const handleEditTitle = (strategyId: string) => {
@@ -522,32 +534,6 @@ export default function NumbersTab() {
 
   return (
     <div className="rounded-xl border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] p-4">
-      {/* Weekly Breakdown */}
-      <div className="overflow-x-auto scrollbar-none -mx-0 mb-5">
-        <div className="grid grid-cols-6 gap-px rounded-lg overflow-hidden border border-[#E6EBF1] dark:border-[#1F2A37] bg-[#E6EBF1] dark:bg-[#1F2A37] min-w-[520px]">
-          {weeklyData.map((w) => (
-            <div key={w.week} className="bg-[#F9FAFB] dark:bg-[#0a1018] px-3 py-2.5">
-              <p className="text-[10px] text-[#6B7280] dark:text-[#6B7280] uppercase tracking-wide whitespace-nowrap">{w.week}</p>
-              <p className="text-sm font-semibold text-[#111928] dark:text-white mt-0.5">{fmt(w.amount)}</p>
-            </div>
-          ))}
-          <div className="bg-[#F3F4F6] dark:bg-[#122031] px-3 py-2.5">
-            <div className="flex items-center justify-between">
-              <p className="text-[10px] text-[#6B7280] dark:text-[#6B7280] uppercase tracking-wide">Total</p>
-             
-            </div>
-            <p className="text-sm font-bold text-[#111928] dark:text-white mt-0.5">{fmt(weeklyData.reduce((a, w) => a + w.amount, 0))}</p>
-          </div>
-        </div>
-      </div>
-{/* 
-      <EditDistributionModal
-        open={editOpen}
-        onClose={() => setEditOpen(false)}
-        weeks={weeklyData}
-        onSave={(vals) => setWeeklyData(weeklyData.map((w, i) => ({ ...w, amount: vals[i] })))}
-      /> */}
-
       {/* Strategies */}
       {strategies.map(strategy => (
         <StrategyCard
@@ -563,6 +549,7 @@ export default function NumbersTab() {
             due: "",
             accountable: "",
             linkTo: "",
+            completed: false,
           })}
           onEditTitle={() => handleEditTitle(strategy.id)}
         />
@@ -592,71 +579,159 @@ export default function NumbersTab() {
         row={selectedAction}
         performance="numbers"
         isPathway={editingStrategyId !== null || (selectedAction !== null && !pendingStrategyId)}
+        hideAddAnother={Boolean(pendingStrategyId)}
         title={pendingStrategyId ? strategies.find(s => s.id === pendingStrategyId)?.title : undefined}
         onClose={() => { setSelectedAction(null); setPendingStrategyId(null); setEditingStrategyId(null); }}
-        onSave={(updated) => {
+        pathwayId={editingStrategyId || pendingStrategyId}
+        onSave={async (updated) => {
           // Case 1: editing an existing strategy title
           if (editingStrategyId) {
-            setStrategies(prev => prev.map(s =>
-              s.id === editingStrategyId
-                ? { ...s, title: updated.pathwayTitle || s.title, description: updated.pathwayDesc ?? s.description }
-                : s
-            ));
-            setSelectedAction(null);
-            setPendingStrategyId(null);
-            setEditingStrategyId(null);
-            return;
+            const metadataPayload = {
+              workspace_id: workspaceId,
+              own_offer_id: Number(ownOfferId) || 0,
+              name: updated.pathwayTitle || "",
+              description: updated.pathwayDesc || "",
+              category: "numbers",
+              status: (updated.status || "planned").toLowerCase(),
+              due_date: updated.due || "-",
+              accountable_id: updated.accountableId || 0,
+              note: updated.note || ""
+            };
+
+            try {
+              // 1. Update pathway metadata
+              await api.put(`/api/v1/planner/pathways/${editingStrategyId}`, metadataPayload, {
+                headers: { Authorization: `Bearer ${token}` }
+              });
+
+              // 2. Update primary action if exists
+              if (updated.actionId && /^\d+$/.test(updated.actionId)) {
+                const primaryActionPayload = {
+                  title: updated.action,
+                  intended_outcome: updated.intendedOutcome || "",
+                  category: (updated.category || "breakdowns").toLowerCase(),
+                  platform: updated.platform || "Meta",
+                  status: (updated.status || "planned").toLowerCase()
+                };
+                await api.put(`/api/v1/planner/pathways/actions/${updated.actionId}`, primaryActionPayload, {
+                  headers: { Authorization: `Bearer ${token}` }
+                });
+              }
+
+              // 3. Update or create additional actions
+              if (updated.additionalActions) {
+                for (const a of updated.additionalActions) {
+                  const isNewAction = !/^\d+$/.test(a.id);
+                  const actionPayload = {
+                    pathway_id: Number(editingStrategyId),
+                    title: a.action,
+                    intended_outcome: a.intendedOutcome || "",
+                    category: (a.category || "breakdowns").toLowerCase(),
+                    platform: a.platform || "Meta",
+                    status: (updated.status || "planned").toLowerCase()
+                  };
+
+                  if (isNewAction) {
+                    if (a.action.trim()) {
+                      await api.post(
+                        `/api/v1/planner/pathways/${editingStrategyId}/actions?workspace_id=${workspaceId}`,
+                        actionPayload,
+                        { headers: { Authorization: `Bearer ${token}` } }
+                      );
+                    }
+                  } else {
+                    await api.put(`/api/v1/planner/pathways/actions/${a.id}`, actionPayload, {
+                      headers: { Authorization: `Bearer ${token}` }
+                    });
+                  }
+                }
+              }
+
+              await fetchPathways();
+            } catch (error) {
+              console.error("Failed to update pathway/actions:", error);
+            }
+            return editingStrategyId;
           }
-          const primaryAction = updated.action ? { ...updated, completed: false } : null;
-          const extraActions = (updated.additionalActions || [])
-            .filter(a => a.action.trim())
-            .map(a => ({
-               ...updated,
-               id: crypto.randomUUID(),
-               action: a.action,
-               intendedOutcome: a.intendedOutcome,
-               completed: false
-            }));
 
           if (pendingStrategyId) {
-            setStrategyActions(prev => {
-              const existing = prev[pendingStrategyId] ?? [];
-              const found = existing.some(r => r.id === updated.id);
-              let newActions = [...existing];
-              
-              if (found) {
-                newActions = newActions.map(r => r.id === updated.id ? { ...r, ...updated } : r);
-                newActions.push(...extraActions);
-              } else {
-                if (primaryAction) newActions.push({ ...primaryAction, id: crypto.randomUUID() });
-                newActions.push(...extraActions);
-              }
-              
-              return { ...prev, [pendingStrategyId]: newActions };
-            });
-          } else {
-            const newStrategy: Strategy = {
-              id: `s-${Date.now()}`,
-              title: updated.pathwayTitle || "Untitled Strategy",
-              description: updated.pathwayDesc || "",
-              status: updated.status === "Planned" ? "Draft" : "Active",
-              accountable: updated.accountable || "Unassigned",
-              count: 0,
-              due: updated.due || "-",
+            const isNewAction = !/^\d+$/.test(updated.id);
+            const actionPayload = {
+              pathway_id: Number(pendingStrategyId),
+              title: updated.action,
+              intended_outcome: updated.intendedOutcome || "",
+              category: (updated.category || "breakdowns").toLowerCase(),
+              platform: updated.platform || "Meta",
+              status: (updated.status || "planned").toLowerCase()
             };
-            
-            const allNewActions: ActionRow[] = [];
-            if (primaryAction) allNewActions.push({ ...primaryAction, id: crypto.randomUUID() });
-            allNewActions.push(...extraActions);
 
-            setStrategies(prev => [...prev, newStrategy]);
-            setStrategyActions(prev => ({
-              ...prev,
-              [newStrategy.id]: allNewActions,
-            }));
+            try {
+              if (isNewAction) {
+                if (updated.action.trim()) {
+                  await api.post(
+                    `/api/v1/planner/pathways/${pendingStrategyId}/actions?workspace_id=${workspaceId}`,
+                    actionPayload,
+                    { headers: { Authorization: `Bearer ${token}` } }
+                  );
+                }
+              } else {
+                await api.put(`/api/v1/planner/pathways/actions/${updated.id}`, actionPayload, {
+                  headers: { Authorization: `Bearer ${token}` }
+                });
+              }
+              await fetchPathways();
+            } catch (error) {
+              console.error("Failed to save action:", error);
+            }
+            return pendingStrategyId;
+          } else {
+            const primaryAction = updated.action && updated.action.trim() !== "" ? {
+              title: updated.action,
+              intended_outcome: updated.intendedOutcome || "",
+              category: (updated.category || "breakdowns").toLowerCase(),
+              platform: updated.platform || "Meta"
+            } : null;
+
+            const extraActions = (updated.additionalActions || [])
+              .filter(a => a.action.trim())
+              .map(a => ({
+                title: a.action,
+                intended_outcome: a.intendedOutcome || "",
+                category: (a.category || "breakdowns").toLowerCase(),
+                platform: a.platform || "Meta"
+              }));
+              
+            const actionsPayload = [];
+            if (primaryAction) actionsPayload.push(primaryAction);
+            actionsPayload.push(...extraActions);
+
+            const payload = {
+              workspace_id: workspaceId,
+              own_offer_id: Number(ownOfferId) || 0,
+              name: updated.pathwayTitle || "Untitled Strategy",
+              description: updated.pathwayDesc || "",
+              category: "numbers",
+              status: (updated.status || "active").toLowerCase(),
+              due_date: updated.due || "-",
+              accountable_id: updated.accountableId || 0,
+              note: updated.note || "",
+              actions: actionsPayload
+            };
+
+            try {
+              const res = await api.post("/api/v1/planner/pathways", payload, {
+                headers: { Authorization: `Bearer ${token}` }
+              });
+
+              if (res.data?.success) {
+                // Re-fetch pathways to ensure we have exactly what the server has (assigned IDs, relationships, etc.)
+                await fetchPathways();
+                return res.data.data.id;
+              }
+            } catch (error) {
+              console.error("Failed to create pathway:", error);
+            }
           }
-          setSelectedAction(null);
-          setPendingStrategyId(null);
         }}
         onDelete={(id) => {
           if (pendingStrategyId) {

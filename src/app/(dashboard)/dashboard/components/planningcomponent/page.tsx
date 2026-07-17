@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useAuth } from "@/context/AuthContext";
 import { useSelector } from "react-redux";
@@ -718,37 +718,40 @@ export default function PlanningSection() {
   const [showEditPlan, setShowEditPlan] = useState(false);
   const [showCreateVertical, setShowCreateVertical] = useState(false);
   const [showCreateOffer, setShowCreateOffer] = useState(false);
+  const [verticalRefreshKey, setVerticalRefreshKey] = useState(0);
   
   const [rawVerticals, setRawVerticals] = useState<{ id: number; name: string }[]>([]);
   const [verticalsList, setVerticalsList] = useState<string[]>(["VSL", "Supplement", "E-Commerce", "All"]);
   const [vslFilter, setVslFilter] = useState("VSL");
 
   /* Planning month */
-  const [planningYear,  setPlanningYear]  = useState(2026);
-  const [planningMonth, setPlanningMonth] = useState(5); // June
+  const [planningYear,  setPlanningYear]  = useState(() => new Date().getFullYear());
+  const [planningMonth, setPlanningMonth] = useState(() => new Date().getMonth()); // 0-indexed, current month
   const [showPlanningPicker, setShowPlanningPicker] = useState(false);
 
-  useEffect(() => {
-    const fetchVerticals = async () => {
-      try {
-        const res = await api.get("/api/v1/planner/verticals", {
-          params: { workspace_id: workspaceId, with_own_offers: false },
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const verts = res.data?.data?.verticals || [];
-        setRawVerticals(verts);
-        const names = verts.map((v: { name: string }) => v.name);
-        
-        if (names.length > 0) {
-          setVerticalsList(names);
-          setVslFilter(names[0]); // Select first vertical by default
-        }
-      } catch (err) {
-        console.error("Failed to fetch verticals", err);
+  const fetchPageVerticals = useCallback(async () => {
+    try {
+      const res = await api.get("/api/v1/planner/verticals", {
+        params: { workspace_id: workspaceId, with_own_offers: false },
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const verts = res.data?.data?.verticals || [];
+      setRawVerticals(verts);
+      const names = verts.map((v: { name: string }) => v.name);
+      
+      if (names.length > 0) {
+        setVerticalsList(names);
+        // Only set default if current filter is no longer valid
+        setVslFilter(prev => names.includes(prev) ? prev : names[0]);
       }
-    };
-    if (token) fetchVerticals();
+    } catch (err) {
+      console.error("Failed to fetch verticals", err);
+    }
   }, [token, workspaceId]);
+
+  useEffect(() => {
+    if (token) fetchPageVerticals();
+  }, [token, workspaceId, fetchPageVerticals]);
 
   /** Live planning data */
   const [planningData, setPlanningData] = useState<PlanningRow[]>([]);
@@ -1032,13 +1035,18 @@ export default function PlanningSection() {
       <CreateVerticalModal
         open={showCreateVertical}
         onClose={() => setShowCreateVertical(false)}
-        onSave={() => setShowCreateVertical(false)}
+        onSave={() => {
+          setShowCreateVertical(false);
+          setVerticalRefreshKey(k => k + 1);
+          fetchPageVerticals();
+        }}
       />
       <CreateOfferModal
         open={showCreateOffer}
         onClose={() => setShowCreateOffer(false)}
         onSave={() => setShowCreateOffer(false)}
         verticals={Array.from(new Set(planningData.map(r => r.category)))}
+        verticalRefreshKey={verticalRefreshKey}
       />
     </div>
   );
