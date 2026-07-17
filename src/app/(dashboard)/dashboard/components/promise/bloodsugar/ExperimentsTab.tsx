@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -12,7 +12,11 @@ import {
 } from "@tanstack/react-table";
 import { LuFlipVertical2, LuShoppingBag, LuFilter, LuArrowUpDown, LuArrowUp, LuArrowDown } from "react-icons/lu";
 import { RxDragHandleDots2 } from "react-icons/rx";
-import ActionDrawer, { type DrawerRow } from "../../ActionDrawer";
+import ActionDrawer, { type DrawerRow, type Category, type Platform } from "../../ActionDrawer";
+import { useSelector } from "react-redux";
+import type { RootState } from "@/store";
+import api from "@/app/utils/axios";
+import { useAuth } from "@/context/AuthContext";
 
 /* --- Types ----------------------------------------------------------- */
 interface ActionRow {
@@ -24,6 +28,8 @@ interface ActionRow {
   accountable: string;
   linkTo: string;
   completed: boolean;
+  category?: Category;
+  platform?: Platform;
 }
 
 interface Experiment {
@@ -378,7 +384,7 @@ function ExperimentCard({
 }: {
   experiment: Experiment;
   actions: ActionRow[];
-  onOpenDrawer: (row: DrawerRow) => void;
+  onOpenDrawer: (row: ActionRow) => void;
   onEditTitle: () => void;
 }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -397,6 +403,7 @@ function ExperimentCard({
       due: "",
       accountable: "",
       linkTo: "",
+      completed: false,
     });
   };
 
@@ -461,13 +468,69 @@ function ExperimentCard({
 }
 
 /* --- Main Component -------------------------------------------------- */
-export default function ExperimentsTab() {
-  // const [activeTab, setActiveTab] = useState<SubTab>("media-buying");
-  const [experiments, setExperiments] = useState<Experiment[]>(EXPERIMENTS);
-  const [experimentActions, setExperimentActions] = useState<Record<string, ActionRow[]>>(INITIAL_EXPERIMENT_ACTIONS);
+export default function ExperimentsTab({ ownOfferId }: { ownOfferId?: string | null }) {
+  const workspaceId = useSelector((state: RootState) => state.workspace.selectedId ?? 1);
+  const { token } = useAuth();
+  const [activeTab, setActiveTab] = useState<SubTab>("offer");
+  const [experiments, setExperiments] = useState<Experiment[]>([]);
+  const [experimentActions, setExperimentActions] = useState<Record<string, ActionRow[]>>({});
   const [selectedAction, setSelectedAction] = useState<DrawerRow | null>(null);
   const [pendingExpId, setPendingExpId] = useState<string | null>(null);
   const [editingExpId, setEditingExpId] = useState<string | null>(null);
+
+  const fetchPathways = useCallback(async () => {
+    if (!ownOfferId) return;
+    try {
+      const res = await api.get("/api/v1/planner/pathways", {
+        params: {
+          workspace_id: workspaceId,
+          own_offer_id: ownOfferId,
+          category: "experiments"
+        },
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.data?.success) {
+        const categories = res.data.data.categories;
+        const pathwaysData = categories.experiments || [];
+        
+        const newExperiments: Experiment[] = pathwaysData.map((p: any) => ({
+          id: String(p.id),
+          title: p.name,
+          description: p.description || "",
+          status: p.status === "active" ? "Active" : p.status,
+          accountable: p.accountable_name || p.to_whom_name || "Unassigned",
+          count: p.actions?.length || 0,
+          due: p.due_date || "-",
+          tabId: activeTab
+        }));
+
+        const newActions: Record<string, ActionRow[]> = {};
+        pathwaysData.forEach((p: any) => {
+          newActions[String(p.id)] = (p.actions || []).map((a: any) => ({
+            id: String(a.id),
+            action: a.title,
+            intendedOutcome: a.intended_outcome,
+            status: a.status === "todo" ? "Todo" : a.status,
+            due: "-",
+            accountable: p.accountable_name || p.to_whom_name || "Unassigned",
+            linkTo: "",
+            completed: false,
+            category: a.category || "",
+            platform: a.platform || ""
+          }));
+        });
+
+        setExperiments(newExperiments);
+        setExperimentActions(newActions);
+      }
+    } catch (err) {
+      console.error("Failed to fetch pathways:", err);
+    }
+  }, [workspaceId, ownOfferId, token, activeTab]);
+
+  useEffect(() => {
+    fetchPathways();
+  }, [fetchPathways]);
 
   openExpDrawer = (row: ActionRow) => {
     let foundExpId = null;
@@ -486,6 +549,8 @@ export default function ExperimentsTab() {
       due:             row.due,
       accountable:     row.accountable,
       linkTo:          row.linkTo,
+      category:        row.category,
+      platform:        row.platform,
     });
   };
 
@@ -501,10 +566,20 @@ export default function ExperimentsTab() {
     });
   };
 
-  const handleOpenDrawer = (expId: string, row: DrawerRow) => {
+  const handleOpenDrawer = (expId: string, row: ActionRow) => {
     setPendingExpId(expId);
     setEditingExpId(null);
-    setSelectedAction(row);
+    setSelectedAction({
+      id:              row.id,
+      action:          row.action,
+      intendedOutcome: row.intendedOutcome,
+      status:          row.status,
+      due:             row.due,
+      accountable:     row.accountable,
+      linkTo:          row.linkTo,
+      category:        row.category,
+      platform:        row.platform,
+    });
   };
 
   const handleEditTitle = (expId: string) => {
@@ -565,72 +640,158 @@ export default function ExperimentsTab() {
         row={selectedAction}
         performance="experiments"
         isPathway={editingExpId !== null || (selectedAction !== null && !pendingExpId)}
+        hideAddAnother={Boolean(pendingExpId)}
         title={pendingExpId ? experiments.find(e => e.id === pendingExpId)?.title : undefined}
         onClose={() => { setSelectedAction(null); setPendingExpId(null); setEditingExpId(null); }}
-        onSave={(updated) => {
+        pathwayId={editingExpId || pendingExpId}
+        onSave={async (updated) => {
           // Case 1: editing an existing experiment title
           if (editingExpId) {
-            setExperiments(prev => prev.map(e =>
-              e.id === editingExpId
-                ? { ...e, title: updated.pathwayTitle || e.title, description: updated.pathwayDesc ?? e.description }
-                : e
-            ));
-            setSelectedAction(null);
-            setPendingExpId(null);
-            setEditingExpId(null);
-            return;
-          }
-          const primaryAction = updated.action ? { ...updated, completed: false } : null;
-          const extraActions = (updated.additionalActions || [])
-            .filter(a => a.action.trim())
-            .map(a => ({
-               ...updated,
-               id: crypto.randomUUID(),
-               action: a.action,
-               intendedOutcome: a.intendedOutcome,
-               completed: false
-            }));
-
-          if (pendingExpId) {
-            setExperimentActions(prev => {
-              const existing = prev[pendingExpId] ?? [];
-              const found = existing.some(r => r.id === updated.id);
-              let newActions = [...existing];
-              
-              if (found) {
-                newActions = newActions.map(r => r.id === updated.id ? { ...r, ...updated } : r);
-                newActions.push(...extraActions);
-              } else {
-                if (primaryAction) newActions.push({ ...primaryAction, id: crypto.randomUUID() });
-                newActions.push(...extraActions);
-              }
-              
-              return { ...prev, [pendingExpId]: newActions };
-            });
-          } else {
-            const newExp: Experiment = {
-              id: `e-${Date.now()}`,
-              title: updated.pathwayTitle || "Untitled Experiment",
+            const metadataPayload = {
+              workspace_id: workspaceId,
+              own_offer_id: Number(ownOfferId) || 0,
+              name: updated.pathwayTitle || "",
               description: updated.pathwayDesc || "",
-              status: updated.status === "Planned" ? "Draft" : "Active",
-              accountable: updated.accountable || "Unassigned",
-              count: 0,
-              due: updated.due || "-",
-              // tabId: activeTab,
+              category: "experiments",
+              status: (updated.status || "planned").toLowerCase(),
+              due_date: updated.due || "-",
+              accountable_id: updated.accountableId || 0,
+              note: updated.note || ""
             };
-            
-            const allNewActions: ActionRow[] = [];
-            if (primaryAction) allNewActions.push({ ...primaryAction, id: crypto.randomUUID() });
-            allNewActions.push(...extraActions);
 
-            setExperiments(prev => [...prev, newExp]);
-            setExperimentActions(prev => ({
-              ...prev,
-              [newExp.id]: allNewActions,
-            }));
+            try {
+              // 1. Update pathway metadata
+              await api.put(`/api/v1/planner/pathways/${editingExpId}`, metadataPayload, {
+                headers: { Authorization: `Bearer ${token}` }
+              });
+
+              // 2. Update primary action if exists
+              if (updated.actionId && /^\d+$/.test(updated.actionId)) {
+                const primaryActionPayload = {
+                  title: updated.action,
+                  intended_outcome: updated.intendedOutcome || "",
+                  category: (updated.category || "breakdowns").toLowerCase(),
+                  platform: updated.platform || "Meta",
+                  status: (updated.status || "planned").toLowerCase()
+                };
+                await api.put(`/api/v1/planner/pathways/actions/${updated.actionId}`, primaryActionPayload, {
+                  headers: { Authorization: `Bearer ${token}` }
+                });
+              }
+
+              // 3. Update or create additional actions
+              if (updated.additionalActions) {
+                for (const a of updated.additionalActions) {
+                  const isNewAction = !/^\d+$/.test(a.id);
+                  const actionPayload = {
+                    pathway_id: Number(editingExpId),
+                    title: a.action,
+                    intended_outcome: a.intendedOutcome || "",
+                    category: (a.category || "breakdowns").toLowerCase(),
+                    platform: a.platform || "Meta",
+                    status: (updated.status || "planned").toLowerCase()
+                  };
+
+                  if (isNewAction) {
+                    if (a.action.trim()) {
+                      await api.post(
+                        `/api/v1/planner/pathways/${editingExpId}/actions?workspace_id=${workspaceId}`,
+                        actionPayload,
+                        { headers: { Authorization: `Bearer ${token}` } }
+                      );
+                    }
+                  } else {
+                    await api.put(`/api/v1/planner/pathways/actions/${a.id}`, actionPayload, {
+                      headers: { Authorization: `Bearer ${token}` }
+                    });
+                  }
+                }
+              }
+
+              await fetchPathways();
+            } catch (error) {
+              console.error("Failed to update pathway/actions:", error);
+            }
+            return editingExpId;
           }
-          setSelectedAction(null);
-          setPendingExpId(null);
+          
+          if (pendingExpId) {
+            const isNewAction = !/^\d+$/.test(updated.id);
+            const actionPayload = {
+              pathway_id: Number(pendingExpId),
+              title: updated.action,
+              intended_outcome: updated.intendedOutcome || "",
+              category: (updated.category || "breakdowns").toLowerCase(),
+              platform: updated.platform || "Meta",
+              status: (updated.status || "planned").toLowerCase()
+            };
+
+            try {
+              if (isNewAction) {
+                if (updated.action.trim()) {
+                  await api.post(
+                    `/api/v1/planner/pathways/${pendingExpId}/actions?workspace_id=${workspaceId}`,
+                    actionPayload,
+                    { headers: { Authorization: `Bearer ${token}` } }
+                  );
+                }
+              } else {
+                await api.put(`/api/v1/planner/pathways/actions/${updated.id}`, actionPayload, {
+                  headers: { Authorization: `Bearer ${token}` }
+                });
+              }
+              await fetchPathways();
+            } catch (error) {
+              console.error("Failed to save action:", error);
+            }
+            return pendingExpId;
+          } else {
+            const primaryAction = updated.action && updated.action.trim() !== "" ? {
+              title: updated.action,
+              intended_outcome: updated.intendedOutcome || "",
+              category: (updated.category || "breakdowns").toLowerCase(),
+              platform: updated.platform || "Meta"
+            } : null;
+
+            const extraActions = (updated.additionalActions || [])
+              .filter(a => a.action.trim())
+              .map(a => ({
+                title: a.action,
+                intended_outcome: a.intendedOutcome || "",
+                category: (a.category || "breakdowns").toLowerCase(),
+                platform: a.platform || "Meta"
+              }));
+              
+            const actionsPayload = [];
+            if (primaryAction) actionsPayload.push(primaryAction);
+            actionsPayload.push(...extraActions);
+
+            const payload = {
+              workspace_id: workspaceId,
+              own_offer_id: Number(ownOfferId) || 0,
+              name: updated.pathwayTitle || "Untitled Experiment",
+              description: updated.pathwayDesc || "",
+              category: "experiments",
+              status: (updated.status || "active").toLowerCase(),
+              due_date: updated.due || "-",
+              accountable_id: updated.accountableId || 0,
+              note: updated.note || "",
+              actions: actionsPayload
+            };
+
+            try {
+              const res = await api.post("/api/v1/planner/pathways", payload, {
+                headers: { Authorization: `Bearer ${token}` }
+              });
+
+              if (res.data?.success) {
+                await fetchPathways();
+                return res.data.data.id;
+              }
+            } catch (error) {
+              console.error("Failed to create experiment pathway:", error);
+            }
+          }
         }}
         onDelete={(id) => {
           if (pendingExpId) {

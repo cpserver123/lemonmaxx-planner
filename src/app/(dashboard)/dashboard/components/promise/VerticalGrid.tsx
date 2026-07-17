@@ -179,12 +179,14 @@ export function CreateOfferModal({
   onSave,
   verticals: verticalsProp,
   initialOfferName = "",
+  verticalRefreshKey = 0,
 }: {
   open: boolean;
   onClose: () => void;
   onSave: (offerName: string, verticalName: string) => void;
   verticals: string[];
   initialOfferName?: string;
+  verticalRefreshKey?: number;
 }) {
   const workspaceId = useSelector((state: RootState) => state.workspace.selectedId ?? 1);
   const { token } = useAuth();
@@ -256,6 +258,13 @@ export function CreateOfferModal({
       fetchApiVerticals();
     }
   }, [open, initialOfferName, fetchOffers, fetchApiVerticals]);
+
+  // Re-fetch verticals whenever a new one is created (key bumped by parent)
+  useEffect(() => {
+    if (verticalRefreshKey > 0) {
+      fetchApiVerticals();
+    }
+  }, [verticalRefreshKey, fetchApiVerticals]);
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -480,7 +489,7 @@ function VerticalTree({
   onEditOffer,
 }: {
   vertical: VerticalData;
-  onOfferClick: (verticalId: string) => void;
+  onOfferClick: (verticalId: string, offerId: string) => void;
   onEditOffer: (offerName: string, verticalName: string) => void;
 }) {
   const offers = vertical.offers ?? [];
@@ -554,7 +563,7 @@ function VerticalTree({
                     {/* Main row */}
                     <div className="flex items-center gap-1 px-2.5 py-1.5">
                       <button
-                        onClick={() => onOfferClick("blood-sugar")}
+                        onClick={() => onOfferClick(vertical.id, offer.id)}
                         className="flex-1 text-xs font-medium text-[#111928] dark:text-white hover:text-[#2563eb] dark:hover:text-[#60a5fa] transition-colors text-left truncate"
                       >
                         {offer.name}
@@ -592,17 +601,25 @@ function VerticalTree({
     </div>
   );
 }
-
-/* --- Component --------------------------------------------------------- */
 export default function VerticalGrid({
   verticals,
   onSelect,
+  activeFilter,
+  onFilterChange,
+  selectedYear,
+  setSelectedYear,
+  selectedMonths,
+  setSelectedMonths,
 }: {
   verticals: VerticalData[];
-  onSelect?: (id: string) => void;
+  onSelect?: (id: string, offerId: string) => void;
+  activeFilter: "my-items" | "org-promises";
+  onFilterChange: (f: "my-items" | "org-promises") => void;
+  selectedYear: number;
+  setSelectedYear: (y: number | ((prev: number) => number)) => void;
+  selectedMonths: Set<number>;
+  setSelectedMonths: (m: Set<number> | ((prev: Set<number>) => Set<number>)) => void;
 }) {
-  const [activeFilter, setActiveFilter] = useState<"org-promises">("org-promises");
-
   // Locally created verticals (full VerticalData objects with their offers)
   const [localVerticals, setLocalVerticals] = useState<VerticalData[]>([]);
 
@@ -718,7 +735,14 @@ export default function VerticalGrid({
         </div>
 
         <div className="shrink-0 pt-1 flex items-center gap-2">
-          <PromiseFilters activeFilter={activeFilter} onFilterChange={setActiveFilter} />
+          <PromiseFilters 
+            activeFilter={activeFilter} 
+            onFilterChange={onFilterChange} 
+            selectedYear={selectedYear}
+            setSelectedYear={setSelectedYear}
+            selectedMonths={selectedMonths}
+            setSelectedMonths={setSelectedMonths}
+          />
         </div>
       </div>
 
@@ -728,7 +752,7 @@ export default function VerticalGrid({
           <VerticalTree
             key={v.id}
             vertical={v}
-            onOfferClick={(id) => onSelect?.(id)}
+            onOfferClick={(id, offerId) => onSelect?.(id, offerId)}
             onEditOffer={handleEditOffer}
           />
         ))}

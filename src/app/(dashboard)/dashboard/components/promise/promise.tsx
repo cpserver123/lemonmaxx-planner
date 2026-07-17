@@ -1,6 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSelector } from "react-redux";
+import type { RootState } from "@/store";
+import api from "@/app/utils/axios";
+import { useAuth } from "@/context/AuthContext";
 import PromiseFilters from "./PromiseFilters";
 import VerticalGrid from "./VerticalGrid";
 import type { VerticalData } from "./VerticalCard";
@@ -9,74 +13,11 @@ import GLP1Page from "./glp1";
 import MemoryPage from "./memory";
 import NADPage from "./nad";
 import WeighLosePage from "./weighlose";
-import { LuArrowLeft } from "react-icons/lu";
+import { LuArrowLeft, LuLoader } from "react-icons/lu";
 
-/* --- Dummy Data ------------------------------------------------------ */
-const VERTICALS: VerticalData[] = [
-  {
-    id: "blood-sugar",
-    name: "Blood Sugar",
-    promise: 30000,
-    netPromise: 40000,
-    platforms: [{ icon: "meta" }],
-    offers: [
-      { id: "blood-sugar-bruno", name: "Bruno VSL", promise: 12000, netPromise: 16000 },
-      { id: "blood-sugar-bifi",  name: "BIFI",      promise: 10000, netPromise: 14000 },
-      { id: "blood-sugar-vince", name: "VINCE",     promise: 8000,  netPromise: 10000 },
-    ],
-  },
-  {
-    id: "glp1",
-    name: "GLP1",
-    promise: 10000,
-    netPromise: 15000,
-    hasWarning: true,
-    platforms: [{ icon: "meta" }],
-    offers: [
-      { id: "glp1-main",   name: "GLP1 Main",   promise: 6000, netPromise: 9000  },
-      { id: "glp1-upsell", name: "GLP1 Upsell", promise: 4000, netPromise: 6000  },
-    ],
-  },
-  {
-    id: "memory",
-    name: "Memory",
-    promise: 110000,
-    netPromise: 135000,
-    hasWarning: true,
-    platforms: [{ icon: "meta" }, { icon: "taboola", count: 1 }],
-    offers: [
-      { id: "memory-primary", name: "Memory Pro",  promise: 65000, netPromise: 80000 },
-      { id: "memory-lite",    name: "Memory Lite", promise: 45000, netPromise: 55000 },
-    ],
-  },
-  {
-    id: "nad",
-    name: "NAD+",
-    promise: 10000,
-    netPromise: 15000,
-    hasWarning: true,
-    platforms: [{ icon: "meta" }],
-    offers: [
-      { id: "nad-main", name: "NAD+ Main", promise: 10000, netPromise: 15000 },
-    ],
-  },
-  {
-    id: "weight-loss",
-    name: "Weight Loss",
-    promise: 40000,
-    netPromise: 55000,
-    hasWarning: true,
-    platforms: [{ icon: "meta" }, { icon: "taboola", count: 1 }],
-    offers: [
-      { id: "wl-slim",  name: "SlimFast VSL", promise: 15000, netPromise: 20000 },
-      { id: "wl-burn",  name: "BurnMax",       promise: 14000, netPromise: 19000 },
-      { id: "wl-keto",  name: "Keto Offer",    promise: 11000, netPromise: 16000 },
-    ],
-  },
-];
 
 /* --- Vertical detail mapping ----------------------------------------- */
-const VERTICAL_COMPONENTS: Record<string, React.ComponentType> = {
+const VERTICAL_COMPONENTS: Record<string, React.ComponentType<any>> = {
   "blood-sugar": BloodSugarPage,
   "glp1": GLP1Page,
   "memory": MemoryPage,
@@ -86,10 +27,58 @@ const VERTICAL_COMPONENTS: Record<string, React.ComponentType> = {
 
 /* --- Main Component -------------------------------------------------- */
 export default function PromiseSection() {
+  const workspaceId = useSelector((state: RootState) => state.workspace.selectedId ?? 1);
+  const { token } = useAuth();
+
   const [activeFilter, setActiveFilter] = useState<"my-items" | "org-promises">("my-items");
   const [selectedVertical, setSelectedVertical] = useState<string | null>(null);
+  const [selectedOffer, setSelectedOffer] = useState<string | null>(null);
+  
+  const [selectedYear, setSelectedYear] = useState(2026);
+  const [selectedMonths, setSelectedMonths] = useState<Set<number>>(new Set([5])); // Default June
+  
+  const [verticals, setVerticals] = useState<VerticalData[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const selectedName = VERTICALS.find((v) => v.id === selectedVertical)?.name ?? "";
+  useEffect(() => {
+    const fetchVerticals = async () => {
+      setLoading(true);
+      const firstMonth = Array.from(selectedMonths)[0] ?? 5;
+      const monthStr = `${selectedYear}-${String(firstMonth + 1).padStart(2, "0")}`;
+      
+      try {
+        const res = await api.get("/api/v1/planner/verticals", {
+          params: { workspace_id: workspaceId, with_own_offers: true, month_year: monthStr },
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        const data = res.data?.data?.verticals || [];
+        const mapped: VerticalData[] = data.map((v: any) => ({
+          id: String(v.id),
+          name: v.name,
+          promise: v.promise || 0,
+          netPromise: v.net_promise || 0,
+          actuals: v.actual_promise || 0,
+          platforms: [], // Add logic if platforms data is needed
+          offers: (v.own_offers || []).map((o: any) => ({
+            id: String(o.id),
+            name: o.name,
+            promise: o.promise || 0,
+            netPromise: o.net_promise || 0,
+            actuals: o.actual_promise || 0
+          }))
+        }));
+        setVerticals(mapped);
+      } catch (err) {
+        console.error("Failed to fetch verticals", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchVerticals();
+  }, [workspaceId, token, selectedYear, selectedMonths]);
+
+  const selectedName = verticals.find((v) => v.id === selectedVertical)?.name ?? "";
   // Any offer whose vertical is not in the map defaults to BloodSugarPage
   const DetailComponent = selectedVertical
     ? (VERTICAL_COMPONENTS[selectedVertical] ?? BloodSugarPage)
@@ -102,7 +91,7 @@ export default function PromiseSection() {
         <div>
           {/* Back button */}
           <button
-            onClick={() => setSelectedVertical(null)}
+            onClick={() => { setSelectedVertical(null); setSelectedOffer(null); }}
             className="flex items-center gap-1.5 text-xs text-[#5750F1] hover:underline mb-4"
           >
             <LuArrowLeft size={14} />
@@ -110,13 +99,29 @@ export default function PromiseSection() {
           </button>
 
           {/* Vertical detail component */}
-          <DetailComponent />
+          <DetailComponent ownOfferId={selectedOffer} />
+        </div>
+      ) : loading ? (
+        <div className="flex flex-col items-center justify-center py-20">
+          <LuLoader className="animate-spin text-[#5750F1]" size={24} />
+          <p className="mt-2 text-sm text-[#9CA3AF]">Loading verticals...</p>
+        </div>
+      ) : verticals.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <p className="text-sm font-semibold text-[#111928] dark:text-white">No Verticals Found</p>
+          <p className="text-xs text-[#9CA3AF] mt-1">Create a vertical first to see it here.</p>
         </div>
       ) : (
         <div >
           <VerticalGrid
-            verticals={VERTICALS}
-            onSelect={(id) => setSelectedVertical(id)}
+            verticals={verticals}
+            onSelect={(id, offerId) => { setSelectedVertical(id); setSelectedOffer(offerId); }}
+            activeFilter={activeFilter}
+            onFilterChange={setActiveFilter}
+            selectedYear={selectedYear}
+            setSelectedYear={setSelectedYear}
+            selectedMonths={selectedMonths}
+            setSelectedMonths={setSelectedMonths}
           />
         </div>
       )}

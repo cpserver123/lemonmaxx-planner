@@ -7,6 +7,10 @@ import {
   LuHeading1, LuHeading2, LuBold, LuItalic, LuList, LuListOrdered,
   LuQuote, LuTable, LuUndo2, LuRedo2, LuPaperclip, LuFile,
 } from "react-icons/lu";
+import { useSelector } from "react-redux";
+import type { RootState } from "@/store";
+import api from "@/app/utils/axios";
+import { useAuth } from "@/context/AuthContext";
 
 /* --- Types ----------------------------------------------------------- */
 export interface DrawerRow {
@@ -16,10 +20,15 @@ export interface DrawerRow {
   status:          string;
   due:             string;
   accountable:     string;
+  accountableId?:  number;
   linkTo:          string;
+  actionId?:       string;
+  note?:           string;
   pathwayTitle?:   string;
   pathwayDesc?:    string;
-  additionalActions?: { id: string; action: string; intendedOutcome: string }[];
+  category?:       Category;
+  platform?:       Platform;
+  additionalActions?: { id: string; action: string; intendedOutcome: string; category?: Category; platform?: Platform }[];
 }
 
 export type PerformanceTab = "numbers" | "creatives" | "experiments";
@@ -31,25 +40,13 @@ const PERFORMANCE_OPTIONS: { value: PerformanceTab; label: string }[] = [
 ];
 
 const CATEGORY_OPTIONS = ["Breakdowns", "Escalations", "Requests"] as const;
-type Category = typeof CATEGORY_OPTIONS[number];
+export type Category = typeof CATEGORY_OPTIONS[number];
 
 const PLATFORM_OPTIONS = ["Meta", "Taboola"] as const;
-type Platform = typeof PLATFORM_OPTIONS[number];
+export type Platform = typeof PLATFORM_OPTIONS[number];
 
 /* --- Team Members ---------------------------------------------------- */
-const TEAM_MEMBERS = [
-  "Manish U.",
-  "Sarah K.",
-  "Raj P.",
-  "Lisa T.",
-  "Chris M.",
-  "Yash Poonia",
-  "Mukesh Kumar",
-  "Arun S.",
-  "Kapil N.",
-  "Komal T.",
-];
-
+// We now fetch team members from the API instead of using a hardcoded list.
 /* --- Status option --------------------------------------------------- */
 const STATUS_OPTIONS = [
   { label: "Planned",        color: "bg-[#9CA3AF]/20 text-[#9CA3AF]" },
@@ -114,10 +111,14 @@ function StatusDropdown({
 /* --- AccountableDropdown --------------------------------------------- */
 function AccountableDropdown({
   value, onChange,
-}: { value: string; onChange: (s: string) => void }) {
+}: { value: string; onChange: (name: string, id?: number) => void }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [users, setUsers] = useState<{ id: number; name: string }[]>([]);
   const ref = useRef<HTMLDivElement>(null);
+
+  const workspaceId = useSelector((state: RootState) => state.workspace.selectedId ?? 1);
+  const { token } = useAuth();
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -130,15 +131,32 @@ function AccountableDropdown({
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  useEffect(() => {
+    if (users.length > 0) return;
+    const fetchUsers = async () => {
+      try {
+        const res = await api.get(`/api/v1/user-management/workspaces/${workspaceId}/users`, {
+          params: { only_active: false, full_data: true },
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.data?.success) {
+          setUsers(res.data.data.users || []);
+        }
+      } catch (error) {
+        console.error("Failed to fetch users:", error);
+      }
+    };
+    fetchUsers();
+  }, [workspaceId, token, users.length]);
+
   const initials = (name: string) =>
     name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
 
-  const filteredMembers = TEAM_MEMBERS.filter(name =>
-    name.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredMembers = users
+    .filter(u => u.name.toLowerCase().includes(search.toLowerCase()));
 
-  const handleSelect = (name: string) => {
-    onChange(name);
+  const handleSelect = (user: { id: number; name: string }) => {
+    onChange(user.name, user.id);
     setOpen(false);
     setSearch("");
   };
@@ -193,7 +211,7 @@ function AccountableDropdown({
             {/* Unassign option — only show if not filtering */}
             {!search && (
               <button
-                onClick={() => { onChange(""); setOpen(false); setSearch(""); }}
+                onClick={() => { onChange("", 0); setOpen(false); setSearch(""); }}
                 className="flex items-center gap-2 w-full px-3 py-2 text-xs text-[#9CA3AF] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"
               >
                 <LuUser size={13} />
@@ -201,17 +219,17 @@ function AccountableDropdown({
                 {!value && <LuCheck size={12} className="text-[#5750F1] ml-auto shrink-0" />}
               </button>
             )}
-            {filteredMembers.length > 0 ? filteredMembers.map(name => (
+            {filteredMembers.length > 0 ? filteredMembers.map(user => (
               <button
-                key={name}
-                onClick={() => handleSelect(name)}
+                key={user.id}
+                onClick={() => handleSelect(user)}
                 className="flex items-center gap-2 w-full px-3 py-2 text-xs hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"
               >
                 <div className="h-5 w-5 rounded-full bg-[#2563eb] flex items-center justify-center text-[8px] font-bold text-white shrink-0">
-                  {initials(name)}
+                  {initials(user.name)}
                 </div>
-                <span className="text-[#111928] dark:text-[#D1D5DB]">{name}</span>
-                {value === name && <LuCheck size={12} className="text-[#5750F1] ml-auto shrink-0" />}
+                <span className="text-[#111928] dark:text-[#D1D5DB]">{user.name}</span>
+                {value === user.name && <LuCheck size={12} className="text-[#5750F1] ml-auto shrink-0" />}
               </button>
             )) : (
               <p className="px-3 py-2 text-xs text-[#9CA3AF] text-center">No results</p>
@@ -337,9 +355,22 @@ function ListSection({
 }
 
 /* --- Rich Text Editor ------------------------------------------------ */
-function RichEditor() {
+function RichEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const editorRef  = useRef<HTMLDivElement>(null);
   const [activeFormats, setActiveFormats] = useState<Set<string>>(new Set());
+
+  // Sync value from parent to contentEditable only when not focused
+  useEffect(() => {
+    if (editorRef.current && document.activeElement !== editorRef.current && editorRef.current.innerHTML !== value) {
+      editorRef.current.innerHTML = value;
+    }
+  }, [value]);
+
+  const handleInput = () => {
+    if (editorRef.current) {
+      onChange(editorRef.current.innerHTML);
+    }
+  };
 
   /* Keep toolbar active-state in sync with cursor position */
   const syncFormats = useCallback(() => {
@@ -457,7 +488,8 @@ function RichEditor() {
         ref={editorRef}
         contentEditable
         suppressContentEditableWarning
-        onKeyUp={syncFormats}
+        onInput={handleInput}
+        onKeyUp={(e) => { syncFormats(); handleInput(); }}
         onMouseUp={syncFormats}
         onSelect={syncFormats}
         data-placeholder="Add more detail..."
@@ -543,16 +575,23 @@ export default function ActionDrawer({
   onSave,
   onDelete,
   performance: initialPerformance,
+  hideAddAnother,
+  pathwayId,
 }: {
   row:          DrawerRow | null;
   title?:       string;
   isPathway?:   boolean;
   onClose:      () => void;
-  onSave:       (updated: DrawerRow) => void;
+  onSave:       (updated: DrawerRow) => Promise<any> | any;
   onDelete:     (id: string) => void;
   /** When provided, shows the Performance / Category / Platform dropdowns */
   performance?: PerformanceTab | null;
+  hideAddAnother?: boolean;
+  /** The pathway ID to attach files to */
+  pathwayId?: string | null;
 }) {
+  const workspaceId = useSelector((state: RootState) => state.workspace.selectedId ?? 1);
+  const { token } = useAuth();
   const [draft, setDraft] = useState<DrawerRow | null>(null);
   const [checklist, setChecklist] = useState<string[]>([]);
   const [checkInput, setCheckInput] = useState("");
@@ -562,14 +601,20 @@ export default function ActionDrawer({
   const [watchers, setWatchers] = useState<string[]>([]);
   const [dependencies, setDependencies] = useState<string[]>([]);
 
-  // Attachments
+  // Attachments — store both display info and actual File objects
   const [attachments, setAttachments] = useState<{ name: string; size: number }[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Performance / Category / Platform state
   const [perfTab, setPerfTab] = useState<PerformanceTab>(initialPerformance ?? "numbers");
   const [category, setCategory] = useState<Category>("Breakdowns");
   const [platform, setPlatform] = useState<Platform>("Meta");
+
+  const [isSaving, setIsSaving] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+
+  const isOpen = !!row;
 
   // Sync draft when row changes
   useEffect(() => {
@@ -580,13 +625,128 @@ export default function ActionDrawer({
     setWatchers([]);
     setDependencies([]);
     setAttachments([]);
+    setPendingFiles([]);
     // Reset perf dropdowns to the caller's default
     if (initialPerformance) setPerfTab(initialPerformance);
-    setCategory("Breakdowns");
-    setPlatform("Meta");
+    // Use category/platform from the row if available, otherwise default
+    const rowCategory = row?.category
+      ? (CATEGORY_OPTIONS.find(opt => opt.toLowerCase() === (row.category as string).toLowerCase()) || "Breakdowns")
+      : "Breakdowns";
+    const rowPlatform = row?.platform
+      ? (PLATFORM_OPTIONS.find(opt => opt.toLowerCase() === (row.platform as string).toLowerCase()) || "Meta")
+      : "Meta";
+    setCategory(rowCategory as Category);
+    setPlatform(rowPlatform as Platform);
   }, [row]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const isOpen = !!row;
+  useEffect(() => {
+    if (isOpen && pathwayId && /^\d+$/.test(pathwayId)) {
+      const fetchPathwayDetails = async () => {
+        try {
+          const res = await api.get(`/api/v1/planner/pathways/${pathwayId}`, {
+            params: { workspace_id: workspaceId },
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (res.data?.success) {
+            const p = res.data.data;
+            
+            // Map attachments
+            let parsedAttachments = [];
+            if (p.attachments) {
+              try {
+                parsedAttachments = typeof p.attachments === "string" 
+                  ? JSON.parse(p.attachments) 
+                  : p.attachments;
+              } catch (e) {
+                console.error("Failed to parse attachments:", e);
+              }
+            }
+            setAttachments((parsedAttachments || []).map((att: any) => ({
+              name: att.filename || att.name || "File",
+              size: att.size || 0
+            })));
+
+            // Map status
+            const mappedStatus = STATUS_OPTIONS.find(
+              opt => opt.label.toLowerCase() === (p.status || "").toLowerCase()
+            )?.label || "Planned";
+
+            // When opening from an action row (isPathway=false), find the specific action by row id
+            // When editing a pathway (isPathway=true), use the first action as primary
+            const actions: any[] = p.actions || [];
+            const targetAction = isPathway
+              ? actions[0]
+              : actions.find((a: any) => String(a.id) === String(row?.id)) ?? actions[0];
+
+            const mappedCategory = targetAction?.category 
+              ? (CATEGORY_OPTIONS.find(opt => opt.toLowerCase() === targetAction.category.toLowerCase()) || "Breakdowns")
+              : "Breakdowns";
+            const mappedPlatform = targetAction?.platform
+              ? (PLATFORM_OPTIONS.find(opt => opt.toLowerCase() === targetAction.platform.toLowerCase()) || "Meta")
+              : "Meta";
+
+            setCategory(mappedCategory);
+            setPlatform(mappedPlatform);
+
+            // Map draft fields
+            setDraft(d => {
+              if (!d) return null;
+              
+              if (isPathway) {
+                // Pathway edit mode: map additional actions (actions after the first one)
+                const mappedAdditional = actions.slice(1).map((a: any) => ({
+                  id: String(a.id),
+                  action: a.title,
+                  intendedOutcome: a.intended_outcome || "",
+                  category: CATEGORY_OPTIONS.find(opt => opt.toLowerCase() === (a.category || "").toLowerCase()) || "Breakdowns",
+                  platform: PLATFORM_OPTIONS.find(opt => opt.toLowerCase() === (a.platform || "").toLowerCase()) || "Meta"
+                }));
+
+                return {
+                  ...d,
+                  pathwayTitle: p.name,
+                  pathwayDesc: p.description,
+                  status: mappedStatus,
+                  due: p.due_date || "",
+                  accountable: p.accountable_name || "",
+                  accountableId: p.accountable_id || 0,
+                  // Primary action details (actions[0])
+                  actionId: targetAction ? String(targetAction.id) : undefined,
+                  action: targetAction?.title || "",
+                  intendedOutcome: targetAction?.intended_outcome || "",
+                  category: mappedCategory,
+                  platform: mappedPlatform,
+                  note: p.note || "",
+                  additionalActions: mappedAdditional
+                };
+              } else {
+                // Action row click: populate the specific action's fields + pathway context
+                return {
+                  ...d,
+                  status: targetAction?.status
+                    ? (STATUS_OPTIONS.find(opt => opt.label.toLowerCase() === (targetAction.status || "").toLowerCase())?.label || "Planned")
+                    : (d.status || "Planned"),
+                  due: p.due_date || d.due || "",
+                  accountable: p.accountable_name || d.accountable || "",
+                  accountableId: p.accountable_id || d.accountableId || 0,
+                  action: targetAction?.title || d.action || "",
+                  intendedOutcome: targetAction?.intended_outcome || d.intendedOutcome || "",
+                  category: mappedCategory,
+                  platform: mappedPlatform,
+                  note: p.note || "",
+                  actionId: targetAction ? String(targetAction.id) : d.actionId,
+                };
+              }
+            });
+          }
+        } catch (err) {
+          console.error("Failed to fetch pathway details:", err);
+        }
+      };
+      fetchPathwayDetails();
+    }
+  }, [isOpen, isPathway, pathwayId, workspaceId, token]); // eslint-disable-line react-hooks/exhaustive-deps
+
 
   const addCheckItem = () => {
     if (!checkInput.trim()) return;
@@ -597,10 +757,17 @@ export default function ActionDrawer({
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
-    const newFiles = Array.from(files).map(f => ({ name: f.name, size: f.size }));
+    const fileArr = Array.from(files);
+    const newFiles = fileArr.map(f => ({ name: f.name, size: f.size }));
     setAttachments(prev => [...prev, ...newFiles]);
+    setPendingFiles(prev => [...prev, ...fileArr]);
     // Reset the input so the same file can be selected again
     e.target.value = "";
+  };
+
+  const handleRemoveAttachment = (i: number) => {
+    setAttachments(prev => prev.filter((_, idx) => idx !== i));
+    setPendingFiles(prev => prev.filter((_, idx) => idx !== i));
   };
 
   const formatFileSize = (bytes: number) => {
@@ -688,6 +855,30 @@ export default function ActionDrawer({
             className="w-full text-xs text-[#111928] dark:text-[#D1D5DB] bg-transparent border-none outline-none placeholder:text-[#9CA3AF] mb-4 py-1 hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] rounded px-1 -ml-1 transition-colors focus:bg-[#F3F4F6] dark:focus:bg-[#1a2332]"
           />
 
+          {/* Category / Platform — only when opened from a bloodsugar tab */}
+          {initialPerformance != null && (
+            <div className="flex flex-wrap items-center gap-3 mb-4 pb-4 border-b border-[#E6EBF1] dark:border-[#1F2A37]">
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-medium text-[#9CA3AF] uppercase tracking-wide">Category</span>
+                <SimpleDropdown<Category>
+                  label="Category"
+                  value={category}
+                  options={CATEGORY_OPTIONS}
+                  onChange={setCategory}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-medium text-[#9CA3AF] uppercase tracking-wide">Platform</span>
+                <SimpleDropdown<Platform>
+                  label="Platform"
+                  value={platform}
+                  options={PLATFORM_OPTIONS}
+                  onChange={setPlatform}
+                />
+              </div>
+            </div>
+          )}
+
           {/* Additional Actions */}
           {draft.additionalActions?.map((add, idx) => (
             <div key={add.id} className="mb-4 relative border-l-2 border-[#5750F1]/30 pl-3">
@@ -722,39 +913,50 @@ export default function ActionDrawer({
                 placeholder="Click to add intended outcome..."
                 className="w-full text-xs text-[#111928] dark:text-[#D1D5DB] bg-transparent border-none outline-none placeholder:text-[#9CA3AF] py-1 hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] rounded px-1 -ml-1 transition-colors focus:bg-[#F3F4F6] dark:focus:bg-[#1a2332]"
               />
+
+              {initialPerformance != null && (
+                <div className="flex flex-wrap items-center gap-3 mt-3 mb-2">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] font-medium text-[#9CA3AF] uppercase tracking-wide">Category</span>
+                    <SimpleDropdown<Category>
+                      label="Category"
+                      value={add.category || "Breakdowns"}
+                      options={CATEGORY_OPTIONS}
+                      onChange={val => setDraft(d => {
+                        if (!d) return d;
+                        const newActs = [...(d.additionalActions || [])];
+                        newActs[idx].category = val;
+                        return { ...d, additionalActions: newActs };
+                      })}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] font-medium text-[#9CA3AF] uppercase tracking-wide">Platform</span>
+                    <SimpleDropdown<Platform>
+                      label="Platform"
+                      value={add.platform || "Meta"}
+                      options={PLATFORM_OPTIONS}
+                      onChange={val => setDraft(d => {
+                        if (!d) return d;
+                        const newActs = [...(d.additionalActions || [])];
+                        newActs[idx].platform = val;
+                        return { ...d, additionalActions: newActs };
+                      })}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           ))}
 
-          <button
-            onClick={() => setDraft(d => d ? { ...d, additionalActions: [...(d.additionalActions || []), { id: crypto.randomUUID(), action: "", intendedOutcome: "" }] } : d)}
-            className="flex items-center gap-1.5 text-xs font-medium text-[#5750F1] hover:text-[#5750F1]/80 transition-colors mb-6"
-          >
-            <LuPlus size={14} />
-            Add another action
-          </button>
-
-          {/* Category / Platform — only when opened from a bloodsugar tab */}
-          {initialPerformance != null && (
-            <div className="flex flex-wrap items-center gap-3 mb-4 pb-4 border-b border-[#E6EBF1] dark:border-[#1F2A37]">
-              <div className="flex flex-col gap-1">
-                <span className="text-[10px] font-medium text-[#9CA3AF] uppercase tracking-wide">Category</span>
-                <SimpleDropdown<Category>
-                  label="Category"
-                  value={category}
-                  options={CATEGORY_OPTIONS}
-                  onChange={setCategory}
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <span className="text-[10px] font-medium text-[#9CA3AF] uppercase tracking-wide">Platform</span>
-                <SimpleDropdown<Platform>
-                  label="Platform"
-                  value={platform}
-                  options={PLATFORM_OPTIONS}
-                  onChange={setPlatform}
-                />
-              </div>
-            </div>
+          {!(hideAddAnother || (isPathway && pathwayId && /^\d+$/.test(pathwayId))) && (
+            <button
+              onClick={() => setDraft(d => d ? { ...d, additionalActions: [...(d.additionalActions || []), { id: crypto.randomUUID(), action: "", intendedOutcome: "", category: "Breakdowns", platform: "Meta" }] } : d)}
+              className="flex items-center gap-1.5 text-xs font-medium text-[#5750F1] hover:text-[#5750F1]/80 transition-colors mb-6"
+            >
+              <LuPlus size={14} />
+              Add another action
+            </button>
           )}
 
           {/* Fields */}
@@ -778,20 +980,18 @@ export default function ActionDrawer({
             <SectionRow label="👤 Accountable">
               <AccountableDropdown
                 value={draft.accountable}
-                onChange={name => setDraft(d => d ? { ...d, accountable: name } : d)}
+                onChange={(name, id) => setDraft(d => d ? { ...d, accountable: name, accountableId: id } : d)}
               />
             </SectionRow>
 
-            <SectionRow label="👤 To Whom">
-              <AccountableDropdown
-                value={draft.linkTo}
-                onChange={name => setDraft(d => d ? { ...d, linkTo: name } : d)}
-              />
-            </SectionRow>
+            
           </div>
 
           {/* Rich text editor */}
-          <RichEditor />
+          <RichEditor 
+            value={draft.note || ""} 
+            onChange={val => setDraft(d => d ? { ...d, note: val } : d)} 
+          />
 
          
 
@@ -824,7 +1024,7 @@ export default function ActionDrawer({
                     <span className="text-[11px] text-[#111928] dark:text-[#D1D5DB] flex-1 truncate">{file.name}</span>
                     <span className="text-[10px] text-[#9CA3AF] shrink-0">{formatFileSize(file.size)}</span>
                     <button
-                      onClick={() => setAttachments(prev => prev.filter((_, idx) => idx !== i))}
+                      onClick={() => handleRemoveAttachment(i)}
                       className="opacity-0 group-hover:opacity-100 text-[#9CA3AF] hover:text-red-400 transition-all"
                     >
                       <LuX size={11} />
@@ -838,24 +1038,95 @@ export default function ActionDrawer({
           </div>
         </div>
 
+        {/* Upload Progress Bar */}
+        {uploadProgress !== null && (
+          <div className="px-5 py-2 border-t border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] w-full">
+            <div className="flex items-center justify-between text-xs text-[#6B7280] dark:text-[#9CA3AF] mb-1">
+              <span>Uploading attachments...</span>
+              <span>{uploadProgress}%</span>
+            </div>
+            <div className="w-full bg-[#E6EBF1] dark:bg-[#1F2A37] h-1.5 rounded-full overflow-hidden">
+              <div 
+                className="bg-[#5750F1] h-full transition-all duration-150 rounded-full" 
+                style={{ width: `${uploadProgress}%` }}
+              />
+            </div>
+          </div>
+        )}
         {/* Footer buttons */}
         <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520]">
-             <button
-            onClick={() => { onSave(draft); onClose(); }}
-            className="flex items-center gap-1.5 rounded-lg bg-[#5750F1] text-white px-5 py-2 text-xs font-semibold hover:bg-[#4742d4] transition-colors"
+          <button
+            disabled={isSaving}
+            onClick={async () => {
+              setIsSaving(true);
+              setUploadProgress(null);
+              try {
+                // 1. Save/create the pathway first
+                const savedResult = await onSave({ ...draft, category, platform });
+                
+                // Determine the pathway ID: either returned by onSave or passed as prop
+                const idToUse = savedResult || pathwayId;
+
+                // 2. If there are pending files and we have a pathway ID, upload them
+                if (idToUse && pendingFiles.length > 0) {
+                  setUploadProgress(0);
+                  const formData = new FormData();
+                  pendingFiles.forEach(file => formData.append("files", file));
+                  
+                  const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "";
+                  const uploadUrl = `${API_BASE}/api/v1/planner/pathways/${idToUse}/attachments?workspace_id=${workspaceId}`;
+
+                  await new Promise<void>((resolve, reject) => {
+                    const xhr = new XMLHttpRequest();
+                    xhr.open("POST", uploadUrl, true);
+                    xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+
+                    xhr.upload.onprogress = (event) => {
+                      if (event.lengthComputable) {
+                        const percentCompleted = Math.round((event.loaded * 100) / event.total);
+                        setUploadProgress(percentCompleted);
+                      }
+                    };
+
+                    xhr.onload = () => {
+                      if (xhr.status >= 200 && xhr.status < 300) {
+                        resolve();
+                      } else {
+                        reject(new Error(`Upload failed with status ${xhr.status}`));
+                      }
+                    };
+
+                    xhr.onerror = () => reject(new Error("Network error during upload"));
+                    xhr.send(formData);
+                  });
+                }
+                
+                onClose();
+              } catch (err) {
+                console.error("Failed to save and upload attachments:", err);
+              } finally {
+                setIsSaving(false);
+                setUploadProgress(null);
+              }
+            }}
+            className="flex items-center gap-1.5 rounded-lg bg-[#5750F1] text-white px-5 py-2 text-xs font-semibold hover:bg-[#4742d4] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <LuSave size={13} />
-            Save changes
+            {isSaving ? "Saving..." : (
+              <>
+                <LuSave size={13} />
+                Save changes
+              </>
+            )}
           </button>
           
           <button
+            disabled={isSaving}
             onClick={() => { onDelete(draft.id); onClose(); }}
-            className="flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 text-red-500 px-4 py-2 text-xs font-semibold hover:bg-red-500/20 transition-colors"
+            className="flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 text-red-500 px-4 py-2 text-xs font-semibold hover:bg-red-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <LuTrash2 size={13} />
             Delete
           </button>
-       
         </div>
       </div>
     </>
