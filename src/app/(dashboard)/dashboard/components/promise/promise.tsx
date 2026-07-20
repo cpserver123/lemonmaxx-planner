@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSelector } from "react-redux";
 import type { RootState } from "@/store";
 import api from "@/app/utils/axios";
@@ -40,43 +40,44 @@ export default function PromiseSection() {
   const [verticals, setVerticals] = useState<VerticalData[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchVerticals = async () => {
-      setLoading(true);
-      const firstMonth = Array.from(selectedMonths)[0] ?? 5;
-      const monthStr = `${selectedYear}-${String(firstMonth + 1).padStart(2, "0")}`;
+  const fetchVerticals = useCallback(async () => {
+    setLoading(true);
+    const firstMonth = Array.from(selectedMonths)[0] ?? 5;
+    const monthStr = `${selectedYear}-${String(firstMonth + 1).padStart(2, "0")}`;
+    
+    try {
+      const res = await api.get("/api/v1/planner/verticals", {
+        params: { workspace_id: workspaceId, with_own_offers: true, month_year: monthStr },
+        headers: { Authorization: `Bearer ${token}` }
+      });
       
-      try {
-        const res = await api.get("/api/v1/planner/verticals", {
-          params: { workspace_id: workspaceId, with_own_offers: true, month_year: monthStr },
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        
-        const data = res.data?.data?.verticals || [];
-        const mapped: VerticalData[] = data.map((v: any) => ({
-          id: String(v.id),
-          name: v.name,
-          promise: v.promise || 0,
-          netPromise: v.net_promise || 0,
-          actuals: v.actual_promise || 0,
-          platforms: [], // Add logic if platforms data is needed
-          offers: (v.own_offers || []).map((o: any) => ({
-            id: String(o.id),
-            name: o.name,
-            promise: o.promise || 0,
-            netPromise: o.net_promise || 0,
-            actuals: o.actual_promise || 0
-          }))
-        }));
-        setVerticals(mapped);
-      } catch (err) {
-        console.error("Failed to fetch verticals", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchVerticals();
+      const data = res.data?.data?.verticals || [];
+      const mapped: VerticalData[] = data.map((v: any) => ({
+        id: String(v.id),
+        name: v.name,
+        promise: v.promise || 0,
+        netPromise: v.net_promise || 0,
+        actuals: v.actual_promise || 0,
+        platforms: [], // Add logic if platforms data is needed
+        offers: (v.own_offers || []).map((o: any) => ({
+          id: String(o.id),
+          name: o.name,
+          promise: o.promise || 0,
+          netPromise: o.net_promise || 0,
+          actuals: o.actual_promise || 0
+        }))
+      }));
+      setVerticals(mapped);
+    } catch (err) {
+      console.error("Failed to fetch verticals", err);
+    } finally {
+      setLoading(false);
+    }
   }, [workspaceId, token, selectedYear, selectedMonths]);
+
+  useEffect(() => {
+    fetchVerticals();
+  }, [fetchVerticals]);
 
   const selectedName = verticals.find((v) => v.id === selectedVertical)?.name ?? "";
   // Any offer whose vertical is not in the map defaults to BloodSugarPage
@@ -122,6 +123,7 @@ export default function PromiseSection() {
             setSelectedYear={setSelectedYear}
             selectedMonths={selectedMonths}
             setSelectedMonths={setSelectedMonths}
+            onRefresh={fetchVerticals}
           />
         </div>
       )}

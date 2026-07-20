@@ -610,6 +610,7 @@ export default function VerticalGrid({
   setSelectedYear,
   selectedMonths,
   setSelectedMonths,
+  onRefresh,
 }: {
   verticals: VerticalData[];
   onSelect?: (id: string, offerId: string) => void;
@@ -619,6 +620,7 @@ export default function VerticalGrid({
   setSelectedYear: (y: number | ((prev: number) => number)) => void;
   selectedMonths: Set<number>;
   setSelectedMonths: (m: Set<number> | ((prev: Set<number>) => Set<number>)) => void;
+  onRefresh?: () => void;
 }) {
   // Locally created verticals (full VerticalData objects with their offers)
   const [localVerticals, setLocalVerticals] = useState<VerticalData[]>([]);
@@ -742,6 +744,7 @@ export default function VerticalGrid({
             setSelectedYear={setSelectedYear}
             selectedMonths={selectedMonths}
             setSelectedMonths={setSelectedMonths}
+            onRefresh={onRefresh}
           />
         </div>
       </div>
