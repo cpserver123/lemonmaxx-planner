@@ -99,7 +99,7 @@ function Dropdown({ value, options, onChange }: { value: string; options: string
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full mt-1 z-20 min-w-[200px] rounded-md border border-[#E6EBF1] dark:border-[#27303E] bg-white dark:bg-[#122031] shadow-lg flex flex-col max-h-[300px] overflow-hidden">
+          <div className="absolute left-0 top-full mt-1 z-20 min-w-[200px] rounded-md border border-[#E6EBF1] dark:border-[#27303E] bg-white dark:bg-[#122031] shadow-lg flex flex-col max-h-[300px] overflow-hidden">
             <div className="flex items-center gap-2 px-3 py-2 border-b border-[#E6EBF1] dark:border-[#27303E] shrink-0">
               <LuSearch size={12} className="text-[#9CA3AF] shrink-0" />
               <input
@@ -913,7 +913,7 @@ export default function PlanningSection() {
           {showActualsPicker && (
             <>
               <div className="fixed inset-0 z-30" onClick={() => setShowActualsPicker(false)} />
-              <div className="absolute left-0 top-full mt-1 z-40 w-64 rounded-xl border border-[#E6EBF1] dark:border-[#27303E] bg-white dark:bg-[#122031] shadow-xl p-4">
+              <div className="absolute right-0 top-full mt-1 z-40 w-64 rounded-xl border border-[#E6EBF1] dark:border-[#27303E] bg-white dark:bg-[#122031] shadow-xl p-4">
                 <div className="flex items-center justify-between mb-3">
                   <button onClick={() => setActualsYear(y => y - 1)} className="p-1 rounded-md text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"><LuChevronLeft size={14} /></button>
                   <span className="text-sm font-semibold text-[#111928] dark:text-white">{actualsYear}</span>

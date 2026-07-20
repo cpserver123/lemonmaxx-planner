@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { LuCalendar, LuChevronLeft, LuChevronRight, LuStar, LuClipboardCheck, LuZap } from "react-icons/lu";
+import { LuCalendar, LuChevronLeft, LuChevronRight, LuChevronDown, LuStar, LuClipboardCheck, LuZap } from "react-icons/lu";
 import MyTeamPanel from "../my-team/MyTeamPanel";
 import { useAuth } from "@/context/AuthContext";
 import CheckIn from "../dashboardcomponent/components/checkin";
@@ -66,10 +66,19 @@ function FilterBar({
   const [selectedYear,   setSelectedYear]   = useState(2026);
   const [selectedMonths, setSelectedMonths] = useState<Set<number>>(new Set([5])); // June
 
+  const [localYear, setLocalYear] = useState<number>(selectedYear);
+  const [localMonths, setLocalMonths] = useState<Set<number>>(new Set(selectedMonths));
+
+  const handleOpenPicker = () => {
+    setLocalYear(selectedYear);
+    setLocalMonths(new Set(selectedMonths));
+    setShowPicker(true);
+  };
+
   const label = buildLabel(selectedMonths, selectedYear);
 
-  const toggleMonth = (i: number) => {
-    setSelectedMonths(prev => {
+  const toggleLocalMonth = (i: number) => {
+    setLocalMonths(prev => {
       const next = new Set(prev);
       next.has(i) ? next.delete(i) : next.add(i);
       return next;
@@ -110,7 +119,7 @@ function FilterBar({
       {!hideAdminItems && (
         <button
           onClick={onCheckIn}
-          className="flex items-center gap-1.5 rounded-lg border border-[#5750F1]/40 bg-[#5750F1]/5 px-3 py-1.5 text-[11px] font-semibold text-[#5750F1] dark:text-[#8b89f9] hover:bg-[#5750F1]/10 transition-colors"
+          className="flex items-center gap-1.5 rounded-lg border border-[#5750F1]/40 bg-[#5750F1]/5 px-3 py-1.5 text-[11px] font-semibold text-[#5750F1] dark:text-[#8b89f9] hover:bg-[#5750F1]/10 transition-colors cursor-pointer"
         >
           <LuClipboardCheck size={13} />
           Check In
@@ -120,13 +129,12 @@ function FilterBar({
       {/* Multi-month picker */}
       <div className="ml-auto relative">
         <button
-          onClick={() => setShowPicker(p => !p)}
-          className="flex items-center gap-1.5 rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] px-2.5 py-1.5 text-[11px] font-medium text-[#111928] dark:text-white hover:border-[#5750F1]/40 transition-colors"
+          onClick={handleOpenPicker}
+          className="flex items-center gap-2 rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] px-3 py-2 text-xs font-medium text-[#111928] dark:text-white hover:border-[#5750F1]/40 transition-colors cursor-pointer"
         >
-          <LuCalendar size={12} className="text-[#9CA3AF]" />
-          {label}
-          <LuChevronLeft size={12} className="text-[#9CA3AF]" />
-          <LuChevronRight size={12} className="text-[#9CA3AF]" />
+          <LuCalendar size={13} className="text-[#9CA3AF]" />
+          <span>{label}</span>
+          <LuChevronDown size={12} className={`text-[#9CA3AF] transition-transform duration-200 ${showPicker ? "rotate-180" : ""}`} />
         </button>
 
         {showPicker && (
@@ -135,18 +143,18 @@ function FilterBar({
             <div className="fixed inset-0 z-30" onClick={() => setShowPicker(false)} />
 
             {/* Dropdown */}
-            <div className="absolute right-0 top-full mt-1 z-40 w-64 rounded-xl border border-[#E6EBF1] dark:border-[#27303E] bg-white dark:bg-[#122031] shadow-xl p-4">
+            <div className="absolute right-0 top-full mt-1.5 z-40 w-64 rounded-xl border border-[#E6EBF1] dark:border-[#27303E] bg-white dark:bg-[#122031] shadow-xl p-4">
               {/* Year row */}
               <div className="flex items-center justify-between mb-3">
                 <button
-                  onClick={() => setSelectedYear(y => y - 1)}
+                  onClick={() => setLocalYear(y => y - 1)}
                   className="p-1 rounded-md text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"
                 >
                   <LuChevronLeft size={14} />
                 </button>
-                <span className="text-sm font-semibold text-[#111928] dark:text-white">{selectedYear}</span>
+                <span className="text-sm font-semibold text-[#111928] dark:text-white">{localYear}</span>
                 <button
-                  onClick={() => setSelectedYear(y => y + 1)}
+                  onClick={() => setLocalYear(y => y + 1)}
                   className="p-1 rounded-md text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"
                 >
                   <LuChevronRight size={14} />
@@ -156,11 +164,11 @@ function FilterBar({
               {/* Month grid — multi-select */}
               <div className="grid grid-cols-3 gap-1.5">
                 {MONTHS.map((m, i) => {
-                  const active = selectedMonths.has(i);
+                  const active = localMonths.has(i);
                   return (
                     <button
                       key={m}
-                      onClick={() => toggleMonth(i)}
+                      onClick={() => toggleLocalMonth(i)}
                       className={`relative rounded-lg py-1.5 text-xs font-medium transition-colors ${
                         active
                           ? "bg-[#5750F1] text-white"
@@ -183,14 +191,18 @@ function FilterBar({
               {/* Footer */}
               <div className="flex items-center justify-between mt-3 pt-2 border-t border-[#E6EBF1] dark:border-[#27303E]">
                 <button
-                  onClick={() => setSelectedMonths(new Set())}
+                  onClick={() => setLocalMonths(new Set())}
                   className="text-[10px] text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white transition-colors"
                 >
                   Clear
                 </button>
                 <button
-                  onClick={() => setShowPicker(false)}
-                  className="rounded-md bg-[#5750F1] px-2.5 py-1 text-[10px] font-semibold text-white hover:bg-[#4742d4] transition-colors"
+                  onClick={() => {
+                    setSelectedYear(localYear);
+                    setSelectedMonths(localMonths);
+                    setShowPicker(false);
+                  }}
+                  className="rounded-md bg-[#5750F1] px-2.5 py-1 text-[10px] font-semibold text-white hover:bg-[#4742d4] transition-colors cursor-pointer"
                 >
                   Done
                 </button>
@@ -288,8 +300,7 @@ export default function PerformanceSection() {
         const visibleStats = STATS.filter(s => !hideAdminItems || s.label !== "Performance");
         return (
           <div
-            className="grid grid-cols-2 sm:grid-cols-4 gap-3"
-            style={{ gridTemplateColumns: `repeat(${visibleStats.length}, minmax(0, 1fr))` }}
+            className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-9 gap-3"
           >
             {visibleStats.map((s) => (
               <div key={s.label} className="rounded-xl border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] p-3 flex flex-col gap-0.5 group relative">

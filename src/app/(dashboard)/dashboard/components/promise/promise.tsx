@@ -64,7 +64,8 @@ export default function PromiseSection() {
           name: o.name,
           promise: o.promise || 0,
           netPromise: o.net_promise || 0,
-          actuals: o.actual_promise || 0
+          actuals: o.actual_promise || 0,
+          offerIds: o.offer_ids || [],
         }))
       }));
       setVerticals(mapped);

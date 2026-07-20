@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { LuCalendar, LuChevronLeft, LuChevronRight } from "react-icons/lu";
 
 /* --- Types -------------------------------------------------------------- */
@@ -13,6 +13,7 @@ export interface MeetingEvent {
   endHr:    number;
   endMin:   number;
   color:    string;
+  dueDate?: string;
 }
 
 /* --- Constants ---------------------------------------------------------- */
@@ -40,7 +41,7 @@ function calTop(hr: number, min: number) {
   return ((hr - HOURS_CAL[0]) + min / 60) * PX_PER_HOUR_CAL;
 }
 function calHeight(sHr: number, sMin: number, eHr: number, eMin: number) {
-  return Math.max(((eHr - sHr) + (eMin - sMin) / 60) * PX_PER_HOUR_CAL, 20);
+  return Math.max(((eHr - sHr) + (eMin - sMin) / 60) * PX_PER_HOUR_CAL, 48);
 }
 
 /** Get Monday of the week containing `date` */
@@ -53,13 +54,50 @@ function getMonday(d: Date) {
   return m;
 }
 
+export interface APIMeeting {
+  id:               number;
+  name:             string;
+  type:             string;
+  recurrence:       string;
+  weekly_days:      string[];
+  due_date_time:    string;
+  start_date_time:  string | null;
+  duration:         number;
+  status:           string;
+  created_by_name:  string;
+  participant_count: number;
+  next_instance:    string | null;
+}
+
 /* --- Meeting Calendar --------------------------------------------------- */
-export default function MeetingCalendar({ events }: { events: MeetingEvent[] }) {
+export default function MeetingCalendar({
+  meetings = [],
+  onMonthChange,
+}: {
+  meetings?: APIMeeting[];
+  onMonthChange?: (start: Date, end: Date) => void;
+}) {
   const today      = useMemo(() => new Date(), []);
   const [weekStart, setWeekStart] = useState(() => getMonday(today));
   const [showPicker, setShowPicker] = useState(false);
   const [pickerYear,  setPickerYear]  = useState(today.getFullYear());
   const [pickerMonth, setPickerMonth] = useState(today.getMonth());
+
+  const lastFiredRef = useRef<string>("");
+
+  useEffect(() => {
+    const midWeek = new Date(weekStart);
+    midWeek.setDate(weekStart.getDate() + 3);
+    const y = midWeek.getFullYear();
+    const m = midWeek.getMonth();
+    const key = `${y}-${m}`;
+    if (lastFiredRef.current !== key) {
+      lastFiredRef.current = key;
+      const start = new Date(y, m, 1);
+      const end = new Date(y, m + 1, 0);
+      onMonthChange?.(start, end);
+    }
+  }, [weekStart, onMonthChange]);
 
   const prevWeek = () => setWeekStart(d => { const n = new Date(d); n.setDate(d.getDate() - 7); return n; });
   const nextWeek = () => setWeekStart(d => { const n = new Date(d); n.setDate(d.getDate() + 7); return n; });
@@ -77,7 +115,52 @@ export default function MeetingCalendar({ events }: { events: MeetingEvent[] }) 
   });
 
   const totalH    = HOURS_CAL.length * PX_PER_HOUR_CAL;
-  const allEvents = [...DUMMY_EVENTS, ...events];
+
+  const allEvents = useMemo(() => {
+    const startT = weekStart.getTime();
+    const endT = weekEnd.getTime() + 24 * 60 * 60 * 1000;
+
+    return meetings.map((m) => {
+      const displayDate = m.start_date_time || m.next_instance || m.due_date_time;
+      if (!displayDate) return null;
+      const mDate = new Date(displayDate);
+      const t = mDate.getTime();
+      if (t < startT || t >= endT) return null;
+
+      const jsDay = mDate.getDay();
+      const dayOfWeek = jsDay === 0 ? 6 : jsDay - 1;
+
+      const startHr = mDate.getHours();
+      const startMin = mDate.getMinutes();
+
+      const duration = m.duration || 30;
+      const endDate = new Date(mDate.getTime() + duration * 60 * 1000);
+      const endHr = endDate.getHours();
+      const endMin = endDate.getMinutes();
+
+      const typeColors: Record<string, string> = {
+        Strategic: "#8b5cf6",
+        Review:    "#f59e0b",
+        Business:  "#06b6d4",
+        Planning:  "#2563eb",
+        Standup:   "#10b981",
+        "1-on-1":  "#ec4899",
+      };
+      const color = typeColors[m.type] || EVENT_COLORS[m.id % EVENT_COLORS.length] || "#2563eb";
+
+      return {
+        id: String(m.id),
+        title: m.name,
+        dayOfWeek,
+        startHr,
+        startMin,
+        endHr,
+        endMin,
+        color,
+        dueDate: m.due_date_time,
+      };
+    }).filter(Boolean) as MeetingEvent[];
+  }, [meetings, weekStart, weekEnd]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -180,13 +263,30 @@ export default function MeetingCalendar({ events }: { events: MeetingEvent[] }) 
                       return (
                         <div
                           key={ev.id}
-                          className="absolute left-0.5 right-0.5 rounded-md px-1.5 py-1 overflow-hidden cursor-pointer hover:opacity-90 transition-opacity"
+                          className="absolute left-0.5 right-0.5 rounded-md px-1.5 py-1 overflow-hidden cursor-pointer hover:opacity-90 transition-opacity flex flex-col justify-start"
                           style={{ top: top + 1, height: height - 2, background: ev.color + "cc", borderLeft: `3px solid ${ev.color}` }}
                         >
-                          <p className="text-[9px] font-semibold text-white leading-tight line-clamp-3">{ev.title}</p>
-                          <p className="text-[8px] text-white/70 mt-0.5">
+                          <p className="text-[9px] font-semibold text-white leading-tight truncate">{ev.title}</p>
+                          <p className="text-[8px] text-white/70 mt-0.5 font-medium">
                             {String(ev.startHr).padStart(2, "0")}:{String(ev.startMin).padStart(2, "0")}-{String(ev.endHr).padStart(2, "0")}:{String(ev.endMin).padStart(2, "0")}
                           </p>
+                          {ev.dueDate && (
+                            <p className="text-[7.5px] text-white/60 mt-0.5 truncate font-normal">
+                              Due: {(() => {
+                                try {
+                                  const d = new Date(ev.dueDate);
+                                  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+                                  const mName = months[d.getMonth()];
+                                  const dateNum = d.getDate();
+                                  const hrVal = String(d.getHours()).padStart(2, "0");
+                                  const minVal = String(d.getMinutes()).padStart(2, "0");
+                                  return `${mName} ${dateNum}, ${hrVal}:${minVal}`;
+                                } catch (e) {
+                                  return ev.dueDate;
+                                }
+                              })()}
+                            </p>
+                          )}
                         </div>
                       );
                     })}

@@ -7,6 +7,7 @@ export interface VerticalOffer {
   promise?: number;
   netPromise?: number;
   actuals?: number;
+  offerIds?: string[];
 }
 
 export interface VerticalData {
