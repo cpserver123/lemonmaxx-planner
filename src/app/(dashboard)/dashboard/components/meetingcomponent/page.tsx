@@ -5,6 +5,11 @@ import {
   LuPlus, LuCalendar, LuChevronDown,
   LuUsers, LuSearch, LuEllipsisVertical, LuLayoutList,
 } from "react-icons/lu";
+import { DateRangePicker } from "react-date-range";
+import { format } from "date-fns";
+import "react-date-range/dist/styles.css";
+import "react-date-range/dist/theme/default.css";
+
 import CreateMeetingModal, {
   type MeetingForm,
   type MeetingRow,
@@ -15,6 +20,19 @@ import MeetingCalendar, {
   EVENT_COLORS,
   DUMMY_EVENTS,
 } from "./components/meetingcalendar";
+
+/* --- Helper to parse meeting date from string ---------------------------- */
+const parseMeetingDate = (nextInstanceStr: string): Date | null => {
+  if (!nextInstanceStr || nextInstanceStr === "—" || nextInstanceStr === "-") return null;
+  try {
+    const datePart = nextInstanceStr.split("·")[0].trim();
+    const parsed = new Date(datePart);
+    if (isNaN(parsed.getTime())) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+};
 
 /* --- Table data & types ------------------------------------------------- */
 type MeetingStatus = "Pending" | "Active" | "Completed";
@@ -68,7 +86,41 @@ function MeetingTable({
     () => Object.fromEntries(rows.map(r => [r.id, r.status]))
   );
 
-  const filtered = rows.filter(r => r.name.toLowerCase().includes(search.toLowerCase()));
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [dateRange, setDateRange] = useState<any>([
+    {
+      startDate: new Date(),
+      endDate: new Date(),
+      key: "selection"
+    }
+  ]);
+
+  const filtered = rows.filter(r => {
+    // Search filter
+    const matchesSearch = r.name.toLowerCase().includes(search.toLowerCase());
+    if (!matchesSearch) return false;
+
+    // Show completed filter
+    const status = rowStatuses[r.id] ?? r.status;
+    if (!showCompleted && status === "Completed") return false;
+
+    // Date range filter
+    if (dateRange[0].startDate && dateRange[0].endDate) {
+      const mDate = parseMeetingDate(r.nextInstance);
+      if (mDate) {
+        const start = new Date(dateRange[0].startDate);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(dateRange[0].endDate);
+        end.setHours(23, 59, 59, 999);
+        if (mDate < start || mDate > end) return false;
+      } else {
+        return false;
+      }
+    }
+
+    return true;
+  });
+
   const allChecked  = filtered.length > 0 && filtered.every(r => selectedRows.has(r.id));
   const someChecked = filtered.some(r => selectedRows.has(r.id));
 
@@ -115,9 +167,68 @@ function MeetingTable({
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search meetings..." className="w-full rounded-lg border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] pl-9 pr-3 py-2 text-sm text-[#111928] dark:text-white placeholder:text-[#9CA3AF] outline-none focus:border-[#2563eb] transition-colors" />
         </div>
         <div className="flex items-center gap-2 ml-auto flex-wrap">
-          <button onClick={() => setMeMode(p => !p)} className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${meMode ? "border-[#2563eb] bg-[#2563eb]/10 text-[#2563eb]" : "border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] text-[#6B7280] dark:text-[#9CA3AF] hover:border-[#2563eb]/40"}`}>
-            <LuUsers size={13} />Me mode
-          </button>
+          {/* Date Range Picker */}
+          <div className="relative">
+            <button
+              onClick={() => setShowDatePicker(!showDatePicker)}
+              className="flex items-center gap-2 rounded-lg border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] px-3 py-2 text-xs font-medium text-[#6B7280] dark:text-[#9CA3AF] hover:border-[#2563eb]/40 transition-colors cursor-pointer"
+            >
+              <LuCalendar size={13} className="text-[#9CA3AF]" />
+              <span>
+                {dateRange[0].startDate && dateRange[0].endDate
+                  ? `${format(dateRange[0].startDate, "MMM d, yyyy")} - ${format(dateRange[0].endDate, "MMM d, yyyy")}`
+                  : "Filter by Date"}
+              </span>
+              <LuChevronDown size={12} className="text-[#9CA3AF]" />
+            </button>
+
+            {showDatePicker && (
+              <>
+                <div
+                  className="fixed inset-0 z-30"
+                  onClick={() => setShowDatePicker(false)}
+                />
+                <div className="absolute right-0 top-full mt-1.5 z-40 rounded-xl border border-[#E6EBF1] dark:border-[#27303E] bg-white dark:bg-[#122031] shadow-2xl p-2 max-w-[95vw] overflow-x-auto">
+                  <DateRangePicker
+                    onChange={(item: any) => {
+                      setDateRange([item.selection]);
+                    }}
+                    showPreview={true}
+                    moveRangeOnFirstSelection={false}
+                    months={1}
+                    ranges={dateRange}
+                    direction="horizontal"
+                    inputRanges={[]}
+                    shownDate={dateRange[0].startDate || new Date()}
+                  />
+                  <div className="flex items-center justify-end gap-2 mt-2 pt-2 border-t border-[#E6EBF1] dark:border-[#27303E]">
+                    <button
+                      onClick={() => {
+                        setDateRange([
+                          {
+                            startDate: undefined,
+                            endDate: undefined,
+                            key: "selection"
+                          }
+                        ]);
+                        setShowDatePicker(false);
+                      }}
+                      className="rounded-md border border-[#E6EBF1] dark:border-[#27303E] bg-white dark:bg-[#0d1520] px-3 py-1.5 text-xs font-medium text-[#6B7280] dark:text-[#9CA3AF] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                    <button
+                      onClick={() => setShowDatePicker(false)}
+                      className="rounded-md bg-[#2563eb] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#1d4ed8] transition-colors cursor-pointer"
+                    >
+                      Done
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+    
           <button onClick={onToggleShowCompleted} className="flex items-center gap-2 rounded-lg border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] px-3 py-2 text-xs font-medium text-[#6B7280] dark:text-[#9CA3AF] hover:border-[#2563eb]/40 transition-colors">
             <span className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${showCompleted ? "bg-[#2563eb]" : "bg-[#D1D5DB] dark:bg-[#374151]"}`}>
               <span className={`inline-block h-2.5 w-2.5 rounded-full bg-white shadow transition-transform ${showCompleted ? "translate-x-3.5" : "translate-x-0.5"}`} />

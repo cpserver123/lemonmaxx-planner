@@ -4,8 +4,12 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import {
   LuX, LuCalendar, LuClock, LuMapPin, LuFileText,
   LuChevronDown, LuListChecks, LuPaperclip, LuSparkles,
-  LuVideo, LuRepeat,
+  LuVideo, LuRepeat, LuCheck,
 } from "react-icons/lu";
+import { useSelector } from "react-redux";
+import type { RootState } from "@/store";
+import api from "@/app/utils/axios";
+import { useAuth } from "@/context/AuthContext";
 
 /* --- Types -------------------------------------------------------------- */
 export interface MeetingForm {
@@ -416,6 +420,156 @@ function FilesSection() {
   );
 }
 
+interface ParticipantsDropdownProps {
+  selectedUsers: { id: number; name: string }[];
+  onToggle: (user: { id: number; name: string }) => void;
+  onClear: () => void;
+  users: { id: number; name: string }[];
+  isReadOnly: boolean;
+  initialCount?: number;
+}
+
+const initials = (name: string) =>
+  name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+
+function ParticipantsDropdown({
+  selectedUsers,
+  onToggle,
+  onClear,
+  users,
+  isReadOnly,
+  initialCount,
+}: ParticipantsDropdownProps) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSearch("");
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const filtered = users.filter(u => u.name.toLowerCase().includes(search.toLowerCase()));
+
+  const renderTriggerContent = () => {
+    if (isReadOnly) {
+      if (selectedUsers.length > 0) {
+        return selectedUsers.map(u => u.name).join(", ");
+      }
+      return initialCount !== undefined ? `${initialCount} Participants` : "0 Participants";
+    }
+
+    if (selectedUsers.length === 0) {
+      return <span className="text-[#9CA3AF]">Select participants</span>;
+    }
+
+    if (selectedUsers.length <= 2) {
+      return selectedUsers.map(u => u.name).join(", ");
+    }
+
+    return `${selectedUsers.slice(0, 2).map(u => u.name).join(", ")} +${selectedUsers.length - 2} more`;
+  };
+
+  return (
+    <div ref={dropdownRef} className="relative">
+      <button
+        type="button"
+        disabled={isReadOnly}
+        onClick={() => setOpen(!open)}
+        className={`${inputCls} flex items-center justify-between text-left cursor-pointer disabled:cursor-not-allowed`}
+      >
+        <span className="truncate pr-4">{renderTriggerContent()}</span>
+        <LuChevronDown size={14} className="text-[#9CA3AF] shrink-0" />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 mt-1.5 z-50 w-full min-w-[240px] rounded-xl border border-[#E5E7EB] dark:border-[#1F2A37] bg-white dark:bg-[#0a1628] shadow-2xl p-2">
+          {/* Search Input */}
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-[#E5E7EB] dark:border-[#1F2A37] mb-1">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="text-[#9CA3AF] shrink-0">
+              <circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2"/>
+              <path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
+            <input
+              autoFocus
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search members..."
+              className="flex-1 bg-transparent text-xs text-[#111928] dark:text-white placeholder:text-[#9CA3AF] outline-none"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                className="text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white"
+              >
+                <LuX size={12} />
+              </button>
+            )}
+          </div>
+
+          {/* Members List */}
+          <div className="max-h-[220px] overflow-y-auto py-1">
+            {filtered.length > 0 ? (
+              filtered.map(user => {
+                const isSelected = selectedUsers.some(u => u.id === user.id);
+                return (
+                  <button
+                    key={user.id}
+                    type="button"
+                    onClick={() => onToggle(user)}
+                    className="flex items-center gap-2.5 w-full px-3 py-1.5 text-xs rounded-lg hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors text-left cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => {}} // managed by button's onClick
+                      className="h-3.5 w-3.5 rounded border-[#D1D5DB] dark:border-[#374151] text-[#2563eb] accent-[#2563eb] cursor-pointer shrink-0"
+                    />
+                    <div className="h-5 w-5 rounded-full bg-[#2563eb] flex items-center justify-center text-[8px] font-bold text-white shrink-0">
+                      {initials(user.name)}
+                    </div>
+                    <span className="flex-1 truncate text-[#111928] dark:text-[#D1D5DB] font-medium">{user.name}</span>
+                  </button>
+                );
+              })
+            ) : (
+              <p className="px-3 py-4 text-xs text-[#9CA3AF] text-center">No workspace users found</p>
+            )}
+          </div>
+
+          {/* Footer Actions */}
+          {selectedUsers.length > 0 && (
+            <div className="flex items-center justify-between border-t border-[#E5E7EB] dark:border-[#1F2A37] mt-1 pt-2 px-1">
+              <button
+                type="button"
+                onClick={onClear}
+                className="text-[10px] text-[#9CA3AF] hover:text-red-500 font-medium transition-colors"
+              >
+                Clear all
+              </button>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="rounded bg-[#2563eb] px-2.5 py-1 text-[10px] font-semibold text-white hover:bg-[#1d4ed8] transition-colors"
+              >
+                Done
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 type ModalTab = "design" | "reports" | "ai-summary";
 
 /* --- Create Meeting Modal ----------------------------------------------- */
@@ -432,6 +586,48 @@ export default function CreateMeetingModal({
 }) {
   const [tab, setTab] = useState<ModalTab>("design");
   const [form, setForm] = useState<MeetingForm>(BLANK);
+  const [selectedUsers, setSelectedUsers] = useState<{ id: number; name: string }[]>([]);
+  const [users, setUsers] = useState<{ id: number; name: string }[]>([]);
+  const workspaceId = useSelector((state: RootState) => state.workspace.selectedId ?? 1);
+  const { token } = useAuth();
+
+  useEffect(() => {
+    if (!open) return;
+    if (users.length > 0) return;
+    const fetchUsers = async () => {
+      try {
+        const res = await api.get(`/api/v1/user-management/workspaces/${workspaceId}/users`, {
+          params: { only_active: false, full_data: true },
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.data?.success) {
+          setUsers(res.data.data.users || []);
+        }
+      } catch (error) {
+        console.error("Failed to fetch users in modal:", error);
+      }
+    };
+    fetchUsers();
+  }, [open, workspaceId, token, users.length]);
+
+  const handleUserToggle = (user: { id: number; name: string }) => {
+    setSelectedUsers(prev => {
+      const exists = prev.some(u => u.id === user.id);
+      let next;
+      if (exists) {
+        next = prev.filter(u => u.id !== user.id);
+      } else {
+        next = [...prev, user];
+      }
+      setForm(f => ({ ...f, participants: String(next.length) }));
+      return next;
+    });
+  };
+
+  const handleClearUsers = () => {
+    setSelectedUsers([]);
+    setForm(f => ({ ...f, participants: "0" }));
+  };
 
   useEffect(() => {
     if (open) {
@@ -445,8 +641,10 @@ export default function CreateMeetingModal({
           duration: initialData.duration === "—" ? "" : initialData.duration.replace(" min", ""),
           reportScore: initialData.reportScore || "",
         });
+        setSelectedUsers([]);
       } else {
         setForm(BLANK);
+        setSelectedUsers([]);
       }
       setTab("design");
     }
@@ -502,7 +700,17 @@ export default function CreateMeetingModal({
                 <div className="grid grid-cols-3 gap-4">
                   <div><Label text="Type" /><SelectField value={form.type} onChange={set("type")} options={MEETING_TYPES} /></div>
                   <div><Label text="Duration (min)" /><MInput placeholder="--" value={form.duration} onChange={set("duration")} type="number" /></div>
-                  <div><Label text="Participants" optional /><MInput placeholder="0" value={form.participants} onChange={set("participants")} type="number" /></div>
+                  <div className="relative">
+                    <Label text="Participants" optional />
+                    <ParticipantsDropdown
+                      selectedUsers={selectedUsers}
+                      onToggle={handleUserToggle}
+                      onClear={handleClearUsers}
+                      users={users}
+                      isReadOnly={isReadOnly}
+                      initialCount={initialData?.participants}
+                    />
+                  </div>
                 </div>
                 <div>
                   <Label text="Recurrence" />
