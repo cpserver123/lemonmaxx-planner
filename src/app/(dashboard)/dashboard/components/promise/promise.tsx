@@ -34,8 +34,8 @@ export default function PromiseSection() {
   const [selectedVertical, setSelectedVertical] = useState<string | null>(null);
   const [selectedOffer, setSelectedOffer] = useState<string | null>(null);
   
-  const [selectedYear, setSelectedYear] = useState(2026);
-  const [selectedMonths, setSelectedMonths] = useState<Set<number>>(new Set([5])); // Default June
+  const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
+  const [selectedMonths, setSelectedMonths] = useState<Set<number>>(() => new Set([new Date().getMonth()])); // Default current month
   
   const [verticals, setVerticals] = useState<VerticalData[]>([]);
   const [loading, setLoading] = useState(true);
