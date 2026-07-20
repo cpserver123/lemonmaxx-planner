@@ -13,7 +13,6 @@ export const DASHBOARD_TABS: { id: DashboardTabId; label: string }[] = [
   { id: "planning",    label: "Planning"    },
   { id: "promises",    label: "Promises"    },
   { id: "meetings",    label: "Meetings"    },
-  { id: "performance", label: "Performance" },
   { id: "scoreboard",  label: "Scoreboard"  },
 ];
 

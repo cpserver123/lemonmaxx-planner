@@ -1,24 +1,27 @@
 "use client";
 
 import { useState } from "react";
-import { LuCalendar, LuChevronLeft, LuChevronRight, LuStar } from "react-icons/lu";
+import { LuCalendar, LuChevronLeft, LuChevronRight, LuStar, LuClipboardCheck, LuZap } from "react-icons/lu";
 import MyTeamPanel from "../my-team/MyTeamPanel";
+import { useAuth } from "@/context/AuthContext";
+import CheckIn from "../dashboardcomponent/components/checkin";
+import ActionDrawer, { type DrawerRow } from "../ActionDrawer";
 
-const TIME_FILTERS = ["Yest", "7D", "MTD", "LM"];
+
 
 const TEAM_LEADERS = ["All Leaders", "Gagan Brar", "Devinder", "Pankhuri Sharma", "Arun Kumar", "Riya Singh"];
 const MEDIA_BUYERS = ["All Buyers", "Bruno", "Alex M.", "Sara K.", "Ravi P.", "Naina T."];
 
 /* --- KPI Stat cards -------------------------------------------------- */
-const STATS = [
+const STATS: { label: string; value: string; sub: string | null; color: string; resolvable?: boolean }[] = [
   { label: "Members",       value: "9",    sub: null,                       color: "text-[#111928] dark:text-white" },
   { label: "Promises",      value: "36",   sub: "36 on - 0 risk - 0 break", color: "text-[#2563eb]" },
-  { label: "Breakdowns",    value: "20",   sub: "19 over 7d",               color: "text-orange-400" },
-  { label: "Escalations",   value: "0",    sub: null,                       color: "text-[#111928] dark:text-white" },
-  { label: "Requests",      value: "0",    sub: null,                       color: "text-[#111928] dark:text-white" },
+  { label: "Breakdowns",    value: "20",   sub: "19 over 7d",               color: "text-orange-400",                resolvable: true },
+  { label: "Escalations",   value: "0",    sub: null,                       color: "text-[#111928] dark:text-white", resolvable: true },
+  { label: "Requests",      value: "0",    sub: null,                       color: "text-[#111928] dark:text-white", resolvable: true },
   { label: "Due today",     value: "2",    sub: null,                       color: "text-[#111928] dark:text-white" },
   { label: "Overdue",       value: "6",    sub: null,                       color: "text-orange-400" },
-  { label: "Check-in today",value: "0%",   sub: null,                       color: "text-orange-400" },
+  { label: "Check-in",      value: "0%",   sub: null,                       color: "text-orange-400" },
   { label: "Performance",   value: "74%",  sub: "MTD avg",                  color: "text-[#2563eb]" },
 ];
 
@@ -43,13 +46,25 @@ function buildLabel(months: Set<number>, year: number): string {
   return `${sorted.length} months ${year}`;
 }
 
-function FilterBar() {
+function FilterBar({
+  onCheckIn,
+  hideAdminItems,
+  teamLeader,
+  setTeamLeader,
+  mediaBuyer,
+  setMediaBuyer,
+}: {
+  onCheckIn: () => void;
+  hideAdminItems: boolean;
+  teamLeader: string;
+  setTeamLeader: (v: string) => void;
+  mediaBuyer: string;
+  setMediaBuyer: (v: string) => void;
+}) {
   const [activeTime, setActiveTime] = useState(2); // MTD
   const [showPicker, setShowPicker] = useState(false);
   const [selectedYear,   setSelectedYear]   = useState(2026);
   const [selectedMonths, setSelectedMonths] = useState<Set<number>>(new Set([5])); // June
-  const [teamLeader, setTeamLeader] = useState("All Leaders");
-  const [mediaBuyer, setMediaBuyer] = useState("All Buyers");
 
   const label = buildLabel(selectedMonths, selectedYear);
 
@@ -91,19 +106,16 @@ function FilterBar() {
       {/* Divider */}
       <span className="h-4 w-px bg-[#E6EBF1] dark:bg-[#374151]" />
 
-      {/* Time pills */}
-      <div className="flex items-center gap-1 bg-[#F3F4F6] dark:bg-[#122031] rounded-lg p-0.5">
-        {TIME_FILTERS.map((f, i) => (
-          <button key={f} onClick={() => setActiveTime(i)}
-            className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${
-              i === activeTime
-                ? "bg-white dark:bg-[#1a2332] text-[#111928] dark:text-white shadow-sm"
-                : "text-[#6B7280] dark:text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white"
-            }`}>
-            {f}
-          </button>
-        ))}
-      </div>
+      {/* Check In button — hidden for superadmin/admin viewing a specific individual */}
+      {!hideAdminItems && (
+        <button
+          onClick={onCheckIn}
+          className="flex items-center gap-1.5 rounded-lg border border-[#5750F1]/40 bg-[#5750F1]/5 px-3 py-1.5 text-[11px] font-semibold text-[#5750F1] dark:text-[#8b89f9] hover:bg-[#5750F1]/10 transition-colors"
+        >
+          <LuClipboardCheck size={13} />
+          Check In
+        </button>
+      )}
 
       {/* Multi-month picker */}
       <div className="ml-auto relative">
@@ -218,6 +230,34 @@ function ReviewScoreCard() {
 /* --- Performance Dashboard ------------------------------------------- */
 export default function PerformanceSection() {
   const [showBreakdowns, setShowBreakdowns] = useState(false);
+  const [showCheckIn,    setShowCheckIn]    = useState(false);
+  const [teamLeader,     setTeamLeader]     = useState("All Leaders");
+  const [mediaBuyer,     setMediaBuyer]     = useState("All Buyers");
+  const [drawerRow,      setDrawerRow]      = useState<DrawerRow | null>(null);
+  const { user } = useAuth();
+  const role = (user?.role ?? "").toLowerCase();
+  const isAdminRole = role === "superadmin" || role === "admin";
+  // For admins: hide Check In + Performance KPI only when BOTH dropdowns are filtered to a specific person.
+  // When either is "All", restore them so aggregate overview remains visible.
+  const hideAdminItems = isAdminRole
+    && teamLeader !== "All Leaders"
+    && mediaBuyer !== "All Buyers";
+
+  const openResolveDrawer = (label: string) => {
+    setDrawerRow({
+      id:              crypto.randomUUID(),
+      action:          `Resolve ${label}`,
+      intendedOutcome: "",
+      status:          "Todo",
+      due:             "",
+      accountable:     "",
+      linkTo:          label,
+    });
+  };
+
+  if (showCheckIn) {
+    return <CheckIn onClose={() => setShowCheckIn(false)} />;
+  }
 
   if (showBreakdowns) {
     return (
@@ -233,63 +273,89 @@ export default function PerformanceSection() {
       {/* Section title + filter bar */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h2 className="text-base font-semibold text-[#111928] dark:text-white">Performance Dashboard</h2>
-        <FilterBar />
+        <FilterBar
+          onCheckIn={() => setShowCheckIn(true)}
+          hideAdminItems={hideAdminItems}
+          teamLeader={teamLeader}
+          setTeamLeader={setTeamLeader}
+          mediaBuyer={mediaBuyer}
+          setMediaBuyer={setMediaBuyer}
+        />
       </div>
 
-      {/* KPI stat strip — 9 cards (wraps gracefully on small screens) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-3">
-        {STATS.map((s) => (
-          <div key={s.label} className="rounded-xl border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] p-3 flex flex-col gap-0.5">
-            <span className="text-[10px] text-[#6B7280] dark:text-[#9CA3AF] font-medium">{s.label}</span>
-            <span className={`text-2xl font-bold ${s.color}`}>{s.value}</span>
-            {s.sub && <span className="text-[10px] text-[#6B7280] dark:text-[#9CA3AF]">{s.sub}</span>}
+      {/* KPI stat strip — cards stretch to fill available columns */}
+      {(() => {
+        const visibleStats = STATS.filter(s => !hideAdminItems || s.label !== "Performance");
+        return (
+          <div
+            className="grid grid-cols-2 sm:grid-cols-4 gap-3"
+            style={{ gridTemplateColumns: `repeat(${visibleStats.length}, minmax(0, 1fr))` }}
+          >
+            {visibleStats.map((s) => (
+              <div key={s.label} className="rounded-xl border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] p-3 flex flex-col gap-0.5 group relative">
+                <span className="text-[10px] text-[#6B7280] dark:text-[#9CA3AF] font-medium">{s.label}</span>
+                <span className={`text-2xl font-bold ${s.color}`}>{s.value}</span>
+                {s.sub && <span className="text-[10px] text-[#6B7280] dark:text-[#9CA3AF]">{s.sub}</span>}
+                {s.resolvable && (
+                  <button
+                    onClick={() => openResolveDrawer(s.label)}
+                    className="mt-1.5 flex items-center gap-1 self-start rounded-md bg-[#5750F1]/8 hover:bg-[#5750F1]/15 px-1.5 py-0.5 text-[10px] font-semibold text-[#5750F1] dark:text-[#8b89f9] transition-colors"
+                  >
+                    <LuZap size={10} />
+                    Resolve
+                  </button>
+                )}
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        );
+      })()}
 
       {/* Middle row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Promises & Delivery Health (spans 2 cols) */}
-        <div className="lg:col-span-2 rounded-xl border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] p-5">
-          <h3 className="text-sm font-semibold text-[#111928] dark:text-white mb-3">Promises &amp; Delivery Health</h3>
-          <div className="mb-2">
-            <span className="text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">Status</span>
-            {/* Progress bar */}
-            <div className="mt-2 relative h-2 rounded-full bg-[#E6EBF1] dark:bg-[#1F2A37] overflow-hidden">
-              <div className="absolute left-0 top-0 h-full rounded-full bg-[#2563eb]" style={{ width: "55%" }} />
-            </div>
-            <div className="flex items-center gap-4 mt-2">
-              <span className="flex items-center gap-1 text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">
-                <span className="h-2 w-2 rounded-full bg-[#9CA3AF] inline-block" /> Draft <strong className="text-[#111928] dark:text-white ml-0.5">30</strong>
-              </span>
-              <span className="flex items-center gap-1 text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">
-                <span className="h-2 w-2 rounded-full bg-[#2563eb] inline-block" /> Active <strong className="text-[#111928] dark:text-white ml-0.5">36</strong>
-              </span>
-            </div>
-          </div>
-
-          {/* On track / At risk / Breaking / Review Score */}
-          <div className="grid grid-cols-4 gap-3 mt-4">
-            {[
-              { label: "On track", value: "36", color: "text-[#2563eb]" },
-              { label: "At risk",  value: "0",  color: "text-orange-400" },
-              { label: "Breaking", value: "0",  color: "text-red-500" },
-            ].map((item) => (
-              <div key={item.label} className="rounded-lg border border-[#E6EBF1] dark:border-[#1F2A37] bg-[#F9FAFB] dark:bg-[#0a1018] p-3">
-                <span className="text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">{item.label}</span>
-                <p className={`text-2xl font-bold mt-0.5 ${item.color}`}>{item.value}</p>
+        {/* Promises & Delivery Health — hidden for superadmin / admin */}
+        {!isAdminRole && (
+          <div className="lg:col-span-2 rounded-xl border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] p-5">
+            <h3 className="text-sm font-semibold text-[#111928] dark:text-white mb-3">Promises &amp; Delivery Health</h3>
+            <div className="mb-2">
+              <span className="text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">Status</span>
+              {/* Progress bar */}
+              <div className="mt-2 relative h-2 rounded-full bg-[#E6EBF1] dark:bg-[#1F2A37] overflow-hidden">
+                <div className="absolute left-0 top-0 h-full rounded-full bg-[#2563eb]" style={{ width: "55%" }} />
               </div>
-            ))}
+              <div className="flex items-center gap-4 mt-2">
+                <span className="flex items-center gap-1 text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">
+                  <span className="h-2 w-2 rounded-full bg-[#9CA3AF] inline-block" /> Draft <strong className="text-[#111928] dark:text-white ml-0.5">30</strong>
+                </span>
+                <span className="flex items-center gap-1 text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">
+                  <span className="h-2 w-2 rounded-full bg-[#2563eb] inline-block" /> Active <strong className="text-[#111928] dark:text-white ml-0.5">36</strong>
+                </span>
+              </div>
+            </div>
 
-            {/* Review Score KPI */}
-            <ReviewScoreCard />
+            {/* On track / At risk / Breaking / Review Score */}
+            <div className="grid grid-cols-4 gap-3 mt-4">
+              {[
+                { label: "On track", value: "36", color: "text-[#2563eb]" },
+                { label: "At risk",  value: "0",  color: "text-orange-400" },
+                { label: "Breaking", value: "0",  color: "text-red-500" },
+              ].map((item) => (
+                <div key={item.label} className="rounded-lg border border-[#E6EBF1] dark:border-[#1F2A37] bg-[#F9FAFB] dark:bg-[#0a1018] p-3">
+                  <span className="text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">{item.label}</span>
+                  <p className={`text-2xl font-bold mt-0.5 ${item.color}`}>{item.value}</p>
+                </div>
+              ))}
+
+              {/* Review Score KPI */}
+              <ReviewScoreCard />
+            </div>
+
+            <p className="text-[11px] text-[#2563eb] mt-4">21 active promises have no pathway yet.</p>
           </div>
+        )}
 
-          <p className="text-[11px] text-[#2563eb] mt-4">21 active promises have no pathway yet.</p>
-        </div>
-
-        {/* Execution */}
-        <div className="rounded-xl border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] p-5">
+        {/* Execution — spans full row when Promises box is hidden */}
+        <div className={isAdminRole ? "lg:col-span-3 rounded-xl border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] p-5" : "rounded-xl border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] p-5"}>
           <h3 className="text-sm font-semibold text-[#111928] dark:text-white mb-3">Execution</h3>
 
           <div className="mb-4">
@@ -344,7 +410,10 @@ export default function PerformanceSection() {
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <span className="rounded-full bg-orange-400/20 text-orange-400 text-[10px] font-semibold px-1.5 py-0.5">{b.age}</span>
-                  <button className="flex items-center gap-0.5 text-[10px] text-[#2563eb] font-semibold hover:opacity-80 whitespace-nowrap">
+                  <button
+                    onClick={() => openResolveDrawer(b.title)}
+                    className="flex items-center gap-0.5 text-[10px] text-[#2563eb] font-semibold hover:opacity-80 whitespace-nowrap"
+                  >
                     ✓ Resolve
                   </button>
                 </div>
@@ -372,6 +441,17 @@ export default function PerformanceSection() {
         </div>
       </div>
 
+      {/* ActionDrawer for Resolve */}
+      {drawerRow && (
+        <ActionDrawer
+          row={drawerRow}
+          title={`Resolve: ${drawerRow.linkTo}`}
+          onClose={() => setDrawerRow(null)}
+          onSave={async () => { setDrawerRow(null); }}
+          onDelete={() => { setDrawerRow(null); }}
+          hideAddAnother
+        />
+      )}
     </div>
   );
 }
