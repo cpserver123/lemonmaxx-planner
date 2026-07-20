@@ -1,14 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { useSelector } from "react-redux";
+import type { RootState } from "@/store";
+import api from "@/app/utils/axios";
+import { useAuth } from "@/context/AuthContext";
+import { LuLoader } from "react-icons/lu";
 import {
   LuPlus, LuCalendar, LuChevronDown,
   LuUsers, LuSearch, LuEllipsisVertical, LuLayoutList, LuTriangle,
+  LuChevronLeft, LuChevronRight, LuRefreshCw,
 } from "react-icons/lu";
 import { DateRangePicker } from "react-date-range";
 import { format } from "date-fns";
 import "react-date-range/dist/styles.css";
 import "react-date-range/dist/theme/default.css";
+
+const ROW_OPTIONS = [10, 25, 50, 100];
 
 import CreateMeetingModal, {
   type MeetingForm,
@@ -21,59 +29,137 @@ import MeetingCalendar, {
   DUMMY_EVENTS,
 } from "./components/meetingcalendar";
 
-/* --- Helper to parse meeting date from string ---------------------------- */
-const parseMeetingDate = (nextInstanceStr: string): Date | null => {
-  if (!nextInstanceStr || nextInstanceStr === "—" || nextInstanceStr === "-") return null;
-  try {
-    const datePart = nextInstanceStr.split("·")[0].trim();
-    const parsed = new Date(datePart);
-    if (isNaN(parsed.getTime())) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-};
+/* --- Format date for API (YYYY-MM-DD) ----------------------------------- */
+const toApiDate = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 /* --- Table data & types ------------------------------------------------- */
 type MeetingStatus = "Pending" | "Active" | "Completed";
 
-const DUMMY_ROWS: MeetingRow[] = [
-  {
-    id: "r1", name: "Apollo : Leadgen Focused Area Meeting", type: "Strategic", recurrence: "Weekly",
-    nextInstance: "Jul 2, 2026 · 17:00", participants: 11, duration: "120 min", createdBy: "Gagan Brar", status: "Active",
-    intention: "Lead Generation Strategy & Performance Review",
-    startDateTime: "2026-07-21T10:00", repeatTime: "10:00", dueDate: "2026-07-21T12:00",
-    expectedOutcome: "Align on lead targets and unblock pipeline blockers",
-    description: "Weekly review of Apollo leadgen funnel, conversion rates, and next-step actions.",
-  },
-  {
-    id: "r2", name: "Apollo Strategic Area", type: "Strategic", recurrence: "Weekly",
-    nextInstance: "Jul 1, 2026 · 16:00", participants: 14, duration: "120 min", createdBy: "\u2014", status: "Active",
-    intention: "Quarterly strategic alignment for Apollo vertical",
-    startDateTime: "2026-07-01T16:00", repeatTime: "16:00", dueDate: "2026-07-01T18:00",
-    expectedOutcome: "Strategic roadmap finalized for Q3",
-  },
-  {
-    id: "r3", name: "APOLLO- CM* Recorder", type: "Strategic", recurrence: "Weekly",
-    nextInstance: "Jul 2, 2026 · 17:15", participants: 2, duration: "15 min", createdBy: "Pankhuri Sharma", status: "Active",
-    intention: "Record CM actions and decisions",
-    startDateTime: "2026-07-02T17:15", repeatTime: "17:15", dueDate: "2026-07-02T17:30",
-    expectedOutcome: "All CM action items documented and assigned",
-  },
-  { id: "r4",  name: "Board - Leadgen Weekly review",                   type: "Review",    recurrence: "Weekly",            nextInstance: "Jul 1, 2026 \u00b7 23:00", participants: 1,  duration: "60 min",  createdBy: "Devinder",        status: "Active", intention: "Weekly board review of leadgen numbers", expectedOutcome: "Board aligned on leadgen progress" },
-  { id: "r5",  name: "Board Meeting Leadgen For Breakdown Resolution",  type: "Review",    recurrence: "Weekly",            nextInstance: "Jul 6, 2026 \u00b7 14:30", participants: 3,  duration: "\u2014",       createdBy: "Devinder",        status: "Active" },
-  { id: "r6",  name: "Branding Calendar- All Brands",                  type: "Review",    recurrence: "Daily",             nextInstance: "Jul 1, 2026 \u00b7 09:00", participants: 4,  duration: "120 min", createdBy: "\u2014",             status: "Active", intention: "Daily content calendar sync across all brands" },
-  { id: "r7",  name: "Branding Reporting",                             type: "Review",    recurrence: "Weekly",            nextInstance: "Jul 3, 2026 \u00b7 12:30", participants: 4,  duration: "-",       createdBy: "\u2014",             status: "Active" },
-  { id: "r8",  name: "Buddy meeting",                                  type: "Strategic", recurrence: "Weekly",            nextInstance: "Jul 3, 2026 \u00b7 15:00", participants: 2,  duration: "15 min",  createdBy: "\u2014",             status: "Active" },
-  { id: "r9",  name: "Chaos Strategic Meeting",                        type: "Strategic", recurrence: "Weekly",            nextInstance: "Jul 1, 2026 \u00b7 16:00", participants: 11, duration: "120 min", createdBy: "\u2014",             status: "Active" },
-  { id: "r10", name: "CMx CHAOS Recorder",                             type: "Strategic", recurrence: "Weekly",            nextInstance: "Jul 3, 2026 \u00b7 15:30", participants: 2,  duration: "15 min",  createdBy: "Pankhuri Sharma", status: "Active" },
-  { id: "r11", name: "Core Meeting",                                   type: "Strategic", recurrence: "Weekly",            nextInstance: "Jul 2, 2026 \u00b7 17:30", participants: 13, duration: "120 min", createdBy: "\u2014",             status: "Active" },
-  { id: "r12", name: "Core team meeting for completing the Parked agend...", type: "Strategic", recurrence: "Weekly",      nextInstance: "Jul 3, 2026 \u00b7 14:15", participants: 13, duration: "60 min",  createdBy: "Pankhuri Sharma", status: "Active" },
-  { id: "r13", name: "Daily HOC F-com Scrum",                          type: "Review",    recurrence: "Weekdays (Mon-Fri)", nextInstance: "Jul 1, 2026 \u00b7 12:00", participants: 6,  duration: "30 min",  createdBy: "Sumedha Sharma",  status: "Active" },
-  { id: "r14", name: "Daily Huddle Meeting",                           type: "Review",    recurrence: "Weekdays (Mon-Fri)", nextInstance: "Jul 1, 2026 \u00b7 13:00", participants: 8,  duration: "45 min",  createdBy: "\u2014",             status: "Active" },
-  { id: "r15", name: "Ecom Board Meeting",                             type: "Business",  recurrence: "Custom...",          nextInstance: "Jul 17, 2026 \u00b7 09:00", participants: 4, duration: "-",       createdBy: "\u2014",             status: "Active" },
-  { id: "r16", name: "Ecom Focus Area | Team shubham Gupta )",          type: "Business",  recurrence: "Monthly",           nextInstance: "Jul 3, 2026 \u00b7 14:15", participants: 11, duration: "120 min", createdBy: "\u2014",             status: "Active" },
-];
+/* --- API meeting shape -------------------------------------------------- */
+interface APIMeeting {
+  id:               number;
+  name:             string;
+  type:             string;
+  recurrence:       string;
+  weekly_days:      string[];
+  due_date_time:    string;
+  start_date_time:  string | null;
+  duration:         number;
+  status:           string;
+  created_by_name:  string;
+  participant_count: number;
+  next_instance:    string | null;
+}
+
+/* --- Map API response → MeetingRow (list view) -------------------------- */
+function mapApiMeeting(m: APIMeeting): MeetingRow {
+  const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  const typeLabel = m.type === "one_to_one" ? "1-to-1" : capitalize(m.type);
+  const recurrenceLabel = capitalize(m.recurrence);
+  // Prefer start_date_time; fall back to next_instance then due_date_time
+  const displayDate = m.start_date_time || m.next_instance || m.due_date_time || null;
+  const nextInstance = displayDate
+    ? new Date(displayDate).toLocaleString("en-GB", {
+        day: "numeric", month: "short", year: "numeric",
+        hour: "2-digit", minute: "2-digit",
+      })
+    : "—";
+  const rawStatus = m.status?.toLowerCase();
+  const status: "Pending" | "Active" | "Completed" =
+    (rawStatus === "completed" || rawStatus === "complete") ? "Completed" :
+    rawStatus === "active" ? "Active" : "Pending";
+
+  return {
+    id:           String(m.id),
+    name:         m.name,
+    type:         typeLabel,
+    recurrence:   recurrenceLabel,
+    nextInstance,
+    participants: m.participant_count,
+    duration:     m.duration ? `${m.duration} min` : "—",
+    createdBy:    m.created_by_name || "—",
+    status,
+  };
+}
+
+/* --- API single meeting detail response ---------------------------------- */
+interface APIMeetingDetail {
+  id:               number;
+  name:             string;
+  intention:        string | null;
+  type:             string;
+  due_date_time:    string;
+  start_date_time:  string | null;
+  repeat_time:      string | null;
+  duration:         number;
+  recurrence:       string;
+  weekly_days:      string[];
+  expected_outcome: string | null;
+  note:             string | null;
+  agenda:           string | null;
+  prework:          string | null;
+  report:           string | null;
+  summary:          string | null;
+  link:             string | null;
+  score:            number | null;
+  status:           string;
+  created_by_name:  string;
+  participants: { id: number; user_id: number; name: string; email: string; role: string }[];
+}
+
+/* --- Convert ISO datetime → "datetime-local" input value ---------------- */
+const toDatetimeLocal = (iso: string | null): string => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  return [
+    d.getFullYear(),
+    String(d.getMonth() + 1).padStart(2, "0"),
+    String(d.getDate()).padStart(2, "0"),
+  ].join("-") + "T" + [
+    String(d.getHours()).padStart(2, "0"),
+    String(d.getMinutes()).padStart(2, "0"),
+  ].join(":");
+};
+
+/* --- Map API detail response → MeetingRow (full fields) ----------------- */
+function mapApiMeetingDetail(m: APIMeetingDetail): MeetingRow {
+  const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  const typeLabel = m.type === "one_to_one" ? "1-to-1" : capitalize(m.type);
+  const recurrenceMap: Record<string, string> = {
+    once: "One-time", daily: "Daily", weekly: "Weekly", monthly: "Monthly",
+  };
+  const recurrenceLabel = recurrenceMap[m.recurrence] ?? capitalize(m.recurrence);
+  const rawStatus = m.status?.toLowerCase();
+  const status: "Pending" | "Active" | "Completed" =
+    (rawStatus === "completed" || rawStatus === "complete") ? "Completed" :
+    rawStatus === "active" ? "Active" : "Pending";
+
+  return {
+    id:              String(m.id),
+    name:            m.name,
+    type:            typeLabel,
+    recurrence:      recurrenceLabel,
+    nextInstance:    "—",
+    participants:    m.participants.length,
+    duration:        m.duration ? `${m.duration} min` : "—",
+    createdBy:       m.created_by_name || "—",
+    status,
+    intention:       m.intention        ?? "",
+    dueDate:         toDatetimeLocal(m.due_date_time),
+    startDateTime:   toDatetimeLocal(m.start_date_time ?? null),
+    repeatTime:      m.repeat_time ?? "",
+    expectedOutcome: m.expected_outcome ?? "",
+    description:     m.note             ?? "",
+    agenda:          m.agenda           ?? "",
+    prework:         m.prework          ?? "",
+    report:          m.report           ?? "",
+    summary:         m.summary          ?? "",
+    reportScore:     m.score != null ? String(m.score) : "",
+    participantsList: m.participants.map(p => ({ id: p.user_id, name: p.name })),
+  };
+}
 
 const TYPE_COLOR: Record<string, string> = {
   Strategic: "#8b5cf6",
@@ -84,6 +170,117 @@ const TYPE_COLOR: Record<string, string> = {
   "1-on-1":  "#ec4899",
 };
 
+/* --- Pagination Footer ----------------------------------------------- */
+function PaginationFooter({
+  rowsPerPage,
+  currentPage,
+  totalRows,
+  onRowsPerPageChange,
+  onPageChange,
+}: {
+  rowsPerPage: number;
+  currentPage: number;
+  totalRows: number;
+  onRowsPerPageChange: (value: number) => void;
+  onPageChange: (page: number) => void;
+}) {
+  const totalPages = Math.max(1, Math.ceil(totalRows / rowsPerPage) || 1);
+
+  const maxVisiblePages = 5;
+  const halfWindow = Math.floor(maxVisiblePages / 2);
+  let startPage = Math.max(1, currentPage - halfWindow);
+  let endPage = startPage + maxVisiblePages - 1;
+  if (endPage > totalPages) {
+    endPage = totalPages;
+    startPage = Math.max(1, endPage - maxVisiblePages + 1);
+  }
+
+  const pages = Array.from(
+    { length: Math.max(0, endPage - startPage + 1) },
+    (_, index) => startPage + index,
+  );
+
+  const displayPages: Array<number | "ellipsis"> = [];
+  if (totalPages <= maxVisiblePages + 2) {
+    for (let p = 1; p <= totalPages; p++) displayPages.push(p);
+  } else {
+    displayPages.push(1);
+    if (startPage > 2) displayPages.push("ellipsis");
+    for (const p of pages) {
+      if (p !== 1 && p !== totalPages) displayPages.push(p);
+    }
+    if (endPage < totalPages - 1) displayPages.push("ellipsis");
+    displayPages.push(totalPages);
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-1 border-t border-[#E6EBF1] dark:border-[#1F2A37] px-4 py-3 text-xs md:text-sm">
+      {/* Rows per page */}
+      <div className="flex items-center gap-2">
+        <select
+          value={rowsPerPage}
+          onChange={(e) => onRowsPerPageChange(Number(e.target.value))}
+          className="rounded-md border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0a0f1a] px-3 py-1.5 text-xs text-[#374151] dark:text-[#9CA3AF] shadow-sm focus:border-[#5750F1] focus:outline-none focus:ring-1 focus:ring-[#5750F1]"
+        >
+          {ROW_OPTIONS.map((opt) => (
+            <option key={opt} value={opt}>
+              {opt} Rows
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Page numbers */}
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          disabled={currentPage <= 1}
+          onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+          className="px-2 py-1 text-[#6B7280] hover:text-[#111928] dark:text-[#9CA3AF] dark:hover:text-white disabled:cursor-not-allowed disabled:opacity-30 transition-colors"
+        >
+          «
+        </button>
+
+        {displayPages.map((page, idx) => {
+          if (page === "ellipsis") {
+            return (
+              <span
+                key={`ellipsis-${idx}`}
+                className="flex h-7 w-7 items-center justify-center text-[#6B7280] dark:text-[#9CA3AF]"
+              >
+                ...
+              </span>
+            );
+          }
+          return (
+            <button
+              key={page}
+              type="button"
+              onClick={() => onPageChange(page)}
+              className={
+                page === currentPage
+                  ? "flex h-7 w-7 items-center justify-center rounded-full bg-[#5750F1] text-white text-xs font-semibold"
+                  : "flex h-7 w-7 items-center justify-center rounded-full text-[#374151] dark:text-[#9CA3AF] hover:bg-[#F3F4F6] dark:hover:bg-[#1F2A37] transition-colors"
+              }
+            >
+              {page}
+            </button>
+          );
+        })}
+
+        <button
+          type="button"
+          disabled={currentPage >= totalPages}
+          onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+          className="px-2 py-1 text-[#6B7280] hover:text-[#111928] dark:text-[#9CA3AF] dark:hover:text-white disabled:cursor-not-allowed disabled:opacity-30 transition-colors"
+        >
+          »
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* --- Meeting Table ------------------------------------------------------- */
 function MeetingTable({
   rows,
@@ -92,7 +289,12 @@ function MeetingTable({
   onToggleShowCompleted,
   onNameClick,
   rowStatuses,
-  setRowStatuses,
+  onStatusChange,
+  startDate,
+  endDate,
+  onDateRangeChange,
+  onDone,
+  onClear,
 }: {
   rows: MeetingRow[];
   onAddMeeting: () => void;
@@ -100,54 +302,56 @@ function MeetingTable({
   onToggleShowCompleted: () => void;
   onNameClick: (row: MeetingRow) => void;
   rowStatuses: Record<string, MeetingStatus>;
-  setRowStatuses: React.Dispatch<React.SetStateAction<Record<string, MeetingStatus>>>;
+  onStatusChange: (rowId: string, newStatus: MeetingStatus) => void;
+  startDate: Date;
+  endDate: Date;
+  onDateRangeChange: (start: Date, end: Date) => void;
+  onDone: () => void;
+  onClear: () => void;
 }) {
   const [search, setSearch] = useState("");
   const [meMode, setMeMode] = useState(false);
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
-
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [dateRange, setDateRange] = useState<any>([
-    {
-      startDate: new Date(),
-      endDate: new Date(),
-      key: "selection"
-    }
-  ]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+
+  // Build date-range shape for the DateRangePicker
+  const dateRange = [{ startDate, endDate, key: "selection" }];
+
+  const isSameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+
+  const fmtBtn = (d: Date) => format(d, "MMM d, yyyy");
+  const dateLabel = isSameDay(startDate, endDate)
+    ? fmtBtn(startDate)
+    : `${fmtBtn(startDate)} – ${fmtBtn(endDate)}`;
 
   const filtered = rows.filter(r => {
-    // Search filter
-    const matchesSearch = r.name.toLowerCase().includes(search.toLowerCase());
-    if (!matchesSearch) return false;
-
-    // Show completed filter (always keep visible)
-    const status = rowStatuses[r.id] ?? r.status;
-
-    // Date range filter
-    if (dateRange[0].startDate && dateRange[0].endDate) {
-      const mDate = parseMeetingDate(r.nextInstance);
-      if (mDate) {
-        const start = new Date(dateRange[0].startDate);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(dateRange[0].endDate);
-        end.setHours(23, 59, 59, 999);
-        if (mDate < start || mDate > end) return false;
-      } else {
-        return false;
-      }
-    }
-
-    return true;
+    // Search filter only — date filtering is server-side
+    return r.name.toLowerCase().includes(search.toLowerCase());
   });
 
-  const allChecked  = filtered.length > 0 && filtered.every(r => selectedRows.has(r.id));
-  const someChecked = filtered.some(r => selectedRows.has(r.id));
+  // Reset to page 1 when rowsPerPage or search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [rowsPerPage, search]);
+
+  const paginated = useMemo(() => {
+    const start = (currentPage - 1) * rowsPerPage;
+    return filtered.slice(start, start + rowsPerPage);
+  }, [filtered, currentPage, rowsPerPage]);
+
+  const allChecked  = paginated.length > 0 && paginated.every(r => selectedRows.has(r.id));
+  const someChecked = paginated.some(r => selectedRows.has(r.id));
 
   const toggleAll = () => {
     setSelectedRows(prev => {
       const next = new Set(prev);
-      if (allChecked) { filtered.forEach(r => next.delete(r.id)); }
-      else            { filtered.forEach(r => next.add(r.id)); }
+      if (allChecked) { paginated.forEach(r => next.delete(r.id)); }
+      else            { paginated.forEach(r => next.add(r.id)); }
       return next;
     });
   };
@@ -186,6 +390,15 @@ function MeetingTable({
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search meetings..." className="w-full rounded-lg border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] pl-9 pr-3 py-2 text-sm text-[#111928] dark:text-white placeholder:text-[#9CA3AF] outline-none focus:border-[#2563eb] transition-colors" />
         </div>
         <div className="flex items-center gap-2 ml-auto flex-wrap">
+          {/* Refresh Button */}
+          <button
+            onClick={onDone}
+            className="flex items-center justify-center rounded-lg border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] px-2.5 py-2 hover:border-[#2563eb]/40 text-[#6B7280] dark:text-[#9CA3AF] transition-colors cursor-pointer"
+            title="Refresh meetings"
+          >
+            <LuRefreshCw size={13} />
+          </button>
+
           {/* Date Range Picker */}
           <div className="relative">
             <button
@@ -193,11 +406,7 @@ function MeetingTable({
               className="flex items-center gap-2 rounded-lg border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] px-3 py-2 text-xs font-medium text-[#6B7280] dark:text-[#9CA3AF] hover:border-[#2563eb]/40 transition-colors cursor-pointer"
             >
               <LuCalendar size={13} className="text-[#9CA3AF]" />
-              <span>
-                {dateRange[0].startDate && dateRange[0].endDate
-                  ? `${format(dateRange[0].startDate, "MMM d, yyyy")} - ${format(dateRange[0].endDate, "MMM d, yyyy")}`
-                  : "Filter by Date"}
-              </span>
+              <span>{dateLabel}</span>
               <LuChevronDown size={12} className="text-[#9CA3AF]" />
             </button>
 
@@ -207,29 +416,26 @@ function MeetingTable({
                   className="fixed inset-0 z-30"
                   onClick={() => setShowDatePicker(false)}
                 />
-                <div className="absolute right-0 top-full mt-1.5 z-40 rounded-xl border border-[#E6EBF1] dark:border-[#27303E] bg-white dark:bg-[#122031] shadow-2xl p-2 max-w-[95vw] overflow-x-auto">
-                  <DateRangePicker
-                    onChange={(item: any) => {
-                      setDateRange([item.selection]);
-                    }}
-                    showPreview={true}
-                    moveRangeOnFirstSelection={false}
-                    months={1}
-                    ranges={dateRange}
-                    direction="horizontal"
-                    inputRanges={[]}
-                    shownDate={dateRange[0].startDate || new Date()}
-                  />
+                <div className="absolute left-0 lg:left-auto lg:right-0 top-full mt-1.5 z-40 rounded-xl border border-[#E6EBF1] dark:border-[#27303E] bg-white dark:bg-[#122031] shadow-2xl p-2 max-w-[95vw] overflow-x-auto">
+              <DateRangePicker
+                onChange={(item: any) => {
+                  const sel = item.selection;
+                  const s = sel?.startDate instanceof Date ? sel.startDate : startDate;
+                  const e = sel?.endDate instanceof Date ? sel.endDate : endDate;
+                  onDateRangeChange(s, e);
+                }}
+                showPreview={false}
+                moveRangeOnFirstSelection={false}
+                months={1}
+                ranges={dateRange}
+                direction="horizontal"
+                inputRanges={[]}
+                shownDate={startDate}
+              />
                   <div className="flex items-center justify-end gap-2 mt-2 pt-2 border-t border-[#E6EBF1] dark:border-[#27303E]">
                     <button
                       onClick={() => {
-                        setDateRange([
-                          {
-                            startDate: undefined,
-                            endDate: undefined,
-                            key: "selection"
-                          }
-                        ]);
+                        onClear();
                         setShowDatePicker(false);
                       }}
                       className="rounded-md border border-[#E6EBF1] dark:border-[#27303E] bg-white dark:bg-[#0d1520] px-3 py-1.5 text-xs font-medium text-[#6B7280] dark:text-[#9CA3AF] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors cursor-pointer"
@@ -237,7 +443,10 @@ function MeetingTable({
                       Clear
                     </button>
                     <button
-                      onClick={() => setShowDatePicker(false)}
+                      onClick={() => {
+                        onDone();
+                        setShowDatePicker(false);
+                      }}
                       className="rounded-md bg-[#2563eb] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#1d4ed8] transition-colors cursor-pointer"
                     >
                       Done
@@ -262,10 +471,10 @@ function MeetingTable({
 
       {/* Table */}
       <div className="rounded-xl border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto overflow-y-auto max-h-[480px]">
           <table className="w-full min-w-[1000px] border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-[#E6EBF1] dark:border-[#1F2A37] bg-[#F9FAFB] dark:bg-[#0a1018]">
+            <thead className="sticky top-0 z-10 bg-[#F9FAFB] dark:bg-[#0a1018]">
+              <tr className="border-b border-[#E6EBF1] dark:border-[#1F2A37]">
                 <th className="w-10 px-3 py-3">
                   <input type="checkbox" checked={allChecked} ref={el => { if (el) el.indeterminate = someChecked && !allChecked; }} onChange={toggleAll} className="h-4 w-4 rounded border-[#D1D5DB] text-[#2563eb] accent-[#2563eb] cursor-pointer" />
                 </th>
@@ -282,12 +491,12 @@ function MeetingTable({
               </tr>
             </thead>
             <tbody>
-              {filtered.map((row, i) => (
+              {paginated.map((row, i) => (
                 <tr key={row.id} className="border-b border-[#F3F4F6] dark:border-[#1F2A37]/60 hover:bg-[#F9FAFB] dark:hover:bg-[#0a1018]/60 transition-colors group cursor-pointer">
                   <td className="w-10 px-3 py-2.5">
                     <input type="checkbox" checked={selectedRows.has(row.id)} onChange={() => toggleRow(row.id)} onClick={e => e.stopPropagation()} className="h-4 w-4 rounded border-[#D1D5DB] text-[#2563eb] accent-[#2563eb] cursor-pointer" />
                   </td>
-                  <td className="w-10 px-2 py-2.5 text-xs text-[#9CA3AF] text-center">{i + 1}</td>
+                  <td className="w-10 px-2 py-2.5 text-xs text-[#9CA3AF] text-center">{(currentPage - 1) * rowsPerPage + i + 1}</td>
                   <td className="px-3 py-2.5 min-w-[220px] flex-1">
                     <span className="text-sm font-medium text-[#111928] dark:text-white truncate block max-w-[260px] hover:text-[#2563eb] cursor-pointer transition-colors" onClick={() => onNameClick(row)}>{row.name}</span>
                   </td>
@@ -306,8 +515,13 @@ function MeetingTable({
                       const s  = rowStatuses[row.id] ?? "Active";
                       const st = STATUS_STYLE[s];
                       return (
-                        <div className="relative inline-block">
-                          <select value={s} onChange={e => setRowStatuses(prev => ({ ...prev, [row.id]: e.target.value as MeetingStatus }))} className="appearance-none rounded-md border pl-2.5 pr-6 py-1 text-xs font-semibold cursor-pointer outline-none transition-colors" style={{ color: st.color, background: st.bg, borderColor: st.border }}>
+                         <div className="relative inline-block">
+                          <select
+                            value={s}
+                            onChange={e => onStatusChange(row.id, e.target.value as MeetingStatus)}
+                            className="appearance-none rounded-md border pl-2.5 pr-6 py-1 text-xs font-semibold cursor-pointer outline-none transition-colors"
+                            style={{ color: st.color, background: st.bg, borderColor: st.border }}
+                          >
                             <option value="Pending">Pending</option>
                             <option value="Active">Active</option>
                             <option value="Completed">Completed</option>
@@ -325,6 +539,13 @@ function MeetingTable({
             </tbody>
           </table>
         </div>
+        <PaginationFooter
+          rowsPerPage={rowsPerPage}
+          currentPage={currentPage}
+          totalRows={filtered.length}
+          onRowsPerPageChange={setRowsPerPage}
+          onPageChange={setCurrentPage}
+        />
       </div>
     </div>
   );
@@ -334,60 +555,128 @@ function MeetingTable({
 type ViewTab = "table" | "calendar";
 
 export default function MeetingSection() {
+  const workspaceId = useSelector((state: RootState) => state.workspace.selectedId ?? 1);
+  const { token }   = useAuth();
+
   const [showModal,        setShowModal]        = useState(false);
   const [selectedMeeting,  setSelectedMeeting]  = useState<MeetingRow | null>(null);
-  const [calEvents,        setCalEvents]        = useState<MeetingEvent[]>([]);
+  const [rawMeetings,      setRawMeetings]      = useState<APIMeeting[]>([]);
   const [viewTab,          setViewTab]          = useState<ViewTab>("table");
   const [showCompleted,    setShowCompleted]    = useState(false);
-  const [tableRows,        setTableRows]        = useState<MeetingRow[]>(DUMMY_ROWS);
-  const [rowStatuses,      setRowStatuses]      = useState<Record<string, MeetingStatus>>(
-    () => Object.fromEntries(DUMMY_ROWS.map(r => [r.id, r.status]))
-  );
+  const [tableRows,        setTableRows]        = useState<MeetingRow[]>([]);
+  const [rowStatuses,      setRowStatuses]      = useState<Record<string, MeetingStatus>>({});
   const [showConfirm,      setShowConfirm]      = useState(false);
   const [pendingRowId,     setPendingRowId]     = useState<string | null>(null);
+  const [loading,          setLoading]          = useState(true);
+  const [fetchError,       setFetchError]       = useState<string | null>(null);
+  const now = new Date();
+  const monthStart = () => new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthEnd   = () => new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+  const [startDate,        setStartDate]        = useState<Date>(monthStart);
+  const [endDate,          setEndDate]          = useState<Date>(monthEnd);
   const colorIdx = { current: 0 };
 
-  const handleNameClick = (row: MeetingRow) => {
+  const fetchMeetings = useCallback(async (start?: Date, end?: Date) => {
+    setLoading(true);
+    setFetchError(null);
+    try {
+      const params: Record<string, string | number | boolean> = {
+        workspace_id: workspaceId,
+        own: false,
+      };
+      if (start) params.start_date = toApiDate(start);
+      if (end)   params.end_date   = toApiDate(end);
+      const res = await api.get("/api/v1/planner/meetings", {
+        params,
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const meetings: APIMeeting[] = res.data?.data?.meetings ?? [];
+      const rows = meetings.map(mapApiMeeting);
+      setTableRows(rows);
+      setRawMeetings(meetings);
+      setRowStatuses(Object.fromEntries(rows.map(r => [r.id, r.status])));
+    } catch (err: any) {
+      setFetchError(err?.message ?? "Failed to load meetings");
+    } finally {
+      setLoading(false);
+    }
+  }, [workspaceId, token]);
+
+  // Initial load — fetch for current month
+  useEffect(() => { fetchMeetings(monthStart(), monthEnd()); }, [fetchMeetings]);
+
+
+  const handleNameClick = async (row: MeetingRow) => {
     const status = rowStatuses[row.id] ?? row.status;
-    if (status === "Pending") {
-      setPendingRowId(row.id);
-      setSelectedMeeting(row);
-      setShowConfirm(true);
-    } else {
-      setSelectedMeeting(row);
-      setShowModal(true);
+    try {
+      const res = await api.get(`/api/v1/planner/meetings/${row.id}`, {
+        params:  { workspace_id: workspaceId },
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const detail: APIMeetingDetail = res.data?.data;
+      const fullRow = mapApiMeetingDetail(detail);
+      if (status === "Pending") {
+        setPendingRowId(row.id);
+        setSelectedMeeting(fullRow);
+        setShowConfirm(true);
+      } else {
+        setSelectedMeeting(fullRow);
+        setShowModal(true);
+      }
+    } catch (err) {
+      console.error("Failed to fetch meeting detail:", err);
+      // Fallback: open with list-view data
+      if (status === "Pending") {
+        setPendingRowId(row.id);
+        setSelectedMeeting(row);
+        setShowConfirm(true);
+      } else {
+        setSelectedMeeting(row);
+        setShowModal(true);
+      }
     }
   };
 
-  const handleSaved = () => {
+
+
+  const handleStatusChange = async (rowId: string, newStatus: MeetingStatus) => {
+    const statusMap: Record<MeetingStatus, string> = {
+      Pending: "pending",
+      Active: "active",
+      Completed: "complete",
+    };
+    // Optimistic UI update
+    setRowStatuses(prev => ({ ...prev, [rowId]: newStatus }));
+    try {
+      await api.patch(`/api/v1/planner/meetings/${rowId}/status`, {
+        workspace_id: workspaceId,
+        status: statusMap[newStatus],
+      }, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch (err) {
+      console.error("Failed to update meeting status:", err);
+      // Revert on failure
+      setRowStatuses(prev => ({ ...prev, [rowId]: rowStatuses[rowId] ?? "Pending" }));
+    }
+  };
+
+  const handleCreated = async (_form: MeetingForm) => {
+    await fetchMeetings(startDate, endDate);
+  };
+
+  /** Called by CreateMeetingModal after a successful PUT (Save Changes) */
+  const handleSaved = async () => {
+    // If the meeting was Pending when opened, auto-mark it as Completed
     if (pendingRowId) {
-      setRowStatuses(prev => ({ ...prev, [pendingRowId]: "Completed" }));
+      await handleStatusChange(pendingRowId, "Completed");
       setPendingRowId(null);
     }
+    // Always re-fetch latest data after saving
+    await fetchMeetings(startDate, endDate);
   };
 
-  const handleCreated = (form: MeetingForm) => {
-    const color = EVENT_COLORS[colorIdx.current % EVENT_COLORS.length];
-    colorIdx.current++;
-    const now       = new Date();
-    const dayOfWeek = (now.getDay() + 6) % 7;
-    setCalEvents(prev => [...prev, { id: crypto.randomUUID(), title: form.name.trim(), dayOfWeek, startHr: 9, startMin: 0, endHr: 10, endMin: 0, color }]);
-
-    const durationLabel = form.duration ? `${form.duration} min` : "—";
-    const nextInstance  = form.dueDate ? `${form.dueDate}${form.dueTime ? " · " + form.dueTime : ""}` : "—";
-    const newRow: MeetingRow = {
-      id:           crypto.randomUUID(),
-      name:         form.name.trim(),
-      type:         form.type,
-      recurrence:   form.recurrence,
-      nextInstance,
-      participants: form.participants ? parseInt(form.participants, 10) : 0,
-      duration:     durationLabel,
-      createdBy:    "—",
-      status:       "Active",
-    };
-    setTableRows(prev => [newRow, ...prev]);
-  };
 
   const VIEW_TABS: { id: ViewTab; label: string; icon: React.ReactNode }[] = [
     { id: "table",    label: "Table",    icon: <LuLayoutList size={13} /> },
@@ -414,15 +703,38 @@ export default function MeetingSection() {
 
       {/* Table view */}
       {viewTab === "table" && (
-        <MeetingTable
-          rows={tableRows}
-          onAddMeeting={() => { setSelectedMeeting(null); setShowModal(true); }}
-          showCompleted={showCompleted}
-          onToggleShowCompleted={() => setShowCompleted(p => !p)}
-          onNameClick={handleNameClick}
-          rowStatuses={rowStatuses}
-          setRowStatuses={setRowStatuses}
-        />
+        loading ? (
+          <div className="flex flex-col items-center justify-center py-20">
+            <LuLoader className="animate-spin text-[#5750F1]" size={24} />
+            <p className="mt-2 text-sm text-[#9CA3AF]">Loading meetings...</p>
+          </div>
+        ) : fetchError ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <p className="text-sm font-semibold text-red-500">{fetchError}</p>
+            <button onClick={() => fetchMeetings(startDate, endDate)} className="mt-3 text-xs text-[#5750F1] hover:underline">Retry</button>
+          </div>
+        ) : (
+          <MeetingTable
+            rows={tableRows}
+            onAddMeeting={() => { setSelectedMeeting(null); setShowModal(true); }}
+            showCompleted={showCompleted}
+            onToggleShowCompleted={() => setShowCompleted(p => !p)}
+            onNameClick={handleNameClick}
+            rowStatuses={rowStatuses}
+            onStatusChange={handleStatusChange}
+            startDate={startDate}
+            endDate={endDate}
+            onDateRangeChange={(s, e) => { setStartDate(s); setEndDate(e); }}
+            onDone={() => fetchMeetings(startDate, endDate)}
+            onClear={() => {
+              const s = new Date(now.getFullYear(), now.getMonth(), 1);
+              const e = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+              setStartDate(s);
+              setEndDate(e);
+              fetchMeetings(s, e);
+            }}
+          />
+        )
       )}
 
       {/* Calendar view */}
@@ -433,7 +745,14 @@ export default function MeetingSection() {
               <LuPlus size={13} />Add Meeting
             </button>
           </div>
-          <MeetingCalendar events={calEvents} />
+          <MeetingCalendar
+            meetings={rawMeetings}
+            onMonthChange={async (start, end) => {
+              setStartDate(start);
+              setEndDate(end);
+              await fetchMeetings(start, end);
+            }}
+          />
         </div>
       )}
 

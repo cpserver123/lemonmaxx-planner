@@ -30,7 +30,7 @@ function HeaderComponent() {
 
         {/* Center — tabs (only on /dashboard) */}
         {isDashboard ? (
-          <div className="flex-1 overflow-x-auto scrollbar-none">
+          <div className="flex-1 overflow-x-auto scrollbar-none hidden lg:block">
             <div className="flex items-center gap-1 min-w-max">
               {DASHBOARD_TABS.map(({ id, label }) => {
                 const isActive = activeTab === id;

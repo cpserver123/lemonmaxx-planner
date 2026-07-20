@@ -5,6 +5,7 @@ import {
   LuX, LuCalendar, LuClock, LuMapPin, LuFileText,
   LuChevronDown, LuListChecks, LuPaperclip, LuSparkles,
   LuVideo, LuRepeat, LuCheck, LuUsers, LuInfo, LuLayoutGrid,
+  LuCloudUpload, LuFile, LuCircleX,
 } from "react-icons/lu";
 import { useSelector } from "react-redux";
 import type { RootState } from "@/store";
@@ -30,6 +31,10 @@ export interface MeetingForm {
   isExternal:      boolean;
   isPrivate:       boolean;
   reportScore?:    string;
+  agenda?:         string;
+  prework?:        string;
+  report?:         string;
+  summary?:        string;
 }
 
 export interface MeetingRow {
@@ -44,12 +49,18 @@ export interface MeetingRow {
   status:        "Pending" | "Active" | "Completed";
   reportScore?:  string;
   // Extended detail fields (shown in KPI view)
-  intention?:      string;
-  startDateTime?:  string;
-  repeatTime?:     string;
-  dueDate?:        string;
+  intention?:       string;
+  startDateTime?:   string;
+  repeatTime?:      string;
+  dueDate?:         string;
   expectedOutcome?: string;
-  description?:    string;
+  description?:     string;
+  agenda?:          string;
+  prework?:         string;
+  report?:          string;
+  summary?:         string;
+  /** Pre-populated participants for edit mode */
+  participantsList?: { id: number; name: string }[];
 }
 
 export const BLANK: MeetingForm = {
@@ -69,6 +80,8 @@ export const BLANK: MeetingForm = {
   description:     "",
   isExternal:      false,
   isPrivate:       false,
+  agenda:          "",
+  prework:         "",
 };
 
 export const MEETING_TYPES = ["Review", "Planning", "Standup", "1-to-1", "Retrospective", "Workshop", "Follow-up", "Other"];
@@ -175,7 +188,19 @@ function RightHeading({ icon, label }: { icon: React.ReactNode; label: string })
 const FONT_FAMILIES = ["System Default", "Georgia", "Courier New", "Helvetica Neue", "Times New Roman"];
 const FONT_SIZES    = ["12px", "13px", "14px", "15px", "16px", "18px", "20px", "24px"];
 
-function RichNoteEditor({ placeholder = "Write Content", readOnly = false, className = "" }: { placeholder?: string, readOnly?: boolean, className?: string }) {
+function RichNoteEditor({
+  placeholder = "Write Content",
+  readOnly = false,
+  className = "",
+  value = "",
+  onChange,
+}: {
+  placeholder?: string;
+  readOnly?: boolean;
+  className?: string;
+  value?: string;
+  onChange?: (val: string) => void;
+}) {
   const editorRef      = useRef<HTMLDivElement>(null);
   const [bold, setBold]           = useState(false);
   const [italic, setItalic]       = useState(false);
@@ -191,6 +216,12 @@ function RichNoteEditor({ placeholder = "Write Content", readOnly = false, class
   const historyRef    = useRef<string[]>([""]);
   const historyIdxRef = useRef(0);
 
+  useEffect(() => {
+    if (editorRef.current && editorRef.current.innerHTML !== value) {
+      editorRef.current.innerHTML = value;
+    }
+  }, [value]);
+
   const saveSnapshot = useCallback(() => {
     if (readOnly) return;
     const content = editorRef.current?.innerHTML ?? "";
@@ -198,27 +229,30 @@ function RichNoteEditor({ placeholder = "Write Content", readOnly = false, class
     if (stack[historyIdxRef.current] === content) return;
     historyRef.current    = [...stack.slice(0, historyIdxRef.current + 1), content];
     historyIdxRef.current = historyRef.current.length - 1;
-  }, [readOnly]);
+    onChange?.(content);
+  }, [readOnly, onChange]);
 
   const handleUndo = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     if (readOnly || historyIdxRef.current <= 0) return;
     historyIdxRef.current--;
-    if (editorRef.current)
+    if (editorRef.current) {
       editorRef.current.innerHTML = historyRef.current[historyIdxRef.current];
+      onChange?.(editorRef.current.innerHTML);
+    }
     syncState();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [readOnly]);
+  }, [readOnly, onChange]);
 
   const handleRedo = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     if (readOnly || historyIdxRef.current >= historyRef.current.length - 1) return;
     historyIdxRef.current++;
-    if (editorRef.current)
+    if (editorRef.current) {
       editorRef.current.innerHTML = historyRef.current[historyIdxRef.current];
+      onChange?.(editorRef.current.innerHTML);
+    }
     syncState();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [readOnly]);
+  }, [readOnly, onChange]);
 
   useEffect(() => {
     const h = (e: MouseEvent) => {
@@ -384,54 +418,6 @@ function RichNoteEditor({ placeholder = "Write Content", readOnly = false, class
   );
 }
 
-function FilesSection() {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [files, setFiles] = useState<File[]>([]);
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files) return;
-    const selected = Array.from(e.target.files);
-    setFiles(prev => {
-      const existing = new Set(prev.map(f => f.name + f.size));
-      return [...prev, ...selected.filter(f => !existing.has(f.name + f.size))];
-    });
-    e.target.value = "";
-  };
-
-  const removeFile = (index: number) =>
-    setFiles(prev => prev.filter((_, i) => i !== index));
-
-  const fmtSize = (bytes: number) => {
-    if (bytes < 1024)        return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
-  return (
-    <div>
-      <RightHeading icon={<LuPaperclip size={13} />} label="Files" />
-      <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFileChange} />
-      <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 w-full rounded-lg border border-dashed border-[#D1D5DB] dark:border-[#374151] bg-white dark:bg-[#0a1628] px-4 py-3 text-xs font-medium text-[#6B7280] dark:text-[#9CA3AF] hover:border-[#2563eb]/60 hover:text-[#2563eb] dark:hover:text-[#2563eb] transition-colors group">
-        <LuPaperclip size={13} className="shrink-0 group-hover:text-[#2563eb] transition-colors" />
-        Upload Files
-      </button>
-      {files.length > 0 && (
-        <ul className="mt-2 flex flex-col gap-1.5">
-          {files.map((file, i) => (
-            <li key={`${file.name}-${file.size}-${i}`} className="flex items-center gap-2 rounded-lg border border-[#E5E7EB] dark:border-[#1F2A37] bg-white dark:bg-[#0a1628] px-3 py-2 group">
-              <LuPaperclip size={12} className="shrink-0 text-[#9CA3AF]" />
-              <span className="flex-1 truncate text-xs text-[#111928] dark:text-white">{file.name}</span>
-              <span className="text-[10px] text-[#9CA3AF] shrink-0">{fmtSize(file.size)}</span>
-              <button onClick={() => removeFile(i)} className="shrink-0 text-[#9CA3AF] hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100" title="Remove">
-                <LuX size={12} />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
 
 /* --- Meeting KPI Dashboard View ----------------------------------------- */
 function MeetingKPIView({
@@ -764,6 +750,187 @@ function ParticipantsDropdown({
   );
 }
 
+/* --- Files Upload Section ----------------------------------------------- */
+interface UploadingFile {
+  id:       string;
+  file:     File;
+  progress: number;         // 0-100
+  done:     boolean;
+  error?:   string;
+}
+interface UploadedFile {
+  filename:     string;
+  size:         number;
+  content_type: string;
+  url:          string;
+}
+
+function FilesSection({
+  meetingId,
+  workspaceId,
+  token,
+}: {
+  meetingId?: string | null;
+  workspaceId: number;
+  token: string;
+}) {
+  const inputRef                                          = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading]                         = useState<UploadingFile[]>([]);
+  const [uploaded, setUploaded]                           = useState<UploadedFile[]>([]);
+  const [isDragging, setIsDragging]                       = useState(false);
+
+  const canUpload = !!meetingId;
+
+  const formatBytes = (b: number) =>
+    b < 1024 ? `${b} B` : b < 1024 * 1024 ? `${(b / 1024).toFixed(1)} KB` : `${(b / (1024 * 1024)).toFixed(1)} MB`;
+
+  const uploadFiles = useCallback(async (files: FileList | File[]) => {
+    if (!canUpload) return;
+    const list = Array.from(files);
+    if (!list.length) return;
+
+    // Add entries to the uploading queue
+    const entries: UploadingFile[] = list.map(f => ({
+      id: `${Date.now()}_${Math.random()}`,
+      file: f,
+      progress: 0,
+      done: false,
+    }));
+    setUploading(prev => [...prev, ...entries]);
+
+    const formData = new FormData();
+    list.forEach(f => formData.append("files", f));
+
+    const ids = entries.map(e => e.id);
+
+    // Use XMLHttpRequest for real upload progress
+    await new Promise<void>((resolve) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `https://api.lemonmaxx.com/api/v1/planner/meetings/${meetingId}/files?workspace_id=${workspaceId}`);
+      xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+      xhr.upload.onprogress = (evt) => {
+        if (evt.lengthComputable) {
+          const pct = Math.round((evt.loaded / evt.total) * 100);
+          setUploading(prev => prev.map(u => ids.includes(u.id) ? { ...u, progress: pct } : u));
+        }
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          setUploading(prev => prev.map(u => ids.includes(u.id) ? { ...u, progress: 100, done: true } : u));
+          try {
+            const res = JSON.parse(xhr.responseText);
+            const newFiles: UploadedFile[] = res?.data?.uploaded ?? [];
+            setUploaded(prev => [...prev, ...newFiles]);
+          } catch { /* ignore parse errors */ }
+          setTimeout(() => setUploading(prev => prev.filter(u => !ids.includes(u.id))), 1200);
+        } else {
+          setUploading(prev => prev.map(u => ids.includes(u.id) ? { ...u, error: "Upload failed" } : u));
+        }
+        resolve();
+      };
+      xhr.onerror = () => {
+        setUploading(prev => prev.map(u => ids.includes(u.id) ? { ...u, error: "Network error" } : u));
+        resolve();
+      };
+      xhr.send(formData);
+    });
+  }, [canUpload, meetingId, workspaceId, token]);
+
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files) uploadFiles(e.dataTransfer.files);
+  };
+
+  return (
+    <div>
+      <div className="flex items-center gap-1.5 mb-3">
+        <LuPaperclip size={13} className="text-[#6B7280] dark:text-[#9CA3AF]" />
+        <span className="text-[10px] font-bold text-[#6B7280] dark:text-[#9CA3AF] uppercase tracking-widest">Files</span>
+      </div>
+
+      {/* Drop zone */}
+      {canUpload ? (
+        <div
+          onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
+          onDragLeave={() => setIsDragging(false)}
+          onDrop={onDrop}
+          onClick={() => inputRef.current?.click()}
+          className={`flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed cursor-pointer transition-all py-6 ${
+            isDragging
+              ? "border-[#2563eb] bg-[#EFF6FF] dark:bg-[#0d1a2e]"
+              : "border-[#D1D5DB] dark:border-[#374151] hover:border-[#2563eb]/60 hover:bg-[#F9FAFB] dark:hover:bg-[#0d1520]"
+          }`}
+        >
+          <LuCloudUpload size={22} className={isDragging ? "text-[#2563eb]" : "text-[#9CA3AF]"} />
+          <p className="text-xs font-semibold text-[#6B7280] dark:text-[#9CA3AF]">
+            <span className="text-[#2563eb] font-bold">Click to upload</span> or drag &amp; drop
+          </p>
+          <p className="text-[10px] text-[#9CA3AF]">Any file type · Multiple files supported</p>
+          <input
+            ref={inputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={e => { if (e.target.files) uploadFiles(e.target.files); e.target.value = ""; }}
+          />
+        </div>
+      ) : (
+        <p className="text-xs text-[#9CA3AF] italic">Save the meeting first to attach files.</p>
+      )}
+
+      {/* Uploading queue with progress bars */}
+      {uploading.length > 0 && (
+        <div className="mt-3 flex flex-col gap-2">
+          {uploading.map(u => (
+            <div key={u.id} className="rounded-lg border border-[#E5E7EB] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] px-3 py-2">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-medium text-[#111928] dark:text-white truncate max-w-[200px]">{u.file.name}</span>
+                <span className="text-[10px] text-[#9CA3AF]">
+                  {u.error ? <span className="text-red-500">{u.error}</span> : u.done ? "✓ Done" : `${u.progress}%`}
+                </span>
+              </div>
+              {!u.error && (
+                <div className="h-1.5 rounded-full bg-[#E5E7EB] dark:bg-[#1F2A37] overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-300"
+                    style={{
+                      width: `${u.progress}%`,
+                      backgroundColor: u.done ? "#22c55e" : "#2563eb",
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Uploaded files list */}
+      {uploaded.length > 0 && (
+        <div className="mt-3 flex flex-col gap-1.5">
+          {uploaded.map((f, i) => (
+            <div key={i} className="flex items-center gap-2 rounded-lg border border-[#E5E7EB] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] px-3 py-2">
+              <LuFile size={14} className="shrink-0 text-[#6B7280] dark:text-[#9CA3AF]" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-[#111928] dark:text-white truncate">{f.filename}</p>
+                <p className="text-[10px] text-[#9CA3AF]">{formatBytes(f.size)} · {f.content_type}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setUploaded(prev => prev.filter((_, idx) => idx !== i))}
+                className="shrink-0 text-[#9CA3AF] hover:text-red-500 transition-colors"
+              >
+                <LuCircleX size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 type ModalTab = "design" | "reports" | "ai-summary";
 
 /* --- Create Meeting Modal ----------------------------------------------- */
@@ -864,8 +1031,13 @@ export default function CreateMeetingModal({
           dueDate:         initialData.dueDate        ?? "",
           expectedOutcome: initialData.expectedOutcome ?? "",
           description:     initialData.description    ?? "",
+          agenda:          initialData.agenda         ?? "",
+          prework:         initialData.prework        ?? "",
+          report:          initialData.report         ?? "",
+          summary:         initialData.summary        ?? "",
         });
-        setSelectedUsers([]);
+        setSelectedUsers(initialData.participantsList ?? []);
+
       } else {
         setForm(BLANK);
         setSelectedUsers([]);
@@ -878,12 +1050,97 @@ export default function CreateMeetingModal({
   const set = (field: keyof MeetingForm) => (value: string | boolean) =>
     setForm(prev => ({ ...prev, [field]: value }));
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (isReadOnly) {
-      onSaved?.();
-    } else if (form.name.trim()) {
-      onCreated?.(form);
+      // ---- UPDATE existing meeting via PUT ----
+      const typeMapping: Record<string, string> = { "1-to-1": "one_to_one" };
+      const meetingType = typeMapping[form.type] ?? form.type.toLowerCase();
+
+      const recurrenceMapping: Record<string, string> = {
+        "One-time": "once", "Daily": "daily", "Weekly": "weekly", "Monthly": "monthly",
+      };
+      const recurrence = recurrenceMapping[form.recurrence] || "once";
+
+      const updatePayload = {
+        workspace_id:     workspaceId,
+        name:             form.name.trim(),
+        intention:        form.intention.trim(),
+        type:             meetingType,
+        due_date_time:    form.dueDate ? new Date(form.dueDate).toISOString() : "",
+        start_date_time:  form.startDateTime ? new Date(form.startDateTime).toISOString() : null,
+        repeat_time:      form.repeatTime || null,
+        duration:         parseInt(form.duration, 10) || 30,
+        recurrence,
+        weekly_days:      recurrence === "weekly" ? Array.from(repeatDays).map(d => d.toLowerCase()) : [],
+        participants:     selectedUsers.map(u => u.id),
+        expected_outcome: form.expectedOutcome.trim(),
+        note:             form.description.trim(),
+        agenda:           form.agenda   || "",
+        prework:          form.prework  || "",
+        report:           form.report   || "",
+        summary:          form.summary  || "",
+        link:             form.location.trim() || "",
+        score:            form.reportScore ? parseFloat(form.reportScore) : 0,
+      };
+
+      try {
+        await api.put(`/api/v1/planner/meetings/${initialData!.id}`, updatePayload, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        onSaved?.();
+      } catch (err) {
+        console.error("Failed to update meeting via API:", err);
+      }
+
+      onClose();
+      setForm(BLANK);
+      return;
     }
+
+    if (!form.name.trim()) return;
+
+    const typeMapping: Record<string, string> = {
+      "1-to-1": "one_to_one",
+    };
+    const meetingType = typeMapping[form.type] ?? form.type.toLowerCase();
+
+    const recurrenceMapping: Record<string, string> = {
+      "One-time": "once",
+      "Daily": "daily",
+      "Weekly": "weekly",
+      "Monthly": "monthly"
+    };
+    const recurrence = recurrenceMapping[form.recurrence] || "once";
+
+    const payload = {
+      workspace_id:     workspaceId,
+      name:             form.name.trim(),
+      intention:        form.intention.trim(),
+      type:             meetingType,
+      due_date_time:    form.dueDate ? new Date(form.dueDate).toISOString() : "",
+      start_date_time:  form.startDateTime ? new Date(form.startDateTime).toISOString() : null,
+      repeat_time:      form.repeatTime || null,
+      duration:         parseInt(form.duration, 10) || 30,
+      recurrence,
+      weekly_days:      recurrence === "weekly" ? Array.from(repeatDays).map(d => d.toLowerCase()) : [],
+      participants:     selectedUsers.map(u => u.id),
+      expected_outcome: form.expectedOutcome.trim(),
+      note:             form.description.trim(),
+      agenda:           form.agenda || "",
+      prework:          form.prework || "",
+      link:             form.location.trim() || "",
+      status:           "pending"
+    };
+
+    try {
+      await api.post("/api/v1/planner/meetings", payload, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      onCreated?.(form);
+    } catch (err) {
+      console.error("Failed to create meeting via API:", err);
+    }
+
     onClose();
     setForm(BLANK);
   };
@@ -920,9 +1177,9 @@ export default function CreateMeetingModal({
 
         {/* Body — Design tab */}
         {tab === "design" && (
-          <div className="flex flex-1 overflow-hidden">
+          <div className="flex flex-col lg:flex-row flex-1 overflow-y-auto lg:overflow-hidden">
             {/* Left panel: KPI view when read-only, form when creating */}
-            <div className={`flex-1 overflow-y-auto border-r ${borderColor}`}>
+            <div className={`flex-1 lg:overflow-y-auto border-b lg:border-b-0 lg:border-r ${borderColor}`}>
               {isReadOnly ? (
                 <MeetingKPIView
                   data={{ ...initialData, ...form }}
@@ -936,7 +1193,7 @@ export default function CreateMeetingModal({
                 <div className="px-6 py-5 flex flex-col gap-5">
                 <div><Label text="Name" /><MInput placeholder="e.g., Weekly Sprint Planning" value={form.name} onChange={set("name")} /></div>
                 <div><Label text="Intention" optional /><textarea value={form.intention} onChange={e => set("intention")(e.target.value)} placeholder="What is the purpose of this meeting?" rows={3} className={`${inputCls} resize-none`} /></div>
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div><Label text="Type" /><SelectField value={form.type} onChange={set("type")} options={MEETING_TYPES} /></div>
                   <div><Label text="Duration (min)" /><MInput placeholder="--" value={form.duration} onChange={set("duration")} type="number" /></div>
                   <div className="relative">
@@ -1115,37 +1372,95 @@ export default function CreateMeetingModal({
               )}
             </div>
             {/* Right panel: always editable (Agenda, Prework, Files) */}
-            <div className="w-[550px] shrink-0 overflow-y-auto bg-[#F9FAFB] dark:bg-[#080f1a]">
+            <div className="w-full lg:w-[550px] shrink-0 lg:overflow-y-auto bg-[#F9FAFB] dark:bg-[#080f1a]">
               <div className="px-5 py-5 flex flex-col gap-6">
-                <div><RightHeading icon={<LuListChecks size={13} />} label="Agenda" /><RichNoteEditor placeholder="Write agenda items..." readOnly={false} /></div>
+                <div><RightHeading icon={<LuListChecks size={13} />} label="Agenda" /><RichNoteEditor placeholder="Write agenda items..." readOnly={false} value={form.agenda} onChange={set("agenda")} /></div>
                 <div className="h-px bg-[#E5E7EB] dark:bg-[#1F2A37]" />
-                <div><RightHeading icon={<LuRepeat size={13} />} label="Prework" /><RichNoteEditor placeholder="Write prework actions..." readOnly={false} /></div>
+                <div><RightHeading icon={<LuRepeat size={13} />} label="Prework" /><RichNoteEditor placeholder="Write prework actions..." readOnly={false} value={form.prework} onChange={set("prework")} /></div>
                 <div className="h-px bg-[#E5E7EB] dark:bg-[#1F2A37]" />
-                <FilesSection />
+                <FilesSection
+                  meetingId={initialData?.id ?? null}
+                  workspaceId={Number(workspaceId)}
+                  token={token ?? ""}
+                />
               </div>
             </div>
           </div>
         )}
 
         {tab === "reports" && (
-          <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-2">
-            <div className="flex items-center justify-between mb-1">
-              <p className="text-[10px] font-bold text-[#6B7280] dark:text-[#9CA3AF] uppercase tracking-widest">Report Notes</p>
-              {form.type === "1-to-1" && (
-                <div className="flex items-center gap-2">
-                  <label className="text-xs font-semibold text-[#111928] dark:text-[#E5E7EB]">Report Score (1-10):</label>
-                  <input type="number" min="1" max="10" value={form.reportScore || ""} onChange={e => set("reportScore")(e.target.value)} className="w-16 rounded-md border border-[#D1D5DB] dark:border-[#374151] bg-[#F9FAFB] dark:bg-[#0a1628] px-2 py-1 text-sm text-[#111928] dark:text-white outline-none focus:border-[#2563eb]" />
+          <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4">
+
+            {/* Score picker — shown for 1-to-1 meetings */}
+            {form.type === "1-to-1" && (
+              <div className="rounded-xl border border-[#E5E7EB] dark:border-[#1F2A37] bg-[#F9FAFB] dark:bg-[#0a1628] p-4">
+                <p className="text-[10px] font-bold text-[#6B7280] dark:text-[#9CA3AF] uppercase tracking-widest mb-3">Report Score</p>
+                <div className="flex items-center gap-4">
+                  {/* Decrement */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cur = parseInt(form.reportScore || "1", 10);
+                      if (cur > 1) set("reportScore")(String(cur - 1));
+                    }}
+                    className="flex items-center justify-center w-9 h-9 rounded-full border border-[#D1D5DB] dark:border-[#374151] bg-white dark:bg-[#0d1520] text-[#6B7280] dark:text-[#9CA3AF] hover:border-[#2563eb] hover:text-[#2563eb] transition-colors text-lg font-bold select-none"
+                  >−</button>
+
+                  {/* Score display */}
+                  <div className="flex flex-col items-center flex-1">
+                    <span className="text-4xl font-extrabold text-[#111928] dark:text-white leading-none">
+                      {form.reportScore || "—"}
+                    </span>
+                    <span className="text-[10px] text-[#9CA3AF] mt-1">out of 10</span>
+                  </div>
+
+                  {/* Increment */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cur = parseInt(form.reportScore || "0", 10);
+                      if (cur < 10) set("reportScore")(String(cur + 1));
+                    }}
+                    className="flex items-center justify-center w-9 h-9 rounded-full border border-[#D1D5DB] dark:border-[#374151] bg-white dark:bg-[#0d1520] text-[#6B7280] dark:text-[#9CA3AF] hover:border-[#2563eb] hover:text-[#2563eb] transition-colors text-lg font-bold select-none"
+                  >+</button>
                 </div>
-              )}
+
+                {/* Segmented bar 1–10 */}
+                <div className="flex gap-1 mt-4">
+                  {Array.from({ length: 10 }, (_, i) => i + 1).map(n => {
+                    const active = parseInt(form.reportScore || "0", 10) >= n;
+                    const color = n <= 3 ? "#ef4444" : n <= 6 ? "#f59e0b" : "#22c55e";
+                    return (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => set("reportScore")(String(n))}
+                        style={{ backgroundColor: active ? color : undefined }}
+                        className={`flex-1 h-2 rounded-full transition-all ${active ? "" : "bg-[#E5E7EB] dark:bg-[#1F2A37]"}`}
+                        title={String(n)}
+                      />
+                    );
+                  })}
+                </div>
+                <div className="flex justify-between mt-1 px-0.5">
+                  <span className="text-[9px] text-[#EF4444] font-semibold">Low</span>
+                  <span className="text-[9px] text-[#F59E0B] font-semibold">Mid</span>
+                  <span className="text-[9px] text-[#22C55E] font-semibold">High</span>
+                </div>
+              </div>
+            )}
+
+            <div>
+              <p className="text-[10px] font-bold text-[#6B7280] dark:text-[#9CA3AF] uppercase tracking-widest mb-2">Report Notes</p>
+              <RichNoteEditor placeholder="Write your meeting report..." className="flex-1" value={form.report} onChange={set("report")} />
             </div>
-            <RichNoteEditor placeholder="Write your meeting report..." className="flex-1" />
           </div>
         )}
 
         {tab === "ai-summary" && (
           <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-2">
             <p className="text-[10px] font-bold text-[#6B7280] dark:text-[#9CA3AF] uppercase tracking-widest mb-1">Summary Notes</p>
-            <RichNoteEditor placeholder="Write your meeting summary..." className="flex-1" />
+            <RichNoteEditor placeholder="Write your meeting summary..." className="flex-1" value={form.summary} onChange={set("summary")} />
           </div>
         )}
 

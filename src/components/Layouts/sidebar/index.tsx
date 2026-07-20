@@ -6,10 +6,12 @@ import { usePathname } from "next/navigation";
 import { NAV_DATA } from "./data";
 import { MenuItem } from "./menu-item";
 import { useSidebarContext } from "./sidebar-context";
+import { useDashboardTab, DASHBOARD_TABS } from "@/context/DashboardTabContext";
 
 export function Sidebar() {
   const pathname = usePathname();
   const { setIsOpen, isOpen, isMobile, toggleSidebar } = useSidebarContext();
+  const { activeTab, setActiveTab } = useDashboardTab();
 
   const handleMouseEnter = () => {
     if (!isMobile) {
@@ -107,6 +109,34 @@ export function Sidebar() {
                             {item.title}
                           </span>
                         </MenuItem>
+
+                        {item.title === "Dashboard" && isOpen && (
+                          <ul className="mt-1 pl-4 space-y-1 lg:hidden">
+                            {DASHBOARD_TABS.map((tab) => {
+                              const isActiveTab = pathname.startsWith("/dashboard") && activeTab === tab.id;
+                              return (
+                                <li key={tab.id}>
+                                  <button
+                                    onClick={() => {
+                                      setActiveTab(tab.id);
+                                      if (isMobile) toggleSidebar();
+                                    }}
+                                    className={cn(
+                                      "w-full text-left rounded-lg py-2 text-xs font-semibold transition-all duration-200",
+                                      "pl-8 flex items-center gap-2",
+                                      isActiveTab
+                                        ? "bg-[rgba(87,80,241,0.07)] text-[#5750F1] dark:bg-[#FFFFFF1A] dark:text-white font-bold"
+                                        : "text-[#4B5563] dark:text-[#9CA3AF] hover:bg-gray-100 hover:text-[#111928] hover:dark:bg-[#FFFFFF1A] hover:dark:text-white"
+                                    )}
+                                  >
+                                    <span className={cn("h-1 w-1 rounded-full shrink-0", isActiveTab ? "bg-[#5750F1] dark:bg-white" : "bg-[#9CA3AF]")} />
+                                    {tab.label}
+                                  </button>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
                       </li>
                     ))}
                   </ul>

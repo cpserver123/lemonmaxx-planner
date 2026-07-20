@@ -107,6 +107,15 @@ body {
   flex-direction: row-reverse;
 }
 
+@media (max-width: 640px) {
+  .rdrDefinedRangesWrapper {
+    display: none !important;
+  }
+  .rdrDateRangePickerWrapper {
+    flex-direction: column !important;
+  }
+}
+
 .dark .rdrCalendarWrapper,
 .dark .rdrDateDisplayWrapper,
 .dark .rdrMonthAndYearWrapper,
