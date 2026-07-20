@@ -4,7 +4,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import {
   LuX, LuCalendar, LuClock, LuMapPin, LuFileText,
   LuChevronDown, LuListChecks, LuPaperclip, LuSparkles,
-  LuVideo, LuRepeat, LuCheck,
+  LuVideo, LuRepeat, LuCheck, LuUsers, LuInfo, LuLayoutGrid,
 } from "react-icons/lu";
 import { useSelector } from "react-redux";
 import type { RootState } from "@/store";
@@ -18,6 +18,9 @@ export interface MeetingForm {
   type:            string;
   duration:        string;
   recurrence:      string;
+  startDateTime:   string;
+  repeatTime:      string;
+  dueInDays:       string;
   dueDate:         string;
   dueTime:         string;
   participants:    string;
@@ -30,16 +33,23 @@ export interface MeetingForm {
 }
 
 export interface MeetingRow {
-  id:          string;
-  name:        string;
-  type:        string;
-  recurrence:  string;
-  nextInstance: string;
-  participants: number;
-  duration:    string;
-  createdBy:   string;
-  status:      "Pending" | "Active" | "Completed";
-  reportScore?: string;
+  id:            string;
+  name:          string;
+  type:          string;
+  recurrence:    string;
+  nextInstance:  string;
+  participants:  number;
+  duration:      string;
+  createdBy:     string;
+  status:        "Pending" | "Active" | "Completed";
+  reportScore?:  string;
+  // Extended detail fields (shown in KPI view)
+  intention?:      string;
+  startDateTime?:  string;
+  repeatTime?:     string;
+  dueDate?:        string;
+  expectedOutcome?: string;
+  description?:    string;
 }
 
 export const BLANK: MeetingForm = {
@@ -48,6 +58,9 @@ export const BLANK: MeetingForm = {
   type:            "Review",
   duration:        "",
   recurrence:      "One-time",
+  startDateTime:   "",
+  repeatTime:      "",
+  dueInDays:       "",
   dueDate:         "",
   dueTime:         "9:00 AM",
   participants:    "",
@@ -58,8 +71,8 @@ export const BLANK: MeetingForm = {
   isPrivate:       false,
 };
 
-export const MEETING_TYPES = ["Review", "Planning", "Standup", "1-on-1", "Retrospective", "Workshop", "Follow-up", "Other"];
-export const RECURRENCES   = ["One-time", "Daily", "Weekly", "Bi-weekly", "Monthly"];
+export const MEETING_TYPES = ["Review", "Planning", "Standup", "1-to-1", "Retrospective", "Workshop", "Follow-up", "Other"];
+export const RECURRENCES   = ["One-time", "Daily", "Weekly", "Monthly"];
 
 /* --- Shared input class ------------------------------------------------- */
 const inputCls =
@@ -420,6 +433,187 @@ function FilesSection() {
   );
 }
 
+/* --- Meeting KPI Dashboard View ----------------------------------------- */
+function MeetingKPIView({
+  data, repeatDays, users, selectedUsers, onToggle, onClear,
+}: {
+  data: any;
+  repeatDays: Set<string>;
+  users: { id: number; name: string }[];
+  selectedUsers: { id: number; name: string }[];
+  onToggle: (user: { id: number; name: string }) => void;
+  onClear: () => void;
+}) {
+  const ALL_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const TYPE_COLOR: Record<string, string> = {
+    Strategic: "#8b5cf6", Review: "#f59e0b", Business: "#06b6d4",
+    Planning: "#2563eb", Standup: "#10b981", "1-to-1": "#ec4899", Other: "#6B7280",
+  };
+  const typeColor = TYPE_COLOR[data.type] ?? "#6B7280";
+  const [showParticipants, setShowParticipants] = useState(false);
+
+  // Parse nextInstance into readable date + time range
+  const rawNext = data.nextInstance ?? "";
+  const [datePart, timePart] = rawNext.split("\u00b7").map((s: string) => s.trim());
+  const durationNum = parseInt(data.duration?.replace(" min", "") ?? "0", 10);
+
+  // KPI tiles (non-participants)
+  const kpis = [
+    { icon: <LuLayoutGrid size={14} />, label: "Type",       value: data.type,                               sub: "" },
+    { icon: <LuClock      size={14} />, label: "Duration",   value: data.duration?.replace(" min", "") || "\u2014", sub: "minutes" },
+    { icon: <LuRepeat     size={14} />, label: "Recurrence", value: data.recurrence,                         sub: "" },
+  ];
+
+  return (
+    <div className="flex flex-col gap-5 px-6 py-5">
+      {/* Header card */}
+      <div className="rounded-xl border border-[#E5E7EB] dark:border-[#1F2A37] bg-[#F8FAFF] dark:bg-[#0a1628] p-5 flex items-start justify-between gap-4">
+        <div className="flex items-start gap-4">
+          <div className="h-14 w-14 rounded-xl bg-[#EEF2FF] dark:bg-[#1a2545] flex items-center justify-center shrink-0">
+            <LuCalendar size={24} className="text-[#2563eb]" />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-[#111928] dark:text-white leading-tight">{data.name}</h2>
+            <span className="inline-block mt-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold" style={{ color: typeColor, background: typeColor + "20" }}>{data.type}</span>
+            {data.intention && <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF] mt-1">{data.intention}</p>}
+          </div>
+        </div>
+        {datePart && (
+          <div className="text-right shrink-0">
+            <div className="flex items-center gap-1.5 text-sm font-semibold text-[#111928] dark:text-white justify-end">
+              <LuCalendar size={14} className="text-[#2563eb]" />{datePart}
+            </div>
+            {timePart && (
+              <div className="flex items-center gap-1.5 text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1 justify-end">
+                <LuClock size={12} />{timePart}{durationNum > 0 && ` – (${data.duration})`}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* KPI tiles row */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {/* Regular kpi tiles */}
+        {kpis.map(k => (
+          <div key={k.label} className="rounded-xl border border-[#E5E7EB] dark:border-[#1F2A37] bg-white dark:bg-[#0a1628] p-4 flex flex-col gap-1">
+            <div className="flex items-center gap-1.5 text-[#2563eb] mb-1">{k.icon}<span className="text-[11px] font-semibold text-[#6B7280] dark:text-[#9CA3AF] uppercase tracking-wide">{k.label}</span></div>
+            <p className="text-xl font-bold text-[#111928] dark:text-white">{k.value || "—"}</p>
+            {k.sub && <p className="text-[11px] text-[#9CA3AF]">{k.sub}</p>}
+          </div>
+        ))}
+
+        {/* Participants — clickable tile with dropdown */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setShowParticipants(p => !p)}
+            className="w-full text-left rounded-xl border border-[#E5E7EB] dark:border-[#1F2A37] bg-white dark:bg-[#0a1628] p-4 flex flex-col gap-1 hover:border-[#2563eb]/50 transition-colors cursor-pointer"
+          >
+            <div className="flex items-center gap-1.5 text-[#2563eb] mb-1">
+              <LuUsers size={14} />
+              <span className="text-[11px] font-semibold text-[#6B7280] dark:text-[#9CA3AF] uppercase tracking-wide">Participants</span>
+              <span className="ml-auto text-[10px] text-[#2563eb] font-semibold">Edit</span>
+            </div>
+            <p className="text-xl font-bold text-[#111928] dark:text-white">
+              {selectedUsers.length > 0 ? selectedUsers.length : (data.participants ?? 0)}
+            </p>
+            <p className="text-[11px] text-[#9CA3AF]">
+              {selectedUsers.length > 0
+                ? selectedUsers.slice(0, 2).map(u => u.name.split(" ")[0]).join(", ") + (selectedUsers.length > 2 ? ` +${selectedUsers.length - 2}` : "")
+                : "Participants"}
+            </p>
+          </button>
+          {showParticipants && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setShowParticipants(false)} />
+              <div className="absolute top-full right-0 mt-2 z-50 w-72">
+                <ParticipantsDropdown
+                  selectedUsers={selectedUsers}
+                  onToggle={onToggle}
+                  onClear={onClear}
+                  users={users}
+                  isReadOnly={false}
+                  initialCount={data.participants}
+                />
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Repeat Days tile (only for Weekly) */}
+      {data.recurrence === "Weekly" && (
+        <div className="rounded-xl border border-[#E5E7EB] dark:border-[#1F2A37] bg-white dark:bg-[#0a1628] p-4">
+          <div className="flex items-center gap-1.5 text-[#2563eb] mb-3">
+            <LuCalendar size={14} />
+            <span className="text-[11px] font-semibold text-[#6B7280] dark:text-[#9CA3AF] uppercase tracking-wide">Repeat Days</span>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {ALL_DAYS.map(d => (
+              <span key={d} className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
+                repeatDays.has(d)
+                  ? "bg-[#2563eb] text-white"
+                  : "bg-[#F3F4F6] dark:bg-[#122031] text-[#374151] dark:text-[#9CA3AF]"
+              }`}>{d}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Two-column detail sections */}
+      <div className="grid grid-cols-2 gap-4">
+        {/* Meeting Details */}
+        <div className="rounded-xl border border-[#E5E7EB] dark:border-[#1F2A37] bg-white dark:bg-[#0a1628] p-4 flex flex-col gap-0">
+          <div className="flex items-center gap-2 mb-3">
+            <LuFileText size={14} className="text-[#2563eb]" />
+            <p className="text-sm font-bold text-[#111928] dark:text-white">Meeting Details</p>
+          </div>
+          {[
+            { icon: <LuInfo size={13} />,     label: "Intention",       val: data.intention || "—" },
+            { icon: <LuCalendar size={13} />, label: "Start Date & Time", val: data.startDateTime || "—" },
+            { icon: <LuClock size={13} />,    label: "Repeat Time",      val: data.repeatTime || "—" },
+            { icon: <LuCalendar size={13} />, label: "Due Date & Time",   val: data.dueDate || "—" },
+            { icon: <LuCheck size={13} />,    label: "Expected Outcome",  val: data.expectedOutcome || "—" },
+          ].map(row => (
+            <div key={row.label} className="flex items-start gap-3 py-2.5 border-b border-[#F3F4F6] dark:border-[#1F2A37] last:border-0">
+              <span className="text-[#2563eb] mt-0.5 shrink-0">{row.icon}</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-wide">{row.label}</p>
+                <p className="text-sm text-[#111928] dark:text-white mt-0.5 break-words">{row.val}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* About This Meeting */}
+        <div className="rounded-xl border border-[#E5E7EB] dark:border-[#1F2A37] bg-white dark:bg-[#0a1628] p-4">
+          <div className="flex items-center gap-2 mb-4">
+            <LuInfo size={14} className="text-[#2563eb]" />
+            <p className="text-sm font-bold text-[#111928] dark:text-white">About This Meeting</p>
+          </div>
+          <div className="flex flex-col gap-4">
+            <div>
+              <p className="text-xs font-bold text-[#2563eb] mb-1">Purpose / Intention</p>
+              <p className="text-sm text-[#374151] dark:text-[#D1D5DB]">{data.intention || "—"}</p>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-[#2563eb] mb-1">Expected Outcome</p>
+              <p className="text-sm text-[#374151] dark:text-[#D1D5DB]">{data.expectedOutcome || "—"}</p>
+            </div>
+            {data.description && (
+              <div>
+                <p className="text-xs font-bold text-[#2563eb] mb-1">Description / Notes</p>
+                <p className="text-sm text-[#374151] dark:text-[#D1D5DB]">{data.description}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface ParticipantsDropdownProps {
   selectedUsers: { id: number; name: string }[];
   onToggle: (user: { id: number; name: string }) => void;
@@ -577,17 +771,24 @@ export default function CreateMeetingModal({
   open,
   onClose,
   onCreated,
+  onSaved,
   initialData,
 }: {
   open: boolean;
   onClose: () => void;
   onCreated?: (form: MeetingForm) => void;
+  onSaved?: () => void;
   initialData?: MeetingRow | null;
 }) {
   const [tab, setTab] = useState<ModalTab>("design");
   const [form, setForm] = useState<MeetingForm>(BLANK);
   const [selectedUsers, setSelectedUsers] = useState<{ id: number; name: string }[]>([]);
   const [users, setUsers] = useState<{ id: number; name: string }[]>([]);
+  // Recurrence sub-fields
+  const WEEK_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+  const [repeatDays, setRepeatDays] = useState<Set<string>>(new Set());
+  const [monthlyDates, setMonthlyDates] = useState<Set<number>>(new Set());
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
   const workspaceId = useSelector((state: RootState) => state.workspace.selectedId ?? 1);
   const { token } = useAuth();
 
@@ -613,11 +814,19 @@ export default function CreateMeetingModal({
   const handleUserToggle = (user: { id: number; name: string }) => {
     setSelectedUsers(prev => {
       const exists = prev.some(u => u.id === user.id);
-      let next;
-      if (exists) {
-        next = prev.filter(u => u.id !== user.id);
+      let next: { id: number; name: string }[];
+      if (form.type === "1-to-1") {
+        if (exists) {
+          next = [];
+        } else {
+          next = [user];
+        }
       } else {
-        next = [...prev, user];
+        if (exists) {
+          next = prev.filter(u => u.id !== user.id);
+        } else {
+          next = [...prev, user];
+        }
       }
       setForm(f => ({ ...f, participants: String(next.length) }));
       return next;
@@ -630,16 +839,31 @@ export default function CreateMeetingModal({
   };
 
   useEffect(() => {
+    if (form.type === "1-to-1" && selectedUsers.length > 1) {
+      const next = selectedUsers.slice(0, 1);
+      setSelectedUsers(next);
+      setForm(f => ({ ...f, participants: String(next.length) }));
+    }
+  }, [form.type, selectedUsers.length]);
+
+  useEffect(() => {
     if (open) {
       if (initialData) {
         setForm({
           ...BLANK,
-          name: initialData.name,
-          type: initialData.type,
-          recurrence: initialData.recurrence,
-          participants: String(initialData.participants || ""),
-          duration: initialData.duration === "—" ? "" : initialData.duration.replace(" min", ""),
-          reportScore: initialData.reportScore || "",
+          name:            initialData.name,
+          type:            initialData.type,
+          recurrence:      initialData.recurrence,
+          participants:    String(initialData.participants || ""),
+          duration:        initialData.duration === "—" ? "" : initialData.duration.replace(" min", ""),
+          reportScore:     initialData.reportScore || "",
+          // Populate extended fields if available
+          intention:       initialData.intention      ?? "",
+          startDateTime:   initialData.startDateTime  ?? "",
+          repeatTime:      initialData.repeatTime     ?? "",
+          dueDate:         initialData.dueDate        ?? "",
+          expectedOutcome: initialData.expectedOutcome ?? "",
+          description:     initialData.description    ?? "",
         });
         setSelectedUsers([]);
       } else {
@@ -655,7 +879,11 @@ export default function CreateMeetingModal({
     setForm(prev => ({ ...prev, [field]: value }));
 
   const handleCreate = () => {
-    if (form.name.trim() && !isReadOnly) onCreated?.(form);
+    if (isReadOnly) {
+      onSaved?.();
+    } else if (form.name.trim()) {
+      onCreated?.(form);
+    }
     onClose();
     setForm(BLANK);
   };
@@ -693,8 +921,19 @@ export default function CreateMeetingModal({
         {/* Body — Design tab */}
         {tab === "design" && (
           <div className="flex flex-1 overflow-hidden">
+            {/* Left panel: KPI view when read-only, form when creating */}
             <div className={`flex-1 overflow-y-auto border-r ${borderColor}`}>
-              <div className={`px-6 py-5 flex flex-col gap-5 ${isReadOnly ? "pointer-events-none opacity-60" : ""}`}>
+              {isReadOnly ? (
+                <MeetingKPIView
+                  data={{ ...initialData, ...form }}
+                  repeatDays={repeatDays}
+                  users={users}
+                  selectedUsers={selectedUsers}
+                  onToggle={handleUserToggle}
+                  onClear={handleClearUsers}
+                />
+              ) : (
+                <div className="px-6 py-5 flex flex-col gap-5">
                 <div><Label text="Name" /><MInput placeholder="e.g., Weekly Sprint Planning" value={form.name} onChange={set("name")} /></div>
                 <div><Label text="Intention" optional /><textarea value={form.intention} onChange={e => set("intention")(e.target.value)} placeholder="What is the purpose of this meeting?" rows={3} className={`${inputCls} resize-none`} /></div>
                 <div className="grid grid-cols-3 gap-4">
@@ -708,7 +947,7 @@ export default function CreateMeetingModal({
                       onClear={handleClearUsers}
                       users={users}
                       isReadOnly={isReadOnly}
-                      initialCount={initialData?.participants}
+                      initialCount={(initialData as MeetingRow | null | undefined)?.participants}
                     />
                   </div>
                 </div>
@@ -720,31 +959,167 @@ export default function CreateMeetingModal({
                     </select>
                     <LuChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9CA3AF] pointer-events-none" />
                   </div>
+
+                  {/* Weekly: day-of-week pills */}
+                  {form.recurrence === "Weekly" && (
+                    <div className="mt-3">
+                      <p className="text-xs font-medium text-[#374151] dark:text-[#D1D5DB] mb-2">Repeat on these days</p>
+                      <div className="flex gap-2 flex-wrap">
+                        {WEEK_DAYS.map(day => {
+                          const active = repeatDays.has(day);
+                          return (
+                            <button
+                              key={day}
+                              type="button"
+                              onClick={() => setRepeatDays(prev => {
+                                const next = new Set(prev);
+                                if (next.has(day)) next.delete(day); else next.add(day);
+                                return next;
+                              })}
+                              className={`flex-1 min-w-[40px] rounded-lg py-2 text-xs font-semibold transition-colors ${
+                                active
+                                  ? "bg-[#2563eb] text-white border border-[#2563eb]"
+                                  : "bg-[#F3F4F6] dark:bg-[#0d1520] text-[#374151] dark:text-[#D1D5DB] border border-[#D1D5DB] dark:border-[#374151] hover:border-[#2563eb]/50"
+                              }`}
+                            >
+                              {day}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Monthly: select dates button + modal */}
+                  {form.recurrence === "Monthly" && (
+                    <div className="mt-3">
+                      <button
+                        type="button"
+                        onClick={() => setShowMonthPicker(true)}
+                        className="w-full rounded-lg border border-[#D1D5DB] dark:border-[#374151] bg-[#F3F4F6] dark:bg-[#0d1520] py-2.5 text-sm font-semibold text-[#374151] dark:text-[#D1D5DB] hover:border-[#2563eb]/60 transition-colors"
+                      >
+                        {monthlyDates.size > 0
+                          ? `Days: ${[...monthlyDates].sort((a,b)=>a-b).join(", ")}`
+                          : "Select Dates"}
+                      </button>
+
+                      {/* Date-grid modal */}
+                      {showMonthPicker && (
+                        <>
+                          <div className="fixed inset-0 z-50 bg-black/40" onClick={() => setShowMonthPicker(false)} />
+                          <div className="fixed z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 rounded-2xl bg-white dark:bg-[#0d1520] border border-[#E5E7EB] dark:border-[#1F2A37] shadow-2xl p-5">
+                            <div className="flex items-center justify-between mb-4">
+                              <p className="text-sm font-bold text-[#111928] dark:text-white">Select Repeat Dates</p>
+                              <button type="button" onClick={() => setShowMonthPicker(false)} className="text-[#9CA3AF] hover:text-[#374151] dark:hover:text-white"><LuX size={16} /></button>
+                            </div>
+                            <div className="grid grid-cols-7 gap-1.5 mb-4">
+                              {Array.from({ length: 31 }, (_, i) => i + 1).map(d => {
+                                const sel = monthlyDates.has(d);
+                                return (
+                                  <button
+                                    key={d}
+                                    type="button"
+                                    onClick={() => setMonthlyDates(prev => {
+                                      const next = new Set(prev);
+                                      if (next.has(d)) next.delete(d); else next.add(d);
+                                      return next;
+                                    })}
+                                    className={`h-9 w-9 rounded-lg text-xs font-semibold transition-colors ${
+                                      sel
+                                        ? "bg-[#2563eb] text-white"
+                                        : "bg-[#F3F4F6] dark:bg-[#122031] text-[#374151] dark:text-[#D1D5DB] hover:bg-[#2563eb]/20"
+                                    }`}
+                                  >
+                                    {d}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setShowMonthPicker(false)}
+                              className="w-full rounded-lg bg-[#2563eb] py-2.5 text-sm font-bold text-white hover:bg-[#1d4ed8] transition-colors"
+                            >
+                              Done
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label text="Due Date" />
-                    <div className="relative"><input type="date" value={form.dueDate} onChange={e => set("dueDate")(e.target.value)} className={`${inputCls} cursor-pointer dark:[color-scheme:dark]`} /><LuCalendar size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]" /></div>
-                  </div>
-                  <div>
-                    <Label text="Due Time" />
-                    <div className="relative"><input type="time" value={form.dueTime} onChange={e => set("dueTime")(e.target.value)} className={`${inputCls} cursor-pointer dark:[color-scheme:dark]`} /><LuClock size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#9CA3AF]" /></div>
+
+                {/* Recurrence extra fields: shown for all recurring types */}
+                {form.recurrence !== "One-time" && (
+                  <>
+                    {/* Start Date & Time */}
+                    <div>
+                      <Label text="Start Date & Time" />
+                      <div className="relative flex items-center">
+                        <LuCalendar size={14} className="absolute left-3 text-[#9CA3AF] pointer-events-none" />
+                        <input
+                          type="datetime-local"
+                          value={form.startDateTime}
+                          onChange={e => set("startDateTime")(e.target.value)}
+                          className={`${inputCls} pl-8 cursor-pointer dark:[color-scheme:dark]`}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Repeat Time */}
+                    <div>
+                      <Label text="Repeat Time" />
+                      <div className="relative flex items-center">
+                        <LuClock size={14} className="absolute left-3 text-[#9CA3AF] pointer-events-none" />
+                        <input
+                          type="time"
+                          value={form.repeatTime}
+                          onChange={e => set("repeatTime")(e.target.value)}
+                          className={`${inputCls} pl-8 cursor-pointer dark:[color-scheme:dark]`}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Due in Days */}
+                    {/* <div>
+                      <Label text="Due in Days (1 – 31 days)" />
+                      <input
+                        type="number"
+                        min={1}
+                        max={31}
+                        value={form.dueInDays}
+                        onChange={e => set("dueInDays")(e.target.value)}
+                        placeholder="Enter number of days"
+                        className={inputCls}
+                      />
+                    </div> */}
+                  </>
+                )}
+                <div>
+                  <Label text="Due Date & Time" />
+                  <div className="relative flex items-center">
+                    <LuCalendar size={14} className="absolute left-3 text-[#9CA3AF] pointer-events-none" />
+                    <input
+                      type="datetime-local"
+                      value={form.dueDate}
+                      onChange={e => set("dueDate")(e.target.value)}
+                      className={`${inputCls} pl-8 cursor-pointer dark:[color-scheme:dark]`}
+                    />
                   </div>
                 </div>
                 <div><Label text="Expected Outcome" /><textarea value={form.expectedOutcome} onChange={e => set("expectedOutcome")(e.target.value)} placeholder="What should be achieved in this meeting?" rows={3} className={`${inputCls} resize-none`} /></div>
-                <div><Label text="Location" optional /><IconInput placeholder="Room name or address" value={form.location} onChange={set("location")} icon={<LuMapPin size={14} />} /></div>
+                {/* <div><Label text="Location" optional /><IconInput placeholder="Room name or address" value={form.location} onChange={set("location")} icon={<LuMapPin size={14} />} /></div> */}
                 <div><Label text="Description / Notes" optional /><textarea value={form.description} onChange={e => set("description")(e.target.value)} placeholder="Paste a Zoom / Google Meet link or any notes for participants" rows={4} className={`${inputCls} resize-none`} /></div>
-                <div className="flex flex-col gap-3">
-                  <Checkbox checked={form.isExternal} onChange={v => set("isExternal")(v)} label="External meeting (with external participants)" />
-                  <Checkbox checked={form.isPrivate} onChange={v => set("isPrivate")(v)} label="Private meeting (only participants can see it)" />
+              
                 </div>
-              </div>
+              )}
             </div>
+            {/* Right panel: always editable (Agenda, Prework, Files) */}
             <div className="w-[550px] shrink-0 overflow-y-auto bg-[#F9FAFB] dark:bg-[#080f1a]">
-              <div className={`px-5 py-5 flex flex-col gap-6 ${isReadOnly ? "pointer-events-none opacity-60" : ""}`}>
-                <div><RightHeading icon={<LuListChecks size={13} />} label="Agenda" /><RichNoteEditor placeholder="Write agenda items..." readOnly={isReadOnly} /></div>
+              <div className="px-5 py-5 flex flex-col gap-6">
+                <div><RightHeading icon={<LuListChecks size={13} />} label="Agenda" /><RichNoteEditor placeholder="Write agenda items..." readOnly={false} /></div>
                 <div className="h-px bg-[#E5E7EB] dark:bg-[#1F2A37]" />
-                <div><RightHeading icon={<LuRepeat size={13} />} label="Prework" /><RichNoteEditor placeholder="Write prework actions..." readOnly={isReadOnly} /></div>
+                <div><RightHeading icon={<LuRepeat size={13} />} label="Prework" /><RichNoteEditor placeholder="Write prework actions..." readOnly={false} /></div>
                 <div className="h-px bg-[#E5E7EB] dark:bg-[#1F2A37]" />
                 <FilesSection />
               </div>
@@ -756,7 +1131,7 @@ export default function CreateMeetingModal({
           <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-2">
             <div className="flex items-center justify-between mb-1">
               <p className="text-[10px] font-bold text-[#6B7280] dark:text-[#9CA3AF] uppercase tracking-widest">Report Notes</p>
-              {form.type === "Review" && (
+              {form.type === "1-to-1" && (
                 <div className="flex items-center gap-2">
                   <label className="text-xs font-semibold text-[#111928] dark:text-[#E5E7EB]">Report Score (1-10):</label>
                   <input type="number" min="1" max="10" value={form.reportScore || ""} onChange={e => set("reportScore")(e.target.value)} className="w-16 rounded-md border border-[#D1D5DB] dark:border-[#374151] bg-[#F9FAFB] dark:bg-[#0a1628] px-2 py-1 text-sm text-[#111928] dark:text-white outline-none focus:border-[#2563eb]" />

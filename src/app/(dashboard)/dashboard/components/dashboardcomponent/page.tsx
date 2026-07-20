@@ -170,7 +170,7 @@ export default function DashboardSection() {
   const [showCompleted, setShowCompleted] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [showMyTeam, setShowMyTeam] = useState(false);
-  const [showCheckIn, setShowCheckIn] = useState(false);
+
   const [selectedRow, setSelectedRow] = useState<DrawerRow | null>(null);
   const { setActiveTab } = useDashboardTab();
 
@@ -219,9 +219,6 @@ export default function DashboardSection() {
     return <MyTeamPanel onClose={() => setShowMyTeam(false)} />;
   }
 
-  if (showCheckIn) {
-    return <CheckIn onClose={() => setShowCheckIn(false)} />;
-  }
 
   return (
     <div className="animate-fade-in">
@@ -233,12 +230,7 @@ export default function DashboardSection() {
 
       {/* Quick Access Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
-        <QuickCard 
-          icon={<LuClipboardCheck size={20} className="text-[#5750F1]" />} 
-          title="Check In"  
-          subtitle="Daily check-in and status updates" 
-          onClick={() => setShowCheckIn(true)}
-        />
+
         {canViewTeam && (
           <button
             onClick={() => setShowMyTeam(true)}

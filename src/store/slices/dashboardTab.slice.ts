@@ -5,7 +5,6 @@ export type DashboardTabId =
   | "planning"
   | "promises"
   | "meetings"
-  | "performance"
   | "scoreboard";
 
 interface DashboardTabState {
