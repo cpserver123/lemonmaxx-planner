@@ -5,7 +5,7 @@ import {
   LuZap, LuX, LuChevronDown, LuCheck, LuLink2, LuEye,
   LuLink, LuTrash2, LuSave, LuUser, LuPlus,
   LuHeading1, LuHeading2, LuBold, LuItalic, LuList, LuListOrdered,
-  LuQuote, LuTable, LuUndo2, LuRedo2, LuPaperclip, LuFile,
+  LuQuote, LuTable, LuUndo2, LuRedo2, LuPaperclip, LuFile, LuLoader, LuDownload,
 } from "react-icons/lu";
 import { useSelector } from "react-redux";
 import type { RootState } from "@/store";
@@ -611,6 +611,8 @@ export default function ActionDrawer({
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isViewAllOpen, setIsViewAllOpen] = useState(false);
+  const [deletingIdx, setDeletingIdx] = useState<number | null>(null);
+  const [downloadingIdx, setDownloadingIdx] = useState<number | null>(null);
 
   // Performance / Category / Platform state
   const [perfTab, setPerfTab] = useState<PerformanceTab>(initialPerformance ?? "numbers");
@@ -620,6 +622,7 @@ export default function ActionDrawer({
   const [isSaving, setIsSaving] = useState(false);
   // Per-file upload progress tracking
   const [uploadingFiles, setUploadingFiles] = useState<{ name: string; progress: number; error?: string }[]>([]);
+  const [isLoadingDetails, setIsLoadingDetails] = useState(false);
 
   const isOpen = !!row;
 
@@ -652,6 +655,13 @@ export default function ActionDrawer({
     if (!isOpen) return;
 
     const fetchDetails = async () => {
+      const hasNumericActionId = !isPathway && row?.id && /^\d+$/.test(row.id);
+      const hasNumericPathwayId = pathwayId && /^\d+$/.test(pathwayId);
+      
+      if (hasNumericActionId || hasNumericPathwayId) {
+        setIsLoadingDetails(true);
+      }
+
       try {
         let pathwayData = null;
         let actionData = null;
@@ -781,6 +791,8 @@ export default function ActionDrawer({
         }
       } catch (err) {
         console.error("Failed to fetch details:", err);
+      } finally {
+        setIsLoadingDetails(false);
       }
     };
 
@@ -918,12 +930,72 @@ export default function ActionDrawer({
     }
   };
 
-  const handleRemoveAttachment = (i: number) => {
-    setAttachments(prev => prev.filter((_, idx) => idx !== i));
-    // Also remove from pending if it was staged (no URL means it's pending)
+  const handleRemoveAttachment = async (i: number) => {
     const removed = attachments[i];
+
+    // If already uploaded (has a key) and we have a pathwayId, call the delete API
+    if (removed?.key && pathwayId) {
+      setDeletingIdx(i);
+      try {
+        await api.delete(
+          `/api/v1/planner/pathways/${pathwayId}/attachments`,
+          {
+            params: { workspace_id: workspaceId, object_key: removed.key },
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+      } catch (err) {
+        console.error("Failed to delete attachment:", err);
+        setDeletingIdx(null);
+        return; // Don't remove from UI if API failed
+      } finally {
+        setDeletingIdx(null);
+      }
+    }
+
+    // Remove from local state (and pending queue if staged)
+    setAttachments(prev => prev.filter((_, idx) => idx !== i));
     if (!removed?.url) {
       setPendingFiles(prev => prev.filter(f => f.name !== removed?.name));
+    }
+  };
+
+  // ─── Blob-based download helper (via backend presigned URL) ─────────────
+  const handleDownloadAttachment = async (i: number) => {
+    const file = attachments[i];
+    // Needs both a key (for the API) and a pathwayId
+    if (!file?.key || !pathwayId) return;
+    setDownloadingIdx(i);
+    try {
+      // Step 1 — get a short-lived presigned download URL from the backend
+      const res = await api.get(
+        `/api/v1/planner/pathways/${pathwayId}/attachments/download`,
+        {
+          params: { workspace_id: workspaceId, object_key: file.key },
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      const presignedUrl: string = res.data?.data?.url;
+      if (!presignedUrl) throw new Error("No download URL returned");
+
+      // Step 2 — fetch the file bytes and build a Blob
+      const response = await fetch(presignedUrl);
+      if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
+      const blob = await response.blob();
+
+      // Step 3 — trigger browser save-as dialog
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = file.name;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(objectUrl);
+    } catch (err) {
+      console.error("Download failed:", err);
+    } finally {
+      setDownloadingIdx(null);
     }
   };
 
@@ -967,13 +1039,20 @@ export default function ActionDrawer({
 
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
-          {/* Main title (from pathway) */}
-          {title && !isPathway && (
-            <div className="mb-2">
-              <span className="text-[10px] font-semibold text-[#9CA3AF] uppercase tracking-wider">Pathway</span>
-              <h2 className="text-sm font-bold text-[#111928] dark:text-white mt-0.5">{title}</h2>
+          {isLoadingDetails ? (
+            <div className="h-full min-h-[300px] flex flex-col items-center justify-center py-20">
+              <LuLoader className="animate-spin text-[#5750F1]" size={32} />
+              <p className="mt-2 text-xs text-[#9CA3AF]">Loading action details...</p>
             </div>
-          )}
+          ) : (
+            <>
+              {/* Main title (from pathway) */}
+              {title && !isPathway && (
+                <div className="mb-2">
+                  <span className="text-[10px] font-semibold text-[#9CA3AF] uppercase tracking-wider">Pathway</span>
+                  <h2 className="text-sm font-bold text-[#111928] dark:text-white mt-0.5">{title}</h2>
+                </div>
+              )}
 
           {isPathway && (
             <div className="mb-6 pb-4 border-b border-[#E6EBF1] dark:border-[#1F2A37]">
@@ -1170,14 +1249,12 @@ export default function ActionDrawer({
                     View All
                   </button>
                 )}
-                {isPathway && (
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="text-[11px] text-[#5750F1] hover:opacity-80"
-                  >
-                    Upload
-                  </button>
-                )}
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="text-[11px] text-[#5750F1] hover:opacity-80"
+                >
+                  Upload
+                </button>
               </div>
               <input
                 ref={fileInputRef}
@@ -1214,14 +1291,33 @@ export default function ActionDrawer({
                       )}
                     </span>
                     <span className="text-[10px] text-[#9CA3AF] shrink-0">{formatFileSize(file.size)}</span>
-                    {isPathway && (
+                    {/* Download button — via backend presigned URL */}
+                    {file.key ? (
                       <button
-                        onClick={() => handleRemoveAttachment(i)}
-                        className="opacity-0 group-hover:opacity-100 text-[#9CA3AF] hover:text-red-400 transition-all"
+                        onClick={() => handleDownloadAttachment(i)}
+                        disabled={downloadingIdx === i}
+                        className="text-[#9CA3AF] hover:text-[#5750F1] transition-colors shrink-0 p-1 disabled:opacity-60 disabled:cursor-wait"
+                        title="Download file"
                       >
-                        <LuX size={11} />
+                        {downloadingIdx === i
+                          ? <svg className="animate-spin" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" strokeOpacity="0.25" /><path d="M12 2a10 10 0 0 1 10 10" /></svg>
+                          : <LuDownload size={11} />}
                       </button>
+                    ) : (
+                      <span className="text-[#D1D5DB] dark:text-[#374151] shrink-0 p-1 cursor-not-allowed" title="Upload in progress">
+                        <LuDownload size={11} />
+                      </span>
                     )}
+                    <button
+                      onClick={() => handleRemoveAttachment(i)}
+                      disabled={deletingIdx === i}
+                      className="text-[#9CA3AF] hover:text-red-500 transition-colors disabled:opacity-60 disabled:cursor-wait shrink-0 p-1"
+                      title="Delete attachment"
+                    >
+                      {deletingIdx === i
+                        ? <svg className="animate-spin" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" strokeOpacity="0.25" /><path d="M12 2a10 10 0 0 1 10 10" /></svg>
+                        : <LuTrash2 size={11} />}
+                    </button>
                   </div>
                 ))}
               </div>
@@ -1229,6 +1325,8 @@ export default function ActionDrawer({
               <p className="text-[11px] text-[#9CA3AF]">No attachments yet</p>
             )}
           </div>
+            </>
+          )}
         </div>
 
         {/* Per-file upload progress */}
@@ -1256,7 +1354,7 @@ export default function ActionDrawer({
         {/* Footer buttons */}
         <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520]">
           <button
-            disabled={isSaving}
+            disabled={isSaving || isLoadingDetails}
             onClick={async () => {
               setIsSaving(true);
               try {
@@ -1374,15 +1472,13 @@ export default function ActionDrawer({
                           <LuEye size={13} />
                         </a>
                       )}
-                      {isPathway && (
-                        <button
-                          onClick={() => handleRemoveAttachment(i)}
-                          className="text-[#9CA3AF] hover:text-red-500 transition-colors p-1.5 rounded-lg hover:bg-red-500/10"
-                          title="Remove attachment"
-                        >
-                          <LuTrash2 size={13} />
-                        </button>
-                      )}
+                      <button
+                        onClick={() => handleRemoveAttachment(i)}
+                        className="text-[#9CA3AF] hover:text-red-500 transition-colors p-1.5 rounded-lg hover:bg-red-500/10"
+                        title="Remove attachment"
+                      >
+                        <LuTrash2 size={13} />
+                      </button>
                     </div>
                   </div>
                 ))

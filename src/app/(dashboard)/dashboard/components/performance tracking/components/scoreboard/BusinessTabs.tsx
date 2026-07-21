@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { LuChevronDown, LuChevronRight, LuRefreshCw, LuDownload } from "react-icons/lu";
+import { useState, useRef, useEffect } from "react";
+import { LuChevronDown, LuChevronRight, LuRefreshCw, LuDownload, LuCheck } from "react-icons/lu";
 import { TbRefresh } from "react-icons/tb";
 import FilterBar from "./FilterBar";
 
@@ -69,6 +69,61 @@ const TOTAL_ROW: Row = {
   margin: "$60,906", marginPct: "", roi: "24.5%", roiNeg: false,
   promise: "$200,000", progress: "30.5%", progNeg: false,
 };
+
+/* --- Group-By Dropdown ----------------------------------------------- */
+const GROUP_BY_OPTIONS = ["None", "Vertical", "Member", "offer ", "Team Leader", "Platform", "Week", "Date"] as const;
+type GroupByOption = typeof GROUP_BY_OPTIONS[number];
+
+function GroupByDropdown({ value, onChange }: { value: GroupByOption; onChange: (v: GroupByOption) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative inline-block text-left">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-1.5 rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] px-2.5 py-1.5 text-[11px] font-medium text-[#111928] dark:text-white hover:border-[#5750F1]/40 transition-colors"
+      >
+        {value} <LuChevronDown size={11} className={`transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 mt-1 z-[9999] min-w-[160px] rounded-xl border border-[#E6EBF1] dark:border-[#27303E] bg-white dark:bg-[#111927] shadow-xl py-1 overflow-hidden">
+          {GROUP_BY_OPTIONS.map(opt => (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => {
+                onChange(opt);
+                setOpen(false);
+              }}
+              className={`w-full flex items-center gap-2 px-3 py-2 text-[12px] font-medium transition-colors text-left ${
+                opt === value
+                  ? "bg-[#CCFF00] text-black"
+                  : "text-[#111928] dark:text-[#D1D5DB] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332]"
+              }`}
+            >
+              {opt === value ? <LuCheck size={12} className="shrink-0" /> : <span className="w-3 shrink-0" />}
+              {opt}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /* --- Progress Ring --------------------------------------------------- */
 function ProgressRing({ pct, neg }: { pct: number; neg: boolean }) {
@@ -161,6 +216,8 @@ function TableRow({ row, depth = 0, expanded, onToggle }: {
 /* --- Business Tab ---------------------------------------------------- */
 export default function BusinessTab() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set(["vsl"]));
+  const [groupBy1, setGroupBy1] = useState<GroupByOption>("Vertical");
+  const [groupBy2, setGroupBy2] = useState<GroupByOption>("Member");
 
   const toggle = (id: string) => {
     setExpanded((prev) => {
@@ -177,12 +234,8 @@ export default function BusinessTab() {
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap">
         {/* Dropdowns */}
-        <button className="flex items-center gap-1.5 rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] px-2.5 py-1.5 text-[11px] font-medium text-[#111928] dark:text-white hover:border-[#5750F1]/40 transition-colors">
-          Vertical <LuChevronDown size={11} />
-        </button>
-        <button className="flex items-center gap-1.5 rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] px-2.5 py-1.5 text-[11px] font-medium text-[#111928] dark:text-white hover:border-[#5750F1]/40 transition-colors">
-          Member <LuChevronDown size={11} />
-        </button>
+        <GroupByDropdown value={groupBy1} onChange={setGroupBy1} />
+        <GroupByDropdown value={groupBy2} onChange={setGroupBy2} />
         {/* Action icons */}
         <div className="flex items-center gap-1.5 ml-1">
           <button className="p-1.5 rounded-md text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"><TbRefresh size={14} /></button>
