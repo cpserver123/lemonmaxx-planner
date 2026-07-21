@@ -110,8 +110,8 @@ function StatusDropdown({
 
 /* --- AccountableDropdown --------------------------------------------- */
 function AccountableDropdown({
-  value, onChange,
-}: { value: string; onChange: (name: string, id?: number) => void }) {
+  value, onChange, disabled
+}: { value: string; onChange: (name: string, id?: number) => void; disabled?: boolean }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [users, setUsers] = useState<{ id: number; name: string }[]>([]);
@@ -164,8 +164,9 @@ function AccountableDropdown({
   return (
     <div ref={ref} className="relative">
       <button
-        onClick={() => { setOpen(o => !o); setSearch(""); }}
-        className="flex items-center gap-1.5 text-xs text-[#111928] dark:text-white hover:text-[#5750F1] dark:hover:text-[#7c78f3] transition-colors"
+        onClick={() => { if (!disabled) { setOpen(o => !o); setSearch(""); } }}
+        disabled={disabled}
+        className="flex items-center gap-1.5 text-xs text-[#111928] dark:text-white hover:text-[#5750F1] dark:hover:text-[#7c78f3] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
       >
         {value ? (
           <>
@@ -355,7 +356,7 @@ function ListSection({
 }
 
 /* --- Rich Text Editor ------------------------------------------------ */
-function RichEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function RichEditor({ value, onChange, disabled }: { value: string; onChange: (v: string) => void; disabled?: boolean }) {
   const editorRef  = useRef<HTMLDivElement>(null);
   const [activeFormats, setActiveFormats] = useState<Set<string>>(new Set());
 
@@ -447,7 +448,8 @@ function RichEditor({ value, onChange }: { value: string; onChange: (v: string) 
   return (
     <div className="rounded-lg border border-[#E6EBF1] dark:border-[#1F2A37] mb-5 overflow-hidden">
       {/* Toolbar */}
-      <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-[#E6EBF1] dark:border-[#1F2A37] flex-wrap bg-[#F9FAFB] dark:bg-[#0a1018]">
+      {!disabled && (
+        <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-[#E6EBF1] dark:border-[#1F2A37] flex-wrap bg-[#F9FAFB] dark:bg-[#0a1018]">
         {TOOLBAR.map(btn => (
           <button
             key={btn.id}
@@ -482,11 +484,12 @@ function RichEditor({ value, onChange }: { value: string; onChange: (v: string) 
           <LuRedo2 size={13} />
         </button>
       </div>
+      )}
 
       {/* Content area */}
       <div
         ref={editorRef}
-        contentEditable
+        contentEditable={!disabled ? "true" : "false"}
         suppressContentEditableWarning
         onInput={handleInput}
         onKeyUp={(e) => { syncFormats(); handleInput(); }}
@@ -496,6 +499,7 @@ function RichEditor({ value, onChange }: { value: string; onChange: (v: string) 
         className={[
           "min-h-[100px] px-3 py-2 text-sm text-[#111928] dark:text-[#D1D5DB] outline-none",
           "focus:ring-0",
+          disabled ? "bg-[#F9FAFB]/50 dark:bg-[#0a1018]/20 cursor-not-allowed opacity-60" : "",
           "[&_h1]:text-xl [&_h1]:font-bold [&_h1]:mb-1",
           "[&_h2]:text-base [&_h2]:font-semibold [&_h2]:mb-1",
           "[&_ul]:list-disc [&_ul]:pl-4 [&_ul]:mb-1",
@@ -602,9 +606,11 @@ export default function ActionDrawer({
   const [dependencies, setDependencies] = useState<string[]>([]);
 
   // Attachments — store both display info and actual File objects
-  const [attachments, setAttachments] = useState<{ name: string; size: number }[]>([]);
+  const [attachments, setAttachments] = useState<{ name: string; size: number; url?: string | null; key?: string | null; contentType?: string | null }[]>([]);
+  // Files staged when no pathwayId yet (new pathway); uploaded after save returns the ID
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isViewAllOpen, setIsViewAllOpen] = useState(false);
 
   // Performance / Category / Platform state
   const [perfTab, setPerfTab] = useState<PerformanceTab>(initialPerformance ?? "numbers");
@@ -612,7 +618,8 @@ export default function ActionDrawer({
   const [platform, setPlatform] = useState<Platform>("Meta");
 
   const [isSaving, setIsSaving] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  // Per-file upload progress tracking
+  const [uploadingFiles, setUploadingFiles] = useState<{ name: string; progress: number; error?: string }[]>([]);
 
   const isOpen = !!row;
 
@@ -626,6 +633,8 @@ export default function ActionDrawer({
     setDependencies([]);
     setAttachments([]);
     setPendingFiles([]);
+    setUploadingFiles([]);
+    setIsViewAllOpen(false);
     // Reset perf dropdowns to the caller's default
     if (initialPerformance) setPerfTab(initialPerformance);
     // Use category/platform from the row if available, otherwise default
@@ -640,112 +649,143 @@ export default function ActionDrawer({
   }, [row]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (isOpen && pathwayId && /^\d+$/.test(pathwayId)) {
-      const fetchPathwayDetails = async () => {
-        try {
-          const res = await api.get(`/api/v1/planner/pathways/${pathwayId}`, {
+    if (!isOpen) return;
+
+    const fetchDetails = async () => {
+      try {
+        let pathwayData = null;
+        let actionData = null;
+
+        // 1. If editing an action (isPathway is false) and we have a numeric action ID
+        if (!isPathway && row?.id && /^\d+$/.test(row.id)) {
+          const actionRes = await api.get(`/api/v1/planner/pathways/actions/${row.id}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (actionRes.data?.success) {
+            actionData = actionRes.data.data;
+          }
+        }
+
+        // Determine pathway ID to fetch (either prop pathwayId or from actionData)
+        const targetPathwayId = pathwayId || (actionData ? String(actionData.pathway_id) : null);
+
+        // 2. Fetch pathway details
+        if (targetPathwayId && /^\d+$/.test(targetPathwayId)) {
+          const pathwayRes = await api.get(`/api/v1/planner/pathways/${targetPathwayId}`, {
             params: { workspace_id: workspaceId },
             headers: { Authorization: `Bearer ${token}` }
           });
-          if (res.data?.success) {
-            const p = res.data.data;
-            
-            // Map attachments
-            let parsedAttachments = [];
-            if (p.attachments) {
-              try {
-                parsedAttachments = typeof p.attachments === "string" 
-                  ? JSON.parse(p.attachments) 
-                  : p.attachments;
-              } catch (e) {
-                console.error("Failed to parse attachments:", e);
-              }
-            }
-            setAttachments((parsedAttachments || []).map((att: any) => ({
-              name: att.filename || att.name || "File",
-              size: att.size || 0
-            })));
-
-            // Map status
-            const mappedStatus = STATUS_OPTIONS.find(
-              opt => opt.label.toLowerCase() === (p.status || "").toLowerCase()
-            )?.label || "Planned";
-
-            // When opening from an action row (isPathway=false), find the specific action by row id
-            // When editing a pathway (isPathway=true), use the first action as primary
-            const actions: any[] = p.actions || [];
-            const targetAction = isPathway
-              ? actions[0]
-              : actions.find((a: any) => String(a.id) === String(row?.id)) ?? actions[0];
-
-            const mappedCategory = targetAction?.category 
-              ? (CATEGORY_OPTIONS.find(opt => opt.toLowerCase() === targetAction.category.toLowerCase()) || "Breakdowns")
-              : "Breakdowns";
-            const mappedPlatform = targetAction?.platform
-              ? (PLATFORM_OPTIONS.find(opt => opt.toLowerCase() === targetAction.platform.toLowerCase()) || "Meta")
-              : "Meta";
-
-            setCategory(mappedCategory);
-            setPlatform(mappedPlatform);
-
-            // Map draft fields
-            setDraft(d => {
-              if (!d) return null;
-              
-              if (isPathway) {
-                // Pathway edit mode: map additional actions (actions after the first one)
-                const mappedAdditional = actions.slice(1).map((a: any) => ({
-                  id: String(a.id),
-                  action: a.title,
-                  intendedOutcome: a.intended_outcome || "",
-                  category: CATEGORY_OPTIONS.find(opt => opt.toLowerCase() === (a.category || "").toLowerCase()) || "Breakdowns",
-                  platform: PLATFORM_OPTIONS.find(opt => opt.toLowerCase() === (a.platform || "").toLowerCase()) || "Meta"
-                }));
-
-                return {
-                  ...d,
-                  pathwayTitle: p.name,
-                  pathwayDesc: p.description,
-                  status: mappedStatus,
-                  due: p.due_date || "",
-                  accountable: p.accountable_name || "",
-                  accountableId: p.accountable_id || 0,
-                  // Primary action details (actions[0])
-                  actionId: targetAction ? String(targetAction.id) : undefined,
-                  action: targetAction?.title || "",
-                  intendedOutcome: targetAction?.intended_outcome || "",
-                  category: mappedCategory,
-                  platform: mappedPlatform,
-                  note: p.note || "",
-                  additionalActions: mappedAdditional
-                };
-              } else {
-                // Action row click: populate the specific action's fields + pathway context
-                return {
-                  ...d,
-                  status: targetAction?.status
-                    ? (STATUS_OPTIONS.find(opt => opt.label.toLowerCase() === (targetAction.status || "").toLowerCase())?.label || "Planned")
-                    : (d.status || "Planned"),
-                  due: p.due_date || d.due || "",
-                  accountable: p.accountable_name || d.accountable || "",
-                  accountableId: p.accountable_id || d.accountableId || 0,
-                  action: targetAction?.title || d.action || "",
-                  intendedOutcome: targetAction?.intended_outcome || d.intendedOutcome || "",
-                  category: mappedCategory,
-                  platform: mappedPlatform,
-                  note: p.note || "",
-                  actionId: targetAction ? String(targetAction.id) : d.actionId,
-                };
-              }
-            });
+          if (pathwayRes.data?.success) {
+            pathwayData = pathwayRes.data.data;
           }
-        } catch (err) {
-          console.error("Failed to fetch pathway details:", err);
         }
-      };
-      fetchPathwayDetails();
-    }
-  }, [isOpen, isPathway, pathwayId, workspaceId, token]); // eslint-disable-line react-hooks/exhaustive-deps
+
+        // 3. Map details to states
+        if (pathwayData) {
+          // Map attachments
+          let parsedAttachments = [];
+          if (pathwayData.attachments) {
+            try {
+              parsedAttachments = typeof pathwayData.attachments === "string" 
+                ? JSON.parse(pathwayData.attachments) 
+                : pathwayData.attachments;
+            } catch (e) {
+              console.error("Failed to parse attachments:", e);
+            }
+          }
+          setAttachments((parsedAttachments || []).map((att: any) => ({
+            name: att.filename || att.name || "File",
+            size: att.size || 0,
+            url: att.url || null,
+            key: att.key || null,
+            contentType: att.content_type || att.contentType || null
+          })));
+
+          // Map status for pathway or action
+          const targetStatus = actionData 
+            ? (actionData.status || "")
+            : (isPathway ? (pathwayData.status || "") : (row?.status || ""));
+          const mappedStatus = STATUS_OPTIONS.find(
+            opt => opt.label.toLowerCase() === targetStatus.toLowerCase()
+          )?.label || "Planned";
+
+          const targetCategory = actionData ? actionData.category : (isPathway ? null : row?.category);
+          const targetPlatform = actionData ? actionData.platform : (isPathway ? null : row?.platform);
+
+          const mappedCategory = targetCategory 
+            ? (CATEGORY_OPTIONS.find(opt => opt.toLowerCase() === (targetCategory as string).toLowerCase()) || "Breakdowns")
+            : "Breakdowns";
+          const mappedPlatform = targetPlatform
+            ? (PLATFORM_OPTIONS.find(opt => opt.toLowerCase() === (targetPlatform as string).toLowerCase()) || "Meta")
+            : "Meta";
+
+          setCategory(mappedCategory as Category);
+          setPlatform(mappedPlatform as Platform);
+
+          setDraft(d => {
+            if (!d) return null;
+            if (isPathway) {
+              const actions: any[] = pathwayData.actions || [];
+              const targetAct = actions[0];
+
+              const actCategory = targetAct?.category 
+                ? (CATEGORY_OPTIONS.find(opt => opt.toLowerCase() === targetAct.category.toLowerCase()) || "Breakdowns")
+                : "Breakdowns";
+              const actPlatform = targetAct?.platform
+                ? (PLATFORM_OPTIONS.find(opt => opt.toLowerCase() === targetAct.platform.toLowerCase()) || "Meta")
+                : "Meta";
+
+              // Pathway edit mode: map additional actions (actions after the first one)
+              const mappedAdditional = actions.slice(1).map((a: any) => ({
+                id: String(a.id),
+                action: a.title,
+                intendedOutcome: a.intended_outcome || "",
+                category: CATEGORY_OPTIONS.find(opt => opt.toLowerCase() === (a.category || "").toLowerCase()) || "Breakdowns",
+                platform: PLATFORM_OPTIONS.find(opt => opt.toLowerCase() === (a.platform || "").toLowerCase()) || "Meta"
+              }));
+
+              return {
+                ...d,
+                pathwayTitle: pathwayData.name,
+                pathwayDesc: pathwayData.description,
+                status: mappedStatus,
+                due: pathwayData.due_date || "",
+                accountable: pathwayData.accountable_name || "",
+                accountableId: pathwayData.accountable_id || 0,
+                // Primary action details (actions[0])
+                actionId: targetAct ? String(targetAct.id) : undefined,
+                action: targetAct?.title || "",
+                intendedOutcome: targetAct?.intended_outcome || "",
+                category: actCategory as Category,
+                platform: actPlatform as Platform,
+                note: pathwayData.note || "",
+                additionalActions: mappedAdditional
+              };
+            } else {
+              // Action edit mode
+              return {
+                ...d,
+                status: mappedStatus,
+                due: pathwayData.due_date || d.due || "",
+                accountable: pathwayData.accountable_name || d.accountable || "",
+                accountableId: pathwayData.accountable_id || d.accountableId || 0,
+                action: actionData?.title || d.action || "",
+                intendedOutcome: actionData?.intended_outcome || d.intendedOutcome || "",
+                category: mappedCategory as Category,
+                platform: mappedPlatform as Platform,
+                note: pathwayData.note || "",
+                actionId: actionData ? String(actionData.id) : d.actionId,
+              };
+            }
+          });
+        }
+      } catch (err) {
+        console.error("Failed to fetch details:", err);
+      }
+    };
+
+    fetchDetails();
+  }, [isOpen, isPathway, pathwayId, row, workspaceId, token]);
 
 
   const addCheckItem = () => {
@@ -754,20 +794,137 @@ export default function ActionDrawer({
     setCheckInput("");
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // ─── Core presigned-URL upload helper ──────────────────────────────────
+  const uploadFilesToPathway = async (idToUse: string, files: File[]) => {
+    const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "";
+
+    for (const file of files) {
+      setUploadingFiles(prev => [...prev, { name: file.name, progress: 0 }]);
+      try {
+        // Step 1 — Initiate
+        const initiateRes = await fetch(
+          `${API_BASE}/api/v1/planner/pathways/${idToUse}/attachments/initiate?workspace_id=${workspaceId}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({
+              filename: file.name,
+              size: file.size,
+              content_type: file.type || "application/octet-stream",
+            }),
+          }
+        );
+        const initData = await initiateRes.json();
+        if (!initData.success) throw new Error(initData.message || "Initiate failed");
+
+        const { upload_type, object_key } = initData.data;
+        let completedParts: { part_number: number; etag: string }[] | null = null;
+
+        if (upload_type === "simple") {
+          // Step 2a — Simple PUT directly to R2
+          await new Promise<void>((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open("PUT", initData.data.upload_url);
+            xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+            xhr.upload.onprogress = (ev) => {
+              if (ev.lengthComputable) {
+                const pct = Math.round((ev.loaded / ev.total) * 100);
+                setUploadingFiles(prev => prev.map(u => u.name === file.name ? { ...u, progress: pct } : u));
+              }
+            };
+            xhr.onload = () => xhr.status >= 200 && xhr.status < 300
+              ? resolve()
+              : reject(new Error(`R2 upload failed (status ${xhr.status}). Check CORS config for this origin.`));
+            xhr.onerror = () => reject(new Error(
+              `R2 upload blocked — likely a CORS issue. Add ${window.location.origin} to the R2 CORS allowed origins.`
+            ));
+            xhr.send(file);
+          });
+        } else {
+          // Step 2b — Multipart upload
+          const parts: { part_number: number; url: string }[] = initData.data.parts;
+          const partSize: number = initData.data.part_size;
+          const done: { part_number: number; etag: string }[] = [];
+          let totalUploaded = 0;
+          for (const part of parts) {
+            const start = (part.part_number - 1) * partSize;
+            const end = Math.min(start + partSize, file.size);
+            const blob = file.slice(start, end);
+            const partRes = await fetch(part.url, { method: "PUT", body: blob });
+            if (!partRes.ok) throw new Error(`Part ${part.part_number} failed: ${partRes.status}`);
+            const etag = partRes.headers.get("ETag")?.replace(/"/g, "") || "";
+            done.push({ part_number: part.part_number, etag });
+            totalUploaded += (end - start);
+            setUploadingFiles(prev => prev.map(u => u.name === file.name ? { ...u, progress: Math.round((totalUploaded / file.size) * 100) } : u));
+          }
+          completedParts = done;
+        }
+
+        // Step 3 — Complete
+        const completeParams = new URLSearchParams({
+          workspace_id: String(workspaceId),
+          object_key,
+          filename: file.name,
+          size: String(file.size),
+          content_type: file.type || "application/octet-stream",
+          upload_type,
+        });
+        if (initData.data.upload_id) completeParams.set("upload_id", initData.data.upload_id);
+
+        const completeRes = await fetch(
+          `${API_BASE}/api/v1/planner/pathways/${idToUse}/attachments/complete?${completeParams}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ parts: completedParts }),
+          }
+        );
+        const completeData = await completeRes.json();
+        if (!completeData.success) throw new Error(completeData.message || "Complete failed");
+
+        const att = completeData.data;
+        setAttachments(prev => [...prev, {
+          name: att.filename || file.name,
+          size: att.size || file.size,
+          url: att.url || null,
+          key: att.key || null,
+          contentType: att.content_type || file.type || null,
+        }]);
+        setUploadingFiles(prev => prev.filter(u => u.name !== file.name));
+
+      } catch (err: any) {
+        console.error("File upload failed:", err);
+        setUploadingFiles(prev => prev.map(u => u.name === file.name ? { ...u, error: err.message || "Upload failed" } : u));
+      }
+    }
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (!files) return;
+    if (!files || files.length === 0) return;
     const fileArr = Array.from(files);
-    const newFiles = fileArr.map(f => ({ name: f.name, size: f.size }));
-    setAttachments(prev => [...prev, ...newFiles]);
-    setPendingFiles(prev => [...prev, ...fileArr]);
-    // Reset the input so the same file can be selected again
     e.target.value = "";
+
+    if (pathwayId) {
+      // Existing pathway — upload immediately
+      await uploadFilesToPathway(pathwayId, fileArr);
+    } else {
+      // New pathway — stage locally; will be uploaded after save creates the pathway
+      setPendingFiles(prev => [...prev, ...fileArr]);
+      setAttachments(prev => [
+        ...prev,
+        ...fileArr.map(f => ({ name: f.name, size: f.size, url: null, key: null, contentType: f.type || null })),
+      ]);
+    }
   };
 
   const handleRemoveAttachment = (i: number) => {
     setAttachments(prev => prev.filter((_, idx) => idx !== i));
-    setPendingFiles(prev => prev.filter((_, idx) => idx !== i));
+    // Also remove from pending if it was staged (no URL means it's pending)
+    const removed = attachments[i];
+    if (!removed?.url) {
+      setPendingFiles(prev => prev.filter(f => f.name !== removed?.name));
+    }
   };
 
   const formatFileSize = (bytes: number) => {
@@ -972,14 +1129,16 @@ export default function ActionDrawer({
               <input
                 type="date"
                 value={draft.due}
+                disabled={!isPathway}
                 onChange={e => setDraft(d => d ? { ...d, due: e.target.value } : d)}
-                className="text-xs text-[#111928] dark:text-white bg-transparent border-none outline-none"
+                className="text-xs text-[#111928] dark:text-white bg-transparent border-none outline-none disabled:opacity-60 disabled:cursor-not-allowed"
               />
             </SectionRow>
 
             <SectionRow label="👤 Accountable">
               <AccountableDropdown
                 value={draft.accountable}
+                disabled={!isPathway}
                 onChange={(name, id) => setDraft(d => d ? { ...d, accountable: name, accountableId: id } : d)}
               />
             </SectionRow>
@@ -990,6 +1149,7 @@ export default function ActionDrawer({
           {/* Rich text editor */}
           <RichEditor 
             value={draft.note || ""} 
+            disabled={!isPathway}
             onChange={val => setDraft(d => d ? { ...d, note: val } : d)} 
           />
 
@@ -1001,12 +1161,24 @@ export default function ActionDrawer({
               <span className="flex items-center gap-1.5 text-xs font-semibold text-[#111928] dark:text-white">
                 <LuPaperclip size={13} /> Attachments
               </span>
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="text-[11px] text-[#5750F1] hover:opacity-80"
-              >
-                Upload
-              </button>
+              <div className="flex items-center gap-3">
+                {attachments.length > 0 && (
+                  <button
+                    onClick={() => setIsViewAllOpen(true)}
+                    className="text-[11px] text-[#5750F1] hover:opacity-80"
+                  >
+                    View All
+                  </button>
+                )}
+                {isPathway && (
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="text-[11px] text-[#5750F1] hover:opacity-80"
+                  >
+                    Upload
+                  </button>
+                )}
+              </div>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -1020,15 +1192,36 @@ export default function ActionDrawer({
               <div className="flex flex-col gap-1.5">
                 {attachments.map((file, i) => (
                   <div key={i} className="flex items-center gap-2 group rounded-md bg-[#F3F4F6] dark:bg-[#0a1018] px-2.5 py-1.5">
-                    <LuFile size={12} className="text-[#5750F1] shrink-0" />
-                    <span className="text-[11px] text-[#111928] dark:text-[#D1D5DB] flex-1 truncate">{file.name}</span>
+                    {file.url && (file.contentType?.startsWith("image/") || /\.(jpg|jpeg|png|gif|webp)$/i.test(file.name)) ? (
+                      <div className="h-5 w-5 rounded border border-[#E6EBF1] dark:border-[#1F2A37] overflow-hidden shrink-0">
+                        <img src={file.url} alt={file.name} className="h-full w-full object-cover" />
+                      </div>
+                    ) : (
+                      <LuFile size={12} className="text-[#5750F1] shrink-0" />
+                    )}
+                    <span className="text-[11px] text-[#111928] dark:text-[#D1D5DB] flex-1 truncate">
+                      {file.url ? (
+                        <a 
+                          href={file.url} 
+                          target="_blank" 
+                          rel="noreferrer" 
+                          className="hover:text-[#5750F1] dark:hover:text-[#7c78f3] hover:underline"
+                        >
+                          {file.name}
+                        </a>
+                      ) : (
+                        file.name
+                      )}
+                    </span>
                     <span className="text-[10px] text-[#9CA3AF] shrink-0">{formatFileSize(file.size)}</span>
-                    <button
-                      onClick={() => handleRemoveAttachment(i)}
-                      className="opacity-0 group-hover:opacity-100 text-[#9CA3AF] hover:text-red-400 transition-all"
-                    >
-                      <LuX size={11} />
-                    </button>
+                    {isPathway && (
+                      <button
+                        onClick={() => handleRemoveAttachment(i)}
+                        className="opacity-0 group-hover:opacity-100 text-[#9CA3AF] hover:text-red-400 transition-all"
+                      >
+                        <LuX size={11} />
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1038,19 +1231,26 @@ export default function ActionDrawer({
           </div>
         </div>
 
-        {/* Upload Progress Bar */}
-        {uploadProgress !== null && (
-          <div className="px-5 py-2 border-t border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] w-full">
-            <div className="flex items-center justify-between text-xs text-[#6B7280] dark:text-[#9CA3AF] mb-1">
-              <span>Uploading attachments...</span>
-              <span>{uploadProgress}%</span>
-            </div>
-            <div className="w-full bg-[#E6EBF1] dark:bg-[#1F2A37] h-1.5 rounded-full overflow-hidden">
-              <div 
-                className="bg-[#5750F1] h-full transition-all duration-150 rounded-full" 
-                style={{ width: `${uploadProgress}%` }}
-              />
-            </div>
+        {/* Per-file upload progress */}
+        {uploadingFiles.length > 0 && (
+          <div className="px-5 py-2 border-t border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] flex flex-col gap-2">
+            {uploadingFiles.map((uf, i) => (
+              <div key={i}>
+                <div className="flex items-center justify-between text-xs text-[#6B7280] dark:text-[#9CA3AF] mb-0.5">
+                  <span className="truncate max-w-[200px]" title={uf.name}>{uf.name}</span>
+                  {uf.error
+                    ? <span className="text-red-400 text-[10px]">{uf.error}</span>
+                    : <span>{uf.progress}%</span>
+                  }
+                </div>
+                <div className="w-full bg-[#E6EBF1] dark:bg-[#1F2A37] h-1 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full transition-all duration-150 rounded-full ${uf.error ? "bg-red-400" : "bg-[#5750F1]"}`}
+                    style={{ width: `${uf.error ? 100 : uf.progress}%` }}
+                  />
+                </div>
+              </div>
+            ))}
           </div>
         )}
         {/* Footer buttons */}
@@ -1059,54 +1259,22 @@ export default function ActionDrawer({
             disabled={isSaving}
             onClick={async () => {
               setIsSaving(true);
-              setUploadProgress(null);
               try {
-                // 1. Save/create the pathway first
-                const savedResult = await onSave({ ...draft, category, platform });
-                
-                // Determine the pathway ID: either returned by onSave or passed as prop
-                const idToUse = savedResult || pathwayId;
+                // Save/create the pathway; onSave returns the new pathway ID for new pathways
+                const savedPathwayId = await onSave({ ...draft, category, platform });
 
-                // 2. If there are pending files and we have a pathway ID, upload them
-                if (idToUse && pendingFiles.length > 0) {
-                  setUploadProgress(0);
-                  const formData = new FormData();
-                  pendingFiles.forEach(file => formData.append("files", file));
-                  
-                  const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "";
-                  const uploadUrl = `${API_BASE}/api/v1/planner/pathways/${idToUse}/attachments?workspace_id=${workspaceId}`;
-
-                  await new Promise<void>((resolve, reject) => {
-                    const xhr = new XMLHttpRequest();
-                    xhr.open("POST", uploadUrl, true);
-                    xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-
-                    xhr.upload.onprogress = (event) => {
-                      if (event.lengthComputable) {
-                        const percentCompleted = Math.round((event.loaded * 100) / event.total);
-                        setUploadProgress(percentCompleted);
-                      }
-                    };
-
-                    xhr.onload = () => {
-                      if (xhr.status >= 200 && xhr.status < 300) {
-                        resolve();
-                      } else {
-                        reject(new Error(`Upload failed with status ${xhr.status}`));
-                      }
-                    };
-
-                    xhr.onerror = () => reject(new Error("Network error during upload"));
-                    xhr.send(formData);
-                  });
+                // Upload any staged files (pending when there was no pathwayId at file-select time)
+                const idForUpload = savedPathwayId || pathwayId;
+                if (idForUpload && pendingFiles.length > 0) {
+                  await uploadFilesToPathway(String(idForUpload), pendingFiles);
+                  setPendingFiles([]);
                 }
-                
+
                 onClose();
               } catch (err) {
-                console.error("Failed to save and upload attachments:", err);
+                console.error("Failed to save:", err);
               } finally {
                 setIsSaving(false);
-                setUploadProgress(null);
               }
             }}
             className="flex items-center gap-1.5 rounded-lg bg-[#5750F1] text-white px-5 py-2 text-xs font-semibold hover:bg-[#4742d4] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1129,6 +1297,110 @@ export default function ActionDrawer({
           </button>
         </div>
       </div>
+
+      {isViewAllOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* Modal Backdrop */}
+          <div 
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity" 
+            onClick={() => setIsViewAllOpen(false)}
+          />
+
+          {/* Modal Content */}
+          <div className="relative w-full max-w-lg rounded-xl border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] shadow-2xl p-5 z-10 flex flex-col max-h-[80vh]">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-[#E6EBF1] dark:border-[#1F2A37] mb-4">
+              <div className="flex items-center gap-2">
+                <LuPaperclip size={15} className="text-[#5750F1]" />
+                <h3 className="text-sm font-semibold text-[#111928] dark:text-white">
+                  All Attachments ({attachments.length})
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsViewAllOpen(false)}
+                className="text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white transition-colors p-1"
+              >
+                <LuX size={16} />
+              </button>
+            </div>
+
+            {/* Modal Scrollable Content */}
+            <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-2 min-h-0">
+              {attachments.length === 0 ? (
+                <div className="text-center py-8 text-xs text-[#9CA3AF]">
+                  No attachments found.
+                </div>
+              ) : (
+                attachments.map((file, i) => (
+                  <div 
+                    key={i} 
+                    className="flex items-center gap-3 rounded-lg border border-[#E6EBF1] dark:border-[#1F2A37] bg-[#F9FAFB] dark:bg-[#0a1018] px-3.5 py-2.5 hover:border-[#5750F1]/40 transition-colors"
+                  >
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#5750F1]/10 border border-[#5750F1]/20 overflow-hidden">
+                      {file.url && (file.contentType?.startsWith("image/") || /\.(jpg|jpeg|png|gif|webp)$/i.test(file.name)) ? (
+                        <img src={file.url} alt={file.name} className="h-full w-full object-cover" />
+                      ) : (
+                        <LuFile size={14} className="text-[#5750F1]" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-[#111928] dark:text-white truncate" title={file.name}>
+                        {file.url ? (
+                          <a 
+                            href={file.url} 
+                            target="_blank" 
+                            rel="noreferrer" 
+                            className="hover:text-[#5750F1] dark:hover:text-[#7c78f3] hover:underline"
+                          >
+                            {file.name}
+                          </a>
+                        ) : (
+                          file.name
+                        )}
+                      </p>
+                      <p className="text-[10px] text-[#9CA3AF] mt-0.5">
+                        {formatFileSize(file.size)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {file.url && (
+                        <a
+                          href={file.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[#9CA3AF] hover:text-[#5750F1] transition-colors p-1.5 rounded-lg hover:bg-[#5750F1]/10"
+                          title="View file"
+                        >
+                          <LuEye size={13} />
+                        </a>
+                      )}
+                      {isPathway && (
+                        <button
+                          onClick={() => handleRemoveAttachment(i)}
+                          className="text-[#9CA3AF] hover:text-red-500 transition-colors p-1.5 rounded-lg hover:bg-red-500/10"
+                          title="Remove attachment"
+                        >
+                          <LuTrash2 size={13} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end pt-4 border-t border-[#E6EBF1] dark:border-[#1F2A37] mt-4">
+              <button
+                onClick={() => setIsViewAllOpen(false)}
+                className="rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] px-4 py-2 text-xs font-semibold text-[#111928] dark:text-white hover:bg-gray-50 dark:hover:bg-[#1a2332] transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

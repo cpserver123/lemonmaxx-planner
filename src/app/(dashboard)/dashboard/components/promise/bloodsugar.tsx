@@ -76,7 +76,7 @@ function SidebarContent({
 }
 
 /* --- Main Component -------------------------------------------------- */
-export default function BloodSugarPage({ ownOfferId }: { ownOfferId?: string | null }) {
+export default function BloodSugarPage({ ownOfferId, selectedMonth, selectedYear }: { ownOfferId?: string | null; selectedMonth?: number; selectedYear?: number }) {
   const [activeTab, setActiveTab] = useState<TabId>("numbers");
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -133,17 +133,17 @@ export default function BloodSugarPage({ ownOfferId }: { ownOfferId?: string | n
       </div>
 
       {/* Layout: sidebar (desktop only) + content */}
-      <div className="flex gap-5 items-stretch">
-        {/* Desktop sidebar — hidden on mobile */}
-        <div className="hidden lg:flex lg:flex-col w-[220px] shrink-0 rounded-xl border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] p-3">
+      <div className="flex gap-5 items-start">
+        {/* Desktop sidebar — hidden on mobile, sticky so it doesn't scroll */}
+        <div className="hidden lg:flex lg:flex-col w-[220px] shrink-0 rounded-xl border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] p-3 sticky top-4 self-start">
           <SidebarContent activeTab={activeTab} onSelect={setActiveTab} />
         </div>
 
         {/* Main content — full width on mobile */}
         <div className="flex-1 min-w-0">
-          {activeTab === "numbers" && <NumbersTab ownOfferId={ownOfferId} />}
-          {activeTab === "creative" && <CreativeTab ownOfferId={ownOfferId} />}
-          {activeTab === "experiments" && <ExperimentsTab ownOfferId={ownOfferId} />}
+          {activeTab === "numbers" && <NumbersTab ownOfferId={ownOfferId} selectedMonth={selectedMonth} selectedYear={selectedYear} />}
+          {activeTab === "creative" && <CreativeTab ownOfferId={ownOfferId} selectedMonth={selectedMonth} selectedYear={selectedYear} />}
+          {activeTab === "experiments" && <ExperimentsTab ownOfferId={ownOfferId} selectedMonth={selectedMonth} selectedYear={selectedYear} />}
         </div>
       </div>
     </div>
