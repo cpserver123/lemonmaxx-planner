@@ -37,6 +37,7 @@ interface PlanningRow {
   netPromise: number | null;
   resources: string;
   planId?: number;
+  ownOfferId?: number;        // for actuals merge
   rawResources?: { user_id: number; user_name: string; is_assigned: boolean }[];
   isSubTotal?: boolean;
   isPromiseNote?: boolean;
@@ -327,7 +328,17 @@ const planColumns = [
     },
   }),
   columnHelper.accessor("actuals", {
-    header: (info) => `Actuals (${(info.table.options.meta as any)?.actualsLabel ?? "May 2026"})`,
+    header: (info) => {
+      const meta = info.table.options.meta as any;
+      const label = meta?.actualsLabel ?? "May 2026";
+      const loading = meta?.actualsLoading ?? false;
+      return (
+        <span className="flex items-center gap-1">
+          {loading && <LuLoader size={9} className="animate-spin text-[#5750F1] shrink-0" />}
+          {`Actuals (${label})`}
+        </span>
+      );
+    },
     size: 140,
     minSize: 100,
     cell: (info) => {
@@ -499,7 +510,7 @@ function groupByCategory(data: PlanningRow[]): Map<string, PlanningRow[]> {
 }
 
 /* --- Category Table ------------------------------------------------- */
-function CategoryTable({ category, rows, actualsLabel, workspaceId, token, onRefresh }: { category: string; rows: PlanningRow[]; actualsLabel: string; workspaceId: number | string; token: string | null; onRefresh: () => void }) {
+function CategoryTable({ category, rows, actualsLabel, actualsLoading, workspaceId, token, onRefresh }: { category: string; rows: PlanningRow[]; actualsLabel: string; actualsLoading: boolean; workspaceId: number | string; token: string | null; onRefresh: () => void }) {
   const [sorting, setSorting] = useState<SortingState>([]);
   /** Tracks which hasExpand row IDs are currently open */
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
@@ -567,7 +578,7 @@ function CategoryTable({ category, rows, actualsLabel, workspaceId, token, onRef
     getCoreRowModel: coreModel,
     getSortedRowModel: sortedModel,
     getExpandedRowModel: expandedModel,
-    meta: { toggleRow, expandedRows, updatePlatform, platformOverrides, updateResources, resourceOverrides, actualsLabel, openGoalModal, savedGoalRowIds, workspaceId, token },
+    meta: { toggleRow, expandedRows, updatePlatform, platformOverrides, updateResources, resourceOverrides, actualsLabel, actualsLoading, openGoalModal, savedGoalRowIds, workspaceId, token },
   });
 
   /**
@@ -728,6 +739,9 @@ export default function PlanningSection() {
   const [planningYear,  setPlanningYear]  = useState(() => new Date().getFullYear());
   const [planningMonth, setPlanningMonth] = useState(() => new Date().getMonth()); // 0-indexed, current month
   const [showPlanningPicker, setShowPlanningPicker] = useState(false);
+  // Pending (not-yet-applied) selection inside the Planning picker
+  const [pendingPlanningYear,  setPendingPlanningYear]  = useState(() => new Date().getFullYear());
+  const [pendingPlanningMonth, setPendingPlanningMonth] = useState(() => new Date().getMonth());
 
   const fetchPageVerticals = useCallback(async () => {
     try {
@@ -757,6 +771,57 @@ export default function PlanningSection() {
   const [planningData, setPlanningData] = useState<PlanningRow[]>([]);
   const [isLoadingPlans, setIsLoadingPlans] = useState(false);
   const [refreshToggle, setRefreshToggle] = useState(0);
+
+  /* Actuals month + loading state */
+  const [actualsYear,  setActualsYear]  = useState(() => new Date().getFullYear());
+  const [actualsMonth, setActualsMonth] = useState(() => new Date().getMonth()); // 0-indexed, current month
+  const [showActualsPicker, setShowActualsPicker] = useState(false);
+  const [actualsLoading, setActualsLoading] = useState(false);
+  // Pending (not-yet-applied) selection inside the Actuals picker
+  const [pendingActualsYear,  setPendingActualsYear]  = useState(() => new Date().getFullYear());
+  const [pendingActualsMonth, setPendingActualsMonth] = useState(() => new Date().getMonth());
+
+  // Fetch actuals and merge into planningData
+  const fetchAndMergeActuals = useCallback(async (
+    rows: PlanningRow[],
+    verticalId: number,
+    aYear: number,
+    aMonth: number,
+    pYear: number,
+    pMonth: number
+  ) => {
+    if (!token || rows.length === 0) return;
+    const monthYear     = `${aYear}-${String(aMonth + 1).padStart(2, "0")}`;
+    const planMonthYear = `${pYear}-${String(pMonth + 1).padStart(2, "0")}`;
+    setActualsLoading(true);
+    try {
+      const res = await api.get("/api/v1/planner/plan-actuals", {
+        params: { workspace_id: workspaceId, vertical_id: verticalId, month_year: monthYear, plan_month_year: planMonthYear },
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const ownOffers: any[] = res.data?.data?.own_offers || [];
+
+      // Build lookup: `${own_offer_id}:${platform_lowercase}` -> actual_promise
+      const map = new Map<string, number | null>();
+      ownOffers.forEach((offer: any) => {
+        (offer.platforms || []).forEach((p: any) => {
+          const key = `${offer.own_offer_id}:${(p.platform || "").toLowerCase()}`;
+          map.set(key, p.actual_promise ?? null);
+        });
+      });
+
+      // Merge actuals into rows
+      setPlanningData(prev => prev.map(row => {
+        if (row.isSubTotal || row.isPromiseNote || !row.ownOfferId) return row;
+        const key = `${row.ownOfferId}:${(row.platform || "").toLowerCase()}`;
+        return { ...row, actuals: map.has(key) ? map.get(key)! : null };
+      }));
+    } catch (err) {
+      console.error("Failed to fetch actuals", err);
+    } finally {
+      setActualsLoading(false);
+    }
+  }, [token, workspaceId]);
 
   // Fetch plans when vertical or date changes
   useEffect(() => {
@@ -790,6 +855,7 @@ export default function PlanningSection() {
              rows.push({
                id: `${category}-${p.id}`,
                planId: p.id,
+               ownOfferId: offer.own_offer_id,
                category,
                platform: p.platform,
                actuals: null,
@@ -829,6 +895,9 @@ export default function PlanningSection() {
         });
         
         setPlanningData(rows);
+
+        // After plans are loaded, also fetch actuals (if we have a vertical)
+        fetchAndMergeActuals(rows, vertical.id, actualsYear, actualsMonth, planningYear, planningMonth);
       } catch (err) {
         console.error("Failed to fetch plans", err);
       } finally {
@@ -836,12 +905,15 @@ export default function PlanningSection() {
       }
     };
     fetchPlans();
-  }, [rawVerticals, vslFilter, planningYear, planningMonth, workspaceId, token, refreshToggle]);
+  }, [rawVerticals, vslFilter, planningYear, planningMonth, workspaceId, token, refreshToggle]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* Actuals month */
-  const [actualsYear,  setActualsYear]  = useState(2026);
-  const [actualsMonth, setActualsMonth] = useState(4); // May
-  const [showActualsPicker, setShowActualsPicker] = useState(false);
+  // Re-fetch actuals when actuals month changes (without re-fetching the full plan)
+  useEffect(() => {
+    const vertical = rawVerticals.find(v => v.name === vslFilter);
+    if (!vertical || !token || planningData.length === 0) return;
+    fetchAndMergeActuals(planningData, vertical.id, actualsYear, actualsMonth, planningYear, planningMonth);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actualsYear, actualsMonth]);
 
   const grouped = useMemo(() => groupByCategory(planningData), [planningData]);
 
@@ -872,7 +944,13 @@ export default function PlanningSection() {
         <div className="relative flex items-center gap-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
           <span>Planning for</span>
           <button
-            onClick={() => { setShowPlanningPicker(p => !p); setShowActualsPicker(false); }}
+            onClick={() => {
+              // Sync pending to current committed when opening
+              setPendingPlanningYear(planningYear);
+              setPendingPlanningMonth(planningMonth);
+              setShowPlanningPicker(p => !p);
+              setShowActualsPicker(false);
+            }}
             className="flex items-center gap-1.5 rounded-md border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] px-2.5 py-1.5 text-xs font-medium text-[#111928] dark:text-white hover:border-[#5750F1]/40 transition-colors"
           >
             <LuCalendar size={12} />
@@ -883,18 +961,32 @@ export default function PlanningSection() {
               <div className="fixed inset-0 z-30" onClick={() => setShowPlanningPicker(false)} />
               <div className="absolute left-0 top-full mt-1 z-40 w-64 rounded-xl border border-[#E6EBF1] dark:border-[#27303E] bg-white dark:bg-[#122031] shadow-xl p-4">
                 <div className="flex items-center justify-between mb-3">
-                  <button onClick={() => setPlanningYear(y => y - 1)} className="p-1 rounded-md text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"><LuChevronLeft size={14} /></button>
-                  <span className="text-sm font-semibold text-[#111928] dark:text-white">{planningYear}</span>
-                  <button onClick={() => setPlanningYear(y => y + 1)} className="p-1 rounded-md text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"><LuChevronRight size={14} /></button>
+                  <button onClick={() => setPendingPlanningYear(y => y - 1)} className="p-1 rounded-md text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"><LuChevronLeft size={14} /></button>
+                  <span className="text-sm font-semibold text-[#111928] dark:text-white">{pendingPlanningYear}</span>
+                  <button onClick={() => setPendingPlanningYear(y => y + 1)} className="p-1 rounded-md text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"><LuChevronRight size={14} /></button>
                 </div>
-                <div className="grid grid-cols-3 gap-1.5">
+                <div className="grid grid-cols-3 gap-1.5 mb-3">
                   {MONTHS.map((m, i) => (
-                    <button key={m} onClick={() => { setPlanningMonth(i); setShowPlanningPicker(false); }}
+                    <button key={m}
+                      onClick={() => setPendingPlanningMonth(i)}
                       className={`rounded-lg py-1.5 text-xs font-medium transition-colors ${
-                        i === planningMonth ? "bg-[#5750F1] text-white" : "text-[#111928] dark:text-[#D1D5DB] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332]"
+                        i === pendingPlanningMonth
+                          ? "bg-[#5750F1] text-white"
+                          : "text-[#111928] dark:text-[#D1D5DB] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332]"
                       }`}>{m}</button>
                   ))}
                 </div>
+                {/* Apply button */}
+                <button
+                  onClick={() => {
+                    setPlanningYear(pendingPlanningYear);
+                    setPlanningMonth(pendingPlanningMonth);
+                    setShowPlanningPicker(false);
+                  }}
+                  className="w-full rounded-lg bg-[#5750F1] text-white py-1.5 text-xs font-semibold hover:bg-[#4742d4] transition-colors"
+                >
+                  Apply
+                </button>
               </div>
             </>
           )}
@@ -904,7 +996,13 @@ export default function PlanningSection() {
         <div className="relative flex items-center gap-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
           <span>Actuals from</span>
           <button
-            onClick={() => { setShowActualsPicker(p => !p); setShowPlanningPicker(false); }}
+            onClick={() => {
+              // Sync pending to current committed when opening
+              setPendingActualsYear(actualsYear);
+              setPendingActualsMonth(actualsMonth);
+              setShowActualsPicker(p => !p);
+              setShowPlanningPicker(false);
+            }}
             className="flex items-center gap-1.5 rounded-md border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] px-2.5 py-1.5 text-xs font-medium text-[#111928] dark:text-white hover:border-[#5750F1]/40 transition-colors"
           >
             <LuCalendar size={12} />
@@ -915,18 +1013,32 @@ export default function PlanningSection() {
               <div className="fixed inset-0 z-30" onClick={() => setShowActualsPicker(false)} />
               <div className="absolute right-0 top-full mt-1 z-40 w-64 rounded-xl border border-[#E6EBF1] dark:border-[#27303E] bg-white dark:bg-[#122031] shadow-xl p-4">
                 <div className="flex items-center justify-between mb-3">
-                  <button onClick={() => setActualsYear(y => y - 1)} className="p-1 rounded-md text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"><LuChevronLeft size={14} /></button>
-                  <span className="text-sm font-semibold text-[#111928] dark:text-white">{actualsYear}</span>
-                  <button onClick={() => setActualsYear(y => y + 1)} className="p-1 rounded-md text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"><LuChevronRight size={14} /></button>
+                  <button onClick={() => setPendingActualsYear(y => y - 1)} className="p-1 rounded-md text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"><LuChevronLeft size={14} /></button>
+                  <span className="text-sm font-semibold text-[#111928] dark:text-white">{pendingActualsYear}</span>
+                  <button onClick={() => setPendingActualsYear(y => y + 1)} className="p-1 rounded-md text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"><LuChevronRight size={14} /></button>
                 </div>
-                <div className="grid grid-cols-3 gap-1.5">
+                <div className="grid grid-cols-3 gap-1.5 mb-3">
                   {MONTHS.map((m, i) => (
-                    <button key={m} onClick={() => { setActualsMonth(i); setShowActualsPicker(false); }}
+                    <button key={m}
+                      onClick={() => setPendingActualsMonth(i)}
                       className={`rounded-lg py-1.5 text-xs font-medium transition-colors ${
-                        i === actualsMonth ? "bg-[#5750F1] text-white" : "text-[#111928] dark:text-[#D1D5DB] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332]"
+                        i === pendingActualsMonth
+                          ? "bg-[#5750F1] text-white"
+                          : "text-[#111928] dark:text-[#D1D5DB] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332]"
                       }`}>{m}</button>
                   ))}
                 </div>
+                {/* Apply button */}
+                <button
+                  onClick={() => {
+                    setActualsYear(pendingActualsYear);
+                    setActualsMonth(pendingActualsMonth);
+                    setShowActualsPicker(false);
+                  }}
+                  className="w-full rounded-lg bg-[#5750F1] text-white py-1.5 text-xs font-semibold hover:bg-[#4742d4] transition-colors"
+                >
+                  Apply
+                </button>
               </div>
             </>
           )}
@@ -997,7 +1109,7 @@ export default function PlanningSection() {
           </div>
         ) : (
           Array.from(grouped.entries()).map(([category, rows]) => (
-            <CategoryTable key={category} category={category} rows={rows} actualsLabel={actualsLabel.replace("  ", " ")} workspaceId={workspaceId} token={token} onRefresh={() => setRefreshToggle(p => p + 1)} />
+            <CategoryTable key={category} category={category} rows={rows} actualsLabel={actualsLabel.replace("  ", " ")} actualsLoading={actualsLoading} workspaceId={workspaceId} token={token} onRefresh={() => setRefreshToggle(p => p + 1)} />
           ))
         )}
 

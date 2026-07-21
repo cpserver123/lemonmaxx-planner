@@ -62,7 +62,7 @@ const api = {
   patch: <T = any>(url: string, data?: unknown, config?: { headers?: Record<string, string> }) =>
     request<T>("PATCH", url, { ...config, data }),
 
-  delete: <T = any>(url: string, config?: { headers?: Record<string, string> }) =>
+  delete: <T = any>(url: string, config?: { headers?: Record<string, string>; params?: Record<string, string | number | boolean> }) =>
     request<T>("DELETE", url, config),
 };
 
