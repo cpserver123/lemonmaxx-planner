@@ -85,6 +85,7 @@ export default function PromiseSection() {
   const DetailComponent = selectedVertical
     ? (VERTICAL_COMPONENTS[selectedVertical] ?? BloodSugarPage)
     : null;
+  const selectedMonth = (Array.from(selectedMonths)[0] ?? new Date().getMonth()) + 1; // 1-12
 
   return (
     <div>
@@ -101,7 +102,7 @@ export default function PromiseSection() {
           </button>
 
           {/* Vertical detail component */}
-          <DetailComponent ownOfferId={selectedOffer} />
+          <DetailComponent ownOfferId={selectedOffer} selectedMonth={selectedMonth} selectedYear={selectedYear} />
         </div>
       ) : loading ? (
         <div className="flex flex-col items-center justify-center py-20">

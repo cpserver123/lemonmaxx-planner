@@ -10,7 +10,7 @@ import {
   type SortingState,
   type ColumnResizeMode,
 } from "@tanstack/react-table";
-import { LuArrowUpDown, LuArrowUp, LuArrowDown, LuPencil, LuX } from "react-icons/lu";
+import { LuArrowUpDown, LuArrowUp, LuArrowDown, LuPencil, LuX, LuLoader } from "react-icons/lu";
 import { RxDragHandleDots2 } from "react-icons/rx";
 import ActionDrawer, { type DrawerRow, type Category, type Platform } from "../../ActionDrawer";
 import { useSelector } from "react-redux";
@@ -161,7 +161,7 @@ const columns = [
     size: 110,
     minSize: 80,
     cell: (info) => (
-      <span className="text-[12px] text-[#5750F1] dark:text-[#7c78f3] underline-offset-2 hover:underline cursor-pointer">
+      <span className="text-[12px] text-[#6B7280] dark:text-[#9CA3AF] truncate whitespace-nowrap block" title={info.getValue() || ""}>
         {info.getValue() || "—"}
       </span>
     ),
@@ -291,8 +291,10 @@ interface Strategy {
   description: string;
   status: string;
   accountable: string;
+  accountableId?: number;
   count: number;
   due: string;
+  note?: string;
 }
 
 const INITIAL_STRATEGIES: Strategy[] = [
@@ -323,7 +325,7 @@ function StrategyCard({
   const [collapsed, setCollapsed] = useState(false);
 
   // Derive pathway status: "Done" only if every action row is "Done", else "Active"
-  const derivedStatus = actions.length > 0 && actions.every(a => a.status === "Done")
+  const derivedStatus = actions.length > 0 && actions.every(a => a.status?.toLowerCase() === "done")
     ? "Done"
     : "Active";
 
@@ -332,23 +334,25 @@ function StrategyCard({
     : "bg-[#2563eb]/10 border-[#2563eb]/20 text-[#2563eb]";
 
   return (
-    <div className="rounded-lg border border-[#E6EBF1] dark:border-[#1F2A37] bg-[#F9FAFB] dark:bg-[#0a1018] mb-5 overflow-hidden">
+    <div className="rounded-lg border border-[#E6EBF1] dark:border-[#1F2A37] bg-[#F9FAFB] dark:bg-[#0a1018] overflow-hidden">
       {collapsed && (
-        <div className="flex items-center gap-3 px-4 py-3 bg-[#F9FAFB] dark:bg-[#111928] border-b border-[#E6EBF1] dark:border-transparent cursor-pointer" onClick={() => setCollapsed(false)}>
-          <button className="text-[#9CA3AF] shrink-0" aria-label="Expand">
-            <svg width="10" height="6" viewBox="0 0 10 6" fill="none" style={{ transform: "rotate(180deg)" }}>
-              <path d="M1 5L5 1L9 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#5750F1]/10 border border-[#5750F1]/20">
-            <span className="text-[#5750F1] text-xs">📋</span>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 px-4 py-3 bg-[#F9FAFB] dark:bg-[#111928] border-b border-[#E6EBF1] dark:border-transparent cursor-pointer" onClick={() => setCollapsed(false)}>
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <button className="text-[#9CA3AF] shrink-0" aria-label="Expand">
+              <svg width="10" height="6" viewBox="0 0 10 6" fill="none" style={{ transform: "rotate(180deg)" }}>
+                <path d="M1 5L5 1L9 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#5750F1]/10 border border-[#5750F1]/20">
+              <span className="text-[#5750F1] text-xs">📋</span>
+            </div>
+            <span className="text-sm font-semibold text-[#111928] dark:text-white truncate">{strategy.title}</span>
+            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${statusClass}`}>{derivedStatus}</span>
           </div>
-          <span className="text-sm font-semibold text-[#111928] dark:text-white truncate">{strategy.title}</span>
-          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${statusClass}`}>{derivedStatus}</span>
           <p className="flex-1 text-[11px] text-[#6B7280] dark:text-[#9CA3AF] truncate hidden sm:block">
             {strategy.description}
           </p>
-          <div className="flex items-center gap-3 shrink-0 text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">
+          <div className="flex items-center gap-3 flex-wrap text-[11px] text-[#6B7280] dark:text-[#9CA3AF] pl-10 sm:pl-0 sm:shrink-0">
             <span>👤 {strategy.accountable}</span>
             <span>📊 {strategy.count}</span>
             <span>📅 {strategy.due}</span>
@@ -358,31 +362,33 @@ function StrategyCard({
 
       {!collapsed && (
         <>
-          <div className="flex items-start gap-3 px-4 py-3 border-b border-[#E6EBF1] dark:border-[#1F2A37]">
-            <button onClick={() => setCollapsed(true)} className="text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white mt-1 transition-colors" aria-label="Collapse">
-              <svg width="10" height="6" viewBox="0 0 10 6" fill="none">
-                <path d="M1 5L5 1L9 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#5750F1]/10 border border-[#5750F1]/20">
-              <span className="text-[#5750F1] text-sm">📋</span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3
-                  className="text-sm font-semibold text-[#111928] dark:text-white cursor-pointer hover:text-[#5750F1] dark:hover:text-[#7c78f3] transition-colors"
-                  onClick={onEditTitle}
-                  title="Click to edit pathway name"
-                >
-                  {strategy.title}
-                </h3>
-                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${statusClass}`}>{derivedStatus}</span>
+          <div className="flex flex-col sm:flex-row sm:items-start gap-3 px-4 py-3 border-b border-[#E6EBF1] dark:border-[#1F2A37]">
+            <div className="flex items-start gap-3 w-full sm:flex-1 min-w-0">
+              <button onClick={() => setCollapsed(true)} className="text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white mt-1 transition-colors shrink-0" aria-label="Collapse">
+                <svg width="10" height="6" viewBox="0 0 10 6" fill="none">
+                  <path d="M1 5L5 1L9 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#5750F1]/10 border border-[#5750F1]/20">
+                <span className="text-[#5750F1] text-sm">📋</span>
               </div>
-              <p className="text-[11px] text-[#6B7280] dark:text-[#9CA3AF] mt-0.5 line-clamp-2">
-                {strategy.description}
-              </p>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3
+                    className="text-sm font-semibold text-[#111928] dark:text-white cursor-pointer hover:text-[#5750F1] dark:hover:text-[#7c78f3] transition-colors break-words"
+                    onClick={onEditTitle}
+                    title="Click to edit pathway name"
+                  >
+                    {strategy.title}
+                  </h3>
+                  <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${statusClass}`}>{derivedStatus}</span>
+                </div>
+                <p className="text-[11px] text-[#6B7280] dark:text-[#9CA3AF] mt-0.5 line-clamp-2">
+                  {strategy.description}
+                </p>
+              </div>
             </div>
-            <div className="flex items-center gap-3 shrink-0 text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">
+            <div className="flex items-center gap-3 flex-wrap text-[11px] text-[#6B7280] dark:text-[#9CA3AF] pl-11 sm:pl-0 sm:shrink-0">
               <span>👤 {strategy.accountable}</span>
               <span>📊 {strategy.count}</span>
               <span>📅 {strategy.due}</span>
@@ -401,7 +407,7 @@ function StrategyCard({
 }
 
 /* --- Main Component -------------------------------------------------- */
-export default function NumbersTab({ ownOfferId }: { ownOfferId?: string | null }) {
+export default function NumbersTab({ ownOfferId, selectedMonth, selectedYear }: { ownOfferId?: string | null; selectedMonth?: number; selectedYear?: number }) {
   const workspaceId = useSelector((state: RootState) => state.workspace.selectedId ?? 1);
   const { token } = useAuth();
 
@@ -410,16 +416,21 @@ export default function NumbersTab({ ownOfferId }: { ownOfferId?: string | null 
   const [selectedAction, setSelectedAction] = useState<DrawerRow | null>(null);
   const [pendingStrategyId, setPendingStrategyId] = useState<string | null>(null);
   const [editingStrategyId, setEditingStrategyId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(Boolean(ownOfferId));
 
   const fetchPathways = useCallback(async () => {
     if (!ownOfferId) return;
+    setLoading(true);
     try {
+      const params: Record<string, any> = {
+        workspace_id: workspaceId,
+        own_offer_id: ownOfferId,
+        category: "numbers"
+      };
+      if (selectedMonth != null) params.month = String(selectedMonth).padStart(2, "0");
+      if (selectedYear != null) params.year = String(selectedYear);
       const res = await api.get("/api/v1/planner/pathways", {
-        params: {
-          workspace_id: workspaceId,
-          own_offer_id: ownOfferId,
-          category: "numbers"
-        },
+        params,
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.data?.success) {
@@ -432,8 +443,10 @@ export default function NumbersTab({ ownOfferId }: { ownOfferId?: string | null 
           description: p.description || "",
           status: p.status === "active" ? "Active" : p.status,
           accountable: p.accountable_name || p.to_whom_name || "Unassigned",
+          accountableId: p.accountable_id,
           count: p.actions?.length || 0,
           due: p.due_date || "-",
+          note: p.note,
         }));
 
         const newActions: Record<string, ActionRow[]> = {};
@@ -443,9 +456,9 @@ export default function NumbersTab({ ownOfferId }: { ownOfferId?: string | null 
             action: a.title,
             intendedOutcome: a.intended_outcome,
             status: a.status === "todo" ? "Todo" : a.status,
-            due: "-",
+            due: p.due_date || "-",
             accountable: p.accountable_name || p.to_whom_name || "Unassigned",
-            linkTo: "",
+            linkTo: p.to_whom_name || "Unassigned",
             completed: false,
             category: a.category || "",
             platform: a.platform || ""
@@ -457,8 +470,10 @@ export default function NumbersTab({ ownOfferId }: { ownOfferId?: string | null 
       }
     } catch (err) {
       console.error("Failed to fetch pathways:", err);
+    } finally {
+      setLoading(false);
     }
-  }, [workspaceId, ownOfferId, token]);
+  }, [workspaceId, ownOfferId, token, selectedMonth, selectedYear]);
 
   useEffect(() => {
     fetchPathways();
@@ -486,7 +501,7 @@ export default function NumbersTab({ ownOfferId }: { ownOfferId?: string | null 
     });
   };
 
-  updateNumberStatus = (id: string, status: string) => {
+  updateNumberStatus = async (id: string, status: string) => {
     setStrategyActions(prev => {
       const next = { ...prev };
       for (const sId of Object.keys(next)) {
@@ -496,6 +511,68 @@ export default function NumbersTab({ ownOfferId }: { ownOfferId?: string | null 
       }
       return next;
     });
+
+    if (/^\d+$/.test(id)) {
+      let foundPathwayId: string | null = null;
+      let targetActionsList: ActionRow[] = [];
+      for (const [pId, actions] of Object.entries(strategyActions)) {
+        if (actions.some(a => a.id === id)) {
+          foundPathwayId = pId;
+          targetActionsList = actions;
+          break;
+        }
+      }
+
+      if (foundPathwayId) {
+        const updatedActions = targetActionsList.map(a => a.id === id ? { ...a, status } : a);
+        const allDone = updatedActions.length > 0 && updatedActions.every(a => a.status.toLowerCase() === "done");
+        const newPathwayStatus = allDone ? "done" : "active";
+
+        try {
+          const targetAction = targetActionsList.find(a => a.id === id);
+          if (targetAction) {
+            const payload = {
+              title: targetAction.action || "Untitled Action",
+              intended_outcome: targetAction.intendedOutcome || "",
+              category: (targetAction.category || "breakdowns").toLowerCase(),
+              platform: targetAction.platform || "Meta",
+              status: status.toLowerCase()
+            };
+
+            await api.put(`/api/v1/planner/pathways/actions/${id}`, payload, {
+              headers: { Authorization: `Bearer ${token}` }
+            });
+          }
+
+          // Get current pathway details from state to update status if changed
+          const pathwayObj = strategies.find(s => s.id === foundPathwayId);
+          if (pathwayObj) {
+            const currentPathwayStatus = (pathwayObj.status || "").toLowerCase();
+            if (currentPathwayStatus !== newPathwayStatus) {
+              const metadataPayload = {
+                workspace_id: workspaceId,
+                own_offer_id: Number(ownOfferId) || 0,
+                name: pathwayObj.title,
+                description: pathwayObj.description || "",
+                category: "numbers",
+                status: newPathwayStatus,
+                due_date: pathwayObj.due || "-",
+                accountable_id: pathwayObj.accountableId || 0,
+                note: pathwayObj.note || ""
+              };
+
+              await api.put(`/api/v1/planner/pathways/${foundPathwayId}`, metadataPayload, {
+                headers: { Authorization: `Bearer ${token}` }
+              });
+
+              setStrategies(prev => prev.map(s => s.id === foundPathwayId ? { ...s, status: allDone ? "Done" : "Active" } : s));
+            }
+          }
+        } catch (err) {
+          console.error("Failed to update action/pathway status:", err);
+        }
+      }
+    }
   };
 
   const handleOpenDrawer = (strategyId: string, row: ActionRow) => {
@@ -533,46 +610,61 @@ export default function NumbersTab({ ownOfferId }: { ownOfferId?: string | null 
   };
 
   return (
-    <div className="rounded-xl border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] p-4">
-      {/* Strategies */}
-      {strategies.map(strategy => (
-        <StrategyCard
-          key={strategy.id}
-          strategy={strategy}
-          actions={strategyActions[strategy.id] ?? []}
-          onOpenDrawer={(row) => handleOpenDrawer(strategy.id, row)}
-          onAddAction={() => handleOpenDrawer(strategy.id, {
-            id: crypto.randomUUID(),
-            action: "",
-            intendedOutcome: "",
-            status: "Todo",
-            due: "",
-            accountable: "",
-            linkTo: "",
-            completed: false,
-          })}
-          onEditTitle={() => handleEditTitle(strategy.id)}
-        />
-      ))}
+    <div className="rounded-xl border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] px-4 pt-4 pb-3">
+      {loading ? (
+        <div className="flex flex-col items-center justify-center py-20">
+          <LuLoader className="animate-spin text-[#5750F1]" size={24} />
+          <p className="mt-2 text-sm text-[#9CA3AF]">Loading pathways...</p>
+        </div>
+      ) : (
+        <>
+          {/* Strategies */}
+          {strategies.length === 0 ? (
+            <p className="text-sm text-[#9CA3AF] dark:text-[#6B7280] py-4 text-center">There are no pathways</p>
+          ) : (
+            <div className="flex flex-col gap-5">
+              {strategies.map(strategy => (
+                <StrategyCard
+                  key={strategy.id}
+                  strategy={strategy}
+                  actions={strategyActions[strategy.id] ?? []}
+                  onOpenDrawer={(row) => handleOpenDrawer(strategy.id, row)}
+                  onAddAction={() => handleOpenDrawer(strategy.id, {
+                    id: crypto.randomUUID(),
+                    action: "",
+                    intendedOutcome: "",
+                    status: "Todo",
+                    due: "",
+                    accountable: "",
+                    linkTo: "",
+                    completed: false,
+                  })}
+                  onEditTitle={() => handleEditTitle(strategy.id)}
+                />
+              ))}
+            </div>
+          )}
 
-      {/* Add Pathway button */}
-      <button
-        onClick={() => {
-          setPendingStrategyId(null);
-          setSelectedAction({
-            id: crypto.randomUUID(),
-            action: "",
-            intendedOutcome: "",
-            status: "Planned",
-            due: "",
-            accountable: "",
-            linkTo: "",
-          });
-        }}
-        className="flex items-center gap-1.5 rounded-md border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] px-3 py-2 text-xs font-medium text-[#111928] dark:text-white hover:border-[#5750F1]/40 transition-colors"
-      >
-        + Add Pathway
-      </button>
+          {/* Add Pathway button */}
+          <button
+            onClick={() => {
+              setPendingStrategyId(null);
+              setSelectedAction({
+                id: crypto.randomUUID(),
+                action: "",
+                intendedOutcome: "",
+                status: "Planned",
+                due: "",
+                accountable: "",
+                linkTo: "",
+              });
+            }}
+            className="flex items-center gap-1.5 rounded-md border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] px-3 py-2 text-xs font-medium text-[#111928] dark:text-white hover:border-[#5750F1]/40 transition-colors"
+          >
+            + Add Pathway
+          </button>
+        </>
+      )}
 
       {/* Action Drawer */}
       <ActionDrawer
@@ -679,9 +771,41 @@ export default function NumbersTab({ ownOfferId }: { ownOfferId?: string | null 
                   headers: { Authorization: `Bearer ${token}` }
                 });
               }
+
+              // Check if all actions of this pathway are now 'done'
+              const currentActions = strategyActions[pendingStrategyId] || [];
+              const otherActions = currentActions.filter(a => a.id !== updated.id);
+              const allActions = [...otherActions];
+              if (updated.action.trim()) {
+                allActions.push({ ...updated, status: updated.status, completed: false });
+              }
+              const allDone = allActions.length > 0 && allActions.every(a => a.status.toLowerCase() === "done");
+              const newPathwayStatus = allDone ? "done" : "active";
+
+              const pathwayObj = strategies.find(s => s.id === pendingStrategyId);
+              if (pathwayObj) {
+                const currentPathwayStatus = (pathwayObj.status || "").toLowerCase();
+                if (currentPathwayStatus !== newPathwayStatus) {
+                  const metadataPayload = {
+                    workspace_id: workspaceId,
+                    own_offer_id: Number(ownOfferId) || 0,
+                    name: pathwayObj.title,
+                    description: pathwayObj.description || "",
+                    category: "numbers",
+                    status: newPathwayStatus,
+                    due_date: pathwayObj.due || "-",
+                    accountable_id: pathwayObj.accountableId || 0,
+                    note: pathwayObj.note || ""
+                  };
+                  await api.put(`/api/v1/planner/pathways/${pendingStrategyId}`, metadataPayload, {
+                    headers: { Authorization: `Bearer ${token}` }
+                  });
+                }
+              }
+
               await fetchPathways();
             } catch (error) {
-              console.error("Failed to save action:", error);
+              console.error("Failed to save action/pathway:", error);
             }
             return pendingStrategyId;
           } else {

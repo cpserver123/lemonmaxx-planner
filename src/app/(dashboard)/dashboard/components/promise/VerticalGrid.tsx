@@ -225,19 +225,14 @@ export function CreateOfferModal({
       });
       const fetched: { id: string; title: string }[] = res.data?.data?.offers ?? [];
       setApiOffers(fetched);
-      // Pre-select offers whose IDs are in initialOfferIds
-      if (initialOfferIds.length > 0) {
-        const preselected = fetched
-          .filter(o => initialOfferIds.includes(o.id))
-          .map(o => o.title);
-        setSelectedOffers(preselected);
-      }
+      return fetched;
     } catch {
       setOffersError("Failed to load offers.");
+      return [];
     } finally {
       setOffersLoading(false);
     }
-  }, [workspaceId, token, initialOfferIds]);
+  }, [workspaceId, token]);
 
   // API-fetched verticals
   const [apiVerticals, setApiVerticals] = useState<{ id: number; name: string }[]>([]);
@@ -271,17 +266,27 @@ export function CreateOfferModal({
       // Pre-fill vertical when opened from tree edit button
       setSelectedVertical(preselectedVertical ?? "");
       setTimeout(() => inputRef.current?.focus(), 50);
-      fetchOffers();
+      fetchOffers().then(fetched => {
+        // Pre-select offers whose IDs are in initialOfferIds after fetch
+        if (initialOfferIds.length > 0) {
+          const preselected = fetched
+            .filter(o => initialOfferIds.includes(o.id))
+            .map(o => o.title);
+          setSelectedOffers(preselected);
+        }
+      });
       if (!preselectedVertical) fetchApiVerticals();
     }
-  }, [open, initialOfferName, fetchOffers, fetchApiVerticals, preselectedVertical]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialOfferName, preselectedVertical]);
 
   // Re-fetch verticals whenever a new one is created (key bumped by parent)
   useEffect(() => {
     if (verticalRefreshKey > 0) {
       fetchApiVerticals();
     }
-  }, [verticalRefreshKey, fetchApiVerticals]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [verticalRefreshKey]);
 
   // Close dropdowns on outside click
   useEffect(() => {

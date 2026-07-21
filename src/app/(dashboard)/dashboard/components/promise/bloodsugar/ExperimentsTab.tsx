@@ -10,7 +10,7 @@ import {
   type SortingState,
   type ColumnResizeMode,
 } from "@tanstack/react-table";
-import { LuFlipVertical2, LuShoppingBag, LuFilter, LuArrowUpDown, LuArrowUp, LuArrowDown } from "react-icons/lu";
+import { LuFlipVertical2, LuShoppingBag, LuFilter, LuArrowUpDown, LuArrowUp, LuArrowDown, LuLoader } from "react-icons/lu";
 import { RxDragHandleDots2 } from "react-icons/rx";
 import ActionDrawer, { type DrawerRow, type Category, type Platform } from "../../ActionDrawer";
 import { useSelector } from "react-redux";
@@ -36,11 +36,13 @@ interface Experiment {
   id: string;
   title: string;
   description: string;
-  status: "Active" | "Draft" | "Paused";
+  status: "Active" | "Draft" | "Paused" | "Done";
   accountable: string;
+  accountableId?: number;
   count: number;
   due: string;
   tabId?: SubTab;
+  note?: string;
 }
 
 /* --- Tab types ------------------------------------------------------- */
@@ -255,7 +257,7 @@ const columns = [
     size: 110,
     minSize: 80,
     cell: (info) => (
-      <span className="text-[12px] text-[#5750F1] dark:text-[#7c78f3] underline-offset-2 hover:underline cursor-pointer">
+      <span className="text-[12px] text-[#6B7280] dark:text-[#9CA3AF] truncate whitespace-nowrap block" title={info.getValue() || ""}>
         {info.getValue() || "—"}
       </span>
     ),
@@ -390,7 +392,7 @@ function ExperimentCard({
   const [collapsed, setCollapsed] = useState(false);
 
   // Derive pathway status: "Done" only if every action row is "Done", else "Active"
-  const derivedStatus = actions.length > 0 && actions.every(a => a.status === "Done")
+  const derivedStatus = actions.length > 0 && actions.every(a => a.status?.toLowerCase() === "done")
     ? "Done"
     : "Active";
 
@@ -410,19 +412,21 @@ function ExperimentCard({
   return (
     <div className="rounded-lg border border-[#E6EBF1] dark:border-[#1F2A37] bg-[#F9FAFB] dark:bg-[#0a1018] overflow-hidden">
       {collapsed && (
-        <div className="flex items-center gap-3 px-4 py-3 bg-[#F9FAFB] dark:bg-[#111928] border-b border-[#E6EBF1] dark:border-transparent cursor-pointer" onClick={() => setCollapsed(false)}>
-          <button className="text-[#9CA3AF] shrink-0" aria-label="Expand">
-            <svg width="10" height="6" viewBox="0 0 10 6" fill="none" style={{ transform: "rotate(180deg)" }}>
-              <path d="M1 5L5 1L9 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#5750F1]/10 border border-[#5750F1]/20">
-            <span className="text-[#5750F1] text-xs">🧪</span>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 px-4 py-3 bg-[#F9FAFB] dark:bg-[#111928] border-b border-[#E6EBF1] dark:border-transparent cursor-pointer" onClick={() => setCollapsed(false)}>
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <button className="text-[#9CA3AF] shrink-0" aria-label="Expand">
+              <svg width="10" height="6" viewBox="0 0 10 6" fill="none" style={{ transform: "rotate(180deg)" }}>
+                <path d="M1 5L5 1L9 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#5750F1]/10 border border-[#5750F1]/20">
+              <span className="text-[#5750F1] text-xs">🧪</span>
+            </div>
+            <span className="text-sm font-semibold text-[#111928] dark:text-white truncate">{experiment.title}</span>
+            <ExperimentBadge status={derivedStatus} />
           </div>
-          <span className="text-sm font-semibold text-[#111928] dark:text-white truncate">{experiment.title}</span>
-          <ExperimentBadge status={derivedStatus} />
           <p className="flex-1 text-[11px] text-[#6B7280] dark:text-[#9CA3AF] truncate hidden sm:block">{experiment.description}</p>
-          <div className="flex items-center gap-3 shrink-0 text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">
+          <div className="flex items-center gap-3 flex-wrap text-[11px] text-[#6B7280] dark:text-[#9CA3AF] pl-10 sm:pl-0 sm:shrink-0">
             <span>👤 {experiment.accountable}</span>
             <span>📊 {experiment.count}</span>
             <span>📅 {experiment.due}</span>
@@ -432,29 +436,31 @@ function ExperimentCard({
 
       {!collapsed && (
         <>
-          <div className="flex items-start gap-3 px-4 py-3 border-b border-[#E6EBF1] dark:border-[#1F2A37]">
-            <button onClick={() => setCollapsed(true)} className="text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white mt-1 transition-colors shrink-0" aria-label="Collapse">
-              <svg width="10" height="6" viewBox="0 0 10 6" fill="none">
-                <path d="M1 5L5 1L9 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#5750F1]/10 border border-[#5750F1]/20">
-              <span className="text-[#5750F1] text-sm">🧪</span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3
-                  className="text-sm font-semibold text-[#111928] dark:text-white cursor-pointer hover:text-[#5750F1] dark:hover:text-[#7c78f3] transition-colors"
-                  onClick={onEditTitle}
-                  title="Click to edit pathway name"
-                >
-                  {experiment.title}
-                </h3>
-                <ExperimentBadge status={derivedStatus} />
+          <div className="flex flex-col sm:flex-row sm:items-start gap-3 px-4 py-3 border-b border-[#E6EBF1] dark:border-[#1F2A37]">
+            <div className="flex items-start gap-3 w-full sm:flex-1 min-w-0">
+              <button onClick={() => setCollapsed(true)} className="text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white mt-1 transition-colors shrink-0" aria-label="Collapse">
+                <svg width="10" height="6" viewBox="0 0 10 6" fill="none">
+                  <path d="M1 5L5 1L9 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#5750F1]/10 border border-[#5750F1]/20">
+                <span className="text-[#5750F1] text-sm">🧪</span>
               </div>
-              <p className="text-[11px] text-[#6B7280] dark:text-[#9CA3AF] mt-0.5 line-clamp-2">{experiment.description}</p>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3
+                    className="text-sm font-semibold text-[#111928] dark:text-white cursor-pointer hover:text-[#5750F1] dark:hover:text-[#7c78f3] transition-colors break-words"
+                    onClick={onEditTitle}
+                    title="Click to edit pathway name"
+                  >
+                    {experiment.title}
+                  </h3>
+                  <ExperimentBadge status={derivedStatus} />
+                </div>
+                <p className="text-[11px] text-[#6B7280] dark:text-[#9CA3AF] mt-0.5 line-clamp-2">{experiment.description}</p>
+              </div>
             </div>
-            <div className="flex items-center gap-3 shrink-0 text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">
+            <div className="flex items-center gap-3 flex-wrap text-[11px] text-[#6B7280] dark:text-[#9CA3AF] pl-11 sm:pl-0 sm:shrink-0">
               <span>👤 {experiment.accountable}</span>
               <span>📊 {experiment.count}</span>
               <span>📅 {experiment.due}</span>
@@ -468,7 +474,7 @@ function ExperimentCard({
 }
 
 /* --- Main Component -------------------------------------------------- */
-export default function ExperimentsTab({ ownOfferId }: { ownOfferId?: string | null }) {
+export default function ExperimentsTab({ ownOfferId, selectedMonth, selectedYear }: { ownOfferId?: string | null; selectedMonth?: number; selectedYear?: number }) {
   const workspaceId = useSelector((state: RootState) => state.workspace.selectedId ?? 1);
   const { token } = useAuth();
   const [activeTab, setActiveTab] = useState<SubTab>("offer");
@@ -477,16 +483,21 @@ export default function ExperimentsTab({ ownOfferId }: { ownOfferId?: string | n
   const [selectedAction, setSelectedAction] = useState<DrawerRow | null>(null);
   const [pendingExpId, setPendingExpId] = useState<string | null>(null);
   const [editingExpId, setEditingExpId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(Boolean(ownOfferId));
 
   const fetchPathways = useCallback(async () => {
     if (!ownOfferId) return;
+    setLoading(true);
     try {
+      const params: Record<string, any> = {
+        workspace_id: workspaceId,
+        own_offer_id: ownOfferId,
+        category: "experiments"
+      };
+      if (selectedMonth != null) params.month = String(selectedMonth).padStart(2, "0");
+      if (selectedYear != null) params.year = String(selectedYear);
       const res = await api.get("/api/v1/planner/pathways", {
-        params: {
-          workspace_id: workspaceId,
-          own_offer_id: ownOfferId,
-          category: "experiments"
-        },
+        params,
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.data?.success) {
@@ -499,9 +510,11 @@ export default function ExperimentsTab({ ownOfferId }: { ownOfferId?: string | n
           description: p.description || "",
           status: p.status === "active" ? "Active" : p.status,
           accountable: p.accountable_name || p.to_whom_name || "Unassigned",
+          accountableId: p.accountable_id,
           count: p.actions?.length || 0,
           due: p.due_date || "-",
-          tabId: activeTab
+          tabId: activeTab,
+          note: p.note,
         }));
 
         const newActions: Record<string, ActionRow[]> = {};
@@ -511,9 +524,9 @@ export default function ExperimentsTab({ ownOfferId }: { ownOfferId?: string | n
             action: a.title,
             intendedOutcome: a.intended_outcome,
             status: a.status === "todo" ? "Todo" : a.status,
-            due: "-",
+            due: p.due_date || "-",
             accountable: p.accountable_name || p.to_whom_name || "Unassigned",
-            linkTo: "",
+            linkTo: p.to_whom_name || "Unassigned",
             completed: false,
             category: a.category || "",
             platform: a.platform || ""
@@ -525,8 +538,10 @@ export default function ExperimentsTab({ ownOfferId }: { ownOfferId?: string | n
       }
     } catch (err) {
       console.error("Failed to fetch pathways:", err);
+    } finally {
+      setLoading(false);
     }
-  }, [workspaceId, ownOfferId, token, activeTab]);
+  }, [workspaceId, ownOfferId, token, activeTab, selectedMonth, selectedYear]);
 
   useEffect(() => {
     fetchPathways();
@@ -554,7 +569,7 @@ export default function ExperimentsTab({ ownOfferId }: { ownOfferId?: string | n
     });
   };
 
-  updateExpStatus = (id: string, status: string) => {
+  updateExpStatus = async (id: string, status: string) => {
     setExperimentActions(prev => {
       const next = { ...prev };
       for (const eId of Object.keys(next)) {
@@ -564,6 +579,68 @@ export default function ExperimentsTab({ ownOfferId }: { ownOfferId?: string | n
       }
       return next;
     });
+
+    if (/^\d+$/.test(id)) {
+      let foundPathwayId: string | null = null;
+      let targetActionsList: ActionRow[] = [];
+      for (const [eId, actions] of Object.entries(experimentActions)) {
+        if (actions.some(a => a.id === id)) {
+          foundPathwayId = eId;
+          targetActionsList = actions;
+          break;
+        }
+      }
+
+      if (foundPathwayId) {
+        const updatedActions = targetActionsList.map(a => a.id === id ? { ...a, status } : a);
+        const allDone = updatedActions.length > 0 && updatedActions.every(a => a.status.toLowerCase() === "done");
+        const newPathwayStatus = allDone ? "done" : "active";
+
+        try {
+          const targetAction = targetActionsList.find(a => a.id === id);
+          if (targetAction) {
+            const payload = {
+              title: targetAction.action || "Untitled Action",
+              intended_outcome: targetAction.intendedOutcome || "",
+              category: (targetAction.category || "breakdowns").toLowerCase(),
+              platform: targetAction.platform || "Meta",
+              status: status.toLowerCase()
+            };
+
+            await api.put(`/api/v1/planner/pathways/actions/${id}`, payload, {
+              headers: { Authorization: `Bearer ${token}` }
+            });
+          }
+
+          // Get current pathway details from state to update status if changed
+          const pathwayObj = experiments.find(e => e.id === foundPathwayId);
+          if (pathwayObj) {
+            const currentPathwayStatus = (pathwayObj.status || "").toLowerCase();
+            if (currentPathwayStatus !== newPathwayStatus) {
+              const metadataPayload = {
+                workspace_id: workspaceId,
+                own_offer_id: Number(ownOfferId) || 0,
+                name: pathwayObj.title,
+                description: pathwayObj.description || "",
+                category: "experiments",
+                status: newPathwayStatus,
+                due_date: pathwayObj.due || "-",
+                accountable_id: pathwayObj.accountableId || 0,
+                note: pathwayObj.note || ""
+              };
+
+              await api.put(`/api/v1/planner/pathways/${foundPathwayId}`, metadataPayload, {
+                headers: { Authorization: `Bearer ${token}` }
+              });
+
+              setExperiments(prev => prev.map(e => e.id === foundPathwayId ? { ...e, status: allDone ? "Done" : "Active" } : e));
+            }
+          }
+        } catch (err) {
+          console.error("Failed to update action/pathway status:", err);
+        }
+      }
+    }
   };
 
   const handleOpenDrawer = (expId: string, row: ActionRow) => {
@@ -602,38 +679,48 @@ export default function ExperimentsTab({ ownOfferId }: { ownOfferId?: string | n
 
   return (
     <div className="rounded-xl border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] overflow-hidden">
+      {loading ? (
+        <div className="p-4 flex flex-col items-center justify-center py-20 bg-white dark:bg-[#0d1520]">
+          <LuLoader className="animate-spin text-[#5750F1]" size={24} />
+          <p className="mt-2 text-sm text-[#9CA3AF]">Loading pathways...</p>
+        </div>
+      ) : (
+        /* Experiment cards */
+        <div className="px-4 pt-4 pb-3 flex flex-col gap-4">
+          {experiments.filter(e => e.tabId === "offer" || !e.tabId).length === 0 ? (
+            <p className="text-sm text-[#9CA3AF] dark:text-[#6B7280] py-4 text-center">There are no pathways</p>
+          ) : (
+            experiments.filter(e => e.tabId === "offer" || !e.tabId).map((exp) => (
+              <ExperimentCard
+                key={exp.id}
+                experiment={exp}
+                actions={experimentActions[exp.id] ?? []}
+                onOpenDrawer={(row) => handleOpenDrawer(exp.id, row)}
+                onEditTitle={() => handleEditTitle(exp.id)}
+              />
+            ))
+          )}
 
-      {/* Experiment cards */}
-      <div className="p-4 flex flex-col gap-4">
-        {experiments.filter(e => e.tabId === "offer" || !e.tabId).map((exp) => (
-          <ExperimentCard
-            key={exp.id}
-            experiment={exp}
-            actions={experimentActions[exp.id] ?? []}
-            onOpenDrawer={(row) => handleOpenDrawer(exp.id, row)}
-            onEditTitle={() => handleEditTitle(exp.id)}
-          />
-        ))}
-
-        {/* Add Pathway button */}
-        <button
-          onClick={() => {
-            setPendingExpId(null);
-            setSelectedAction({
-              id: crypto.randomUUID(),
-              action: "",
-              intendedOutcome: "",
-              status: "Planned",
-              due: "",
-              accountable: "",
-              linkTo: "",
-            });
-          }}
-          className="flex items-center gap-1.5 rounded-md border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] px-3 py-2 text-xs font-medium text-[#111928] dark:text-white hover:border-[#5750F1]/40 transition-colors w-fit"
-        >
-          + Add Pathway
-        </button>
-      </div>
+          {/* Add Pathway button */}
+          <button
+            onClick={() => {
+              setPendingExpId(null);
+              setSelectedAction({
+                id: crypto.randomUUID(),
+                action: "",
+                intendedOutcome: "",
+                status: "Planned",
+                due: "",
+                accountable: "",
+                linkTo: "",
+              });
+            }}
+            className="flex items-center gap-1.5 rounded-md border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] px-3 py-2 text-xs font-medium text-[#111928] dark:text-white hover:border-[#5750F1]/40 transition-colors w-fit"
+          >
+            + Add Pathway
+          </button>
+        </div>
+      )}
 
       {/* Action Drawer */}
       <ActionDrawer
@@ -740,9 +827,41 @@ export default function ExperimentsTab({ ownOfferId }: { ownOfferId?: string | n
                   headers: { Authorization: `Bearer ${token}` }
                 });
               }
+
+              // Check if all actions of this pathway are now 'done'
+              const currentActions = experimentActions[pendingExpId] || [];
+              const otherActions = currentActions.filter(a => a.id !== updated.id);
+              const allActions = [...otherActions];
+              if (updated.action.trim()) {
+                allActions.push({ ...updated, status: updated.status, completed: false });
+              }
+              const allDone = allActions.length > 0 && allActions.every(a => a.status.toLowerCase() === "done");
+              const newPathwayStatus = allDone ? "done" : "active";
+
+              const pathwayObj = experiments.find(e => e.id === pendingExpId);
+              if (pathwayObj) {
+                const currentPathwayStatus = (pathwayObj.status || "").toLowerCase();
+                if (currentPathwayStatus !== newPathwayStatus) {
+                  const metadataPayload = {
+                    workspace_id: workspaceId,
+                    own_offer_id: Number(ownOfferId) || 0,
+                    name: pathwayObj.title,
+                    description: pathwayObj.description || "",
+                    category: "experiments",
+                    status: newPathwayStatus,
+                    due_date: pathwayObj.due || "-",
+                    accountable_id: pathwayObj.accountableId || 0,
+                    note: pathwayObj.note || ""
+                  };
+                  await api.put(`/api/v1/planner/pathways/${pendingExpId}`, metadataPayload, {
+                    headers: { Authorization: `Bearer ${token}` }
+                  });
+                }
+              }
+
               await fetchPathways();
             } catch (error) {
-              console.error("Failed to save action:", error);
+              console.error("Failed to save action/pathway:", error);
             }
             return pendingExpId;
           } else {
