@@ -23,6 +23,7 @@ import {
 } from "react-icons/lu";
 import { useAuth } from "@/context/AuthContext";
 import api from "@/app/utils/axios";
+import { toast } from "react-toastify";
 
 /* --- Constants ------------------------------------------------------- */
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -388,11 +389,13 @@ export default function CheckIn({ onClose }: { onClose?: () => void }) {
             attendanceStatus: a.status,
           }))
         );
+        toast.success(json.message ?? "Attendance loaded successfully");
       } catch (err: unknown) {
         const msg =
           (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
           (err instanceof Error ? err.message : "Something went wrong");
         setError(msg);
+        toast.error(msg);
         setData([]);
       } finally {
         setLoading(false);

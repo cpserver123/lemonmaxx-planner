@@ -23,6 +23,7 @@ import PlanSubmissionDrawer from "./components/PlanSubmissionDrawer";
 import EditPlanDrawer from "../promise/editplan";
 import type { PlanningRow as EditPlanRow } from "../promise/editplan";
 import { CreateVerticalModal, CreateOfferModal } from "../promise/VerticalGrid";
+import { toast } from "react-toastify";
 
 /* --- Types ----------------------------------------------------------- */
 interface PlanningRow {
@@ -209,12 +210,15 @@ function ResourceDropdownCell({
   // Sync API call
   const syncResources = async (ids: Set<number>) => {
     try {
-      await api.put(`/api/v1/planner/plans/${planId}/resources`, {
+      const res = await api.put(`/api/v1/planner/plans/${planId}/resources`, {
         workspace_id: Number(workspaceId),
         user_ids: [...ids],
       }, { headers: { Authorization: `Bearer ${token}` } });
+      toast.success((res.data as any)?.message ?? "Resources updated");
     } catch (err) {
+      const msg = (err as any)?.response?.data?.message ?? "Failed to sync resources";
       console.error("Failed to sync resources", err);
+      toast.error(msg);
     }
   };
 
@@ -545,8 +549,11 @@ function CategoryTable({ category, rows, actualsLabel, actualsLoading, workspace
       const data = res.data?.data;
       if (data?.plan_totals) setGoalPlanTotals(data.plan_totals);
       if (data?.user_goals)  setGoalInitialGoals(data.user_goals);
+      toast.success(res.data?.message ?? "Goals loaded successfully");
     } catch (err) {
+      const msg = (err as any)?.response?.data?.message ?? "Failed to fetch user goals";
       console.error("Failed to fetch user goals", err);
+      toast.error(msg);
     } finally {
       setGoalLoading(false);
     }
@@ -759,7 +766,9 @@ export default function PlanningSection() {
         setVslFilter(prev => names.includes(prev) ? prev : names[0]);
       }
     } catch (err) {
+      const msg = (err as any)?.response?.data?.message ?? "Failed to fetch verticals";
       console.error("Failed to fetch verticals", err);
+      toast.error(msg);
     }
   }, [token, workspaceId]);
 
@@ -817,7 +826,9 @@ export default function PlanningSection() {
         return { ...row, actuals: map.has(key) ? map.get(key)! : null };
       }));
     } catch (err) {
+      const msg = (err as any)?.response?.data?.message ?? "Failed to fetch actuals";
       console.error("Failed to fetch actuals", err);
+      toast.error(msg);
     } finally {
       setActualsLoading(false);
     }
@@ -898,8 +909,11 @@ export default function PlanningSection() {
 
         // After plans are loaded, also fetch actuals (if we have a vertical)
         fetchAndMergeActuals(rows, vertical.id, actualsYear, actualsMonth, planningYear, planningMonth);
+        toast.success(res.data?.message ?? "Plans loaded successfully");
       } catch (err) {
+        const msg = (err as any)?.response?.data?.message ?? "Failed to fetch plans";
         console.error("Failed to fetch plans", err);
+        toast.error(msg);
       } finally {
         setIsLoadingPlans(false);
       }
@@ -1133,6 +1147,7 @@ export default function PlanningSection() {
       <PlanSubmissionDrawer
         open={showSubmitDrawer}
         onClose={() => setShowSubmitDrawer(false)}
+        onSubmit={() => setRefreshToggle(prev => prev + 1)}
       />
 
       {/* Edit Plan Drawer */}

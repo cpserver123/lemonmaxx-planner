@@ -17,6 +17,7 @@ import { useSelector } from "react-redux";
 import type { RootState } from "@/store";
 import api from "@/app/utils/axios";
 import { useAuth } from "@/context/AuthContext";
+import { toast } from "react-toastify";
 
 /* --- Types ----------------------------------------------------------- */
 interface ActionRow {
@@ -535,9 +536,12 @@ export default function ExperimentsTab({ ownOfferId, selectedMonth, selectedYear
 
         setExperiments(newExperiments);
         setExperimentActions(newActions);
+        toast.success(res.data?.message ?? "Pathways loaded successfully");
       }
     } catch (err) {
+      const msg = (err as any)?.response?.data?.message ?? "Failed to fetch pathways";
       console.error("Failed to fetch pathways:", err);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -637,7 +641,9 @@ export default function ExperimentsTab({ ownOfferId, selectedMonth, selectedYear
             }
           }
         } catch (err) {
+          const msg = (err as any)?.response?.data?.message ?? "Failed to update action status";
           console.error("Failed to update action/pathway status:", err);
+          toast.error(msg);
         }
       }
     }
@@ -796,8 +802,11 @@ export default function ExperimentsTab({ ownOfferId, selectedMonth, selectedYear
               }
 
               await fetchPathways();
+              toast.success("Experiment updated successfully");
             } catch (error) {
+              const msg = (error as any)?.response?.data?.message ?? "Failed to update experiment";
               console.error("Failed to update pathway/actions:", error);
+              toast.error(msg);
             }
             return editingExpId;
           }
@@ -860,8 +869,11 @@ export default function ExperimentsTab({ ownOfferId, selectedMonth, selectedYear
               }
 
               await fetchPathways();
+              toast.success("Action saved successfully");
             } catch (error) {
+              const msg = (error as any)?.response?.data?.message ?? "Failed to save action";
               console.error("Failed to save action/pathway:", error);
+              toast.error(msg);
             }
             return pendingExpId;
           } else {
@@ -905,10 +917,13 @@ export default function ExperimentsTab({ ownOfferId, selectedMonth, selectedYear
 
               if (res.data?.success) {
                 await fetchPathways();
+                toast.success(res.data?.message ?? "Experiment created successfully");
                 return res.data.data.id;
               }
             } catch (error) {
+              const msg = (error as any)?.response?.data?.message ?? "Failed to create experiment";
               console.error("Failed to create experiment pathway:", error);
+              toast.error(msg);
             }
           }
         }}

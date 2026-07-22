@@ -17,6 +17,7 @@ import { useSelector } from "react-redux";
 import type { RootState } from "@/store";
 import api from "@/app/utils/axios";
 import { useAuth } from "@/context/AuthContext";
+import { toast } from "react-toastify";
 
 /* --- Types ----------------------------------------------------------- */
 interface ActionRow {
@@ -467,9 +468,12 @@ export default function NumbersTab({ ownOfferId, selectedMonth, selectedYear }: 
 
         setStrategies(newStrategies);
         setStrategyActions(newActions);
+        toast.success(res.data?.message ?? "Pathways loaded successfully");
       }
     } catch (err) {
+      const msg = (err as any)?.response?.data?.message ?? "Failed to fetch pathways";
       console.error("Failed to fetch pathways:", err);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -569,7 +573,9 @@ export default function NumbersTab({ ownOfferId, selectedMonth, selectedYear }: 
             }
           }
         } catch (err) {
+          const msg = (err as any)?.response?.data?.message ?? "Failed to update action status";
           console.error("Failed to update action/pathway status:", err);
+          toast.error(msg);
         }
       }
     }
@@ -740,8 +746,11 @@ export default function NumbersTab({ ownOfferId, selectedMonth, selectedYear }: 
               }
 
               await fetchPathways();
+              toast.success("Pathway updated successfully");
             } catch (error) {
+              const msg = (error as any)?.response?.data?.message ?? "Failed to update pathway";
               console.error("Failed to update pathway/actions:", error);
+              toast.error(msg);
             }
             return editingStrategyId;
           }
@@ -804,8 +813,11 @@ export default function NumbersTab({ ownOfferId, selectedMonth, selectedYear }: 
               }
 
               await fetchPathways();
+              toast.success("Action saved successfully");
             } catch (error) {
+              const msg = (error as any)?.response?.data?.message ?? "Failed to save action";
               console.error("Failed to save action/pathway:", error);
+              toast.error(msg);
             }
             return pendingStrategyId;
           } else {
@@ -848,12 +860,14 @@ export default function NumbersTab({ ownOfferId, selectedMonth, selectedYear }: 
               });
 
               if (res.data?.success) {
-                // Re-fetch pathways to ensure we have exactly what the server has (assigned IDs, relationships, etc.)
                 await fetchPathways();
+                toast.success(res.data?.message ?? "Pathway created successfully");
                 return res.data.data.id;
               }
             } catch (error) {
+              const msg = (error as any)?.response?.data?.message ?? "Failed to create pathway";
               console.error("Failed to create pathway:", error);
+              toast.error(msg);
             }
           }
         }}
