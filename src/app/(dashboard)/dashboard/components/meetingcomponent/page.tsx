@@ -106,6 +106,7 @@ interface APIMeetingDetail {
   status:           string;
   created_by_name:  string;
   participants: { id: number; user_id: number; name: string; email: string; role: string }[];
+  files?: { key: string; url: string; size: number; filename: string; content_type: string }[];
 }
 
 /* --- Convert ISO datetime → "datetime-local" input value ---------------- */
@@ -158,6 +159,7 @@ function mapApiMeetingDetail(m: APIMeetingDetail): MeetingRow {
     summary:         m.summary          ?? "",
     reportScore:     m.score != null ? String(m.score) : "",
     participantsList: m.participants.map(p => ({ id: p.user_id, name: p.name })),
+    files:           m.files ?? [],
   };
 }
 
@@ -330,8 +332,14 @@ function MeetingTable({
     : `${fmtBtn(startDate)} – ${fmtBtn(endDate)}`;
 
   const filtered = rows.filter(r => {
-    // Search filter only — date filtering is server-side
-    return r.name.toLowerCase().includes(search.toLowerCase());
+    // Search filter
+    if (!r.name.toLowerCase().includes(search.toLowerCase())) return false;
+    // Show completed toggle — when ON show only completed, when OFF show all
+    if (showCompleted) {
+      const status = (rowStatuses[r.id] ?? r.status) as MeetingStatus;
+      if (status !== "Completed") return false;
+    }
+    return true;
   });
 
   // Reset to page 1 when rowsPerPage or search changes
@@ -560,6 +568,7 @@ export default function MeetingSection() {
 
   const [showModal,        setShowModal]        = useState(false);
   const [selectedMeeting,  setSelectedMeeting]  = useState<MeetingRow | null>(null);
+  const [isDetailLoading,  setIsDetailLoading]  = useState(false);
   const [rawMeetings,      setRawMeetings]      = useState<APIMeeting[]>([]);
   const [viewTab,          setViewTab]          = useState<ViewTab>("table");
   const [showCompleted,    setShowCompleted]    = useState(false);
@@ -592,9 +601,9 @@ export default function MeetingSection() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const meetings: APIMeeting[] = res.data?.data?.meetings ?? [];
-      const rows = meetings.map(mapApiMeeting);
+      const rows = meetings.map(mapApiMeeting).sort((a, b) => Number(b.id) - Number(a.id));
       setTableRows(rows);
-      setRawMeetings(meetings);
+      setRawMeetings([...meetings].sort((a, b) => b.id - a.id));
       setRowStatuses(Object.fromEntries(rows.map(r => [r.id, r.status])));
     } catch (err: any) {
       setFetchError(err?.message ?? "Failed to load meetings");
@@ -609,32 +618,23 @@ export default function MeetingSection() {
 
   const handleNameClick = async (row: MeetingRow) => {
     const status = rowStatuses[row.id] ?? row.status;
+    // Open modal immediately with basic row data
+    if (status === "Pending") setPendingRowId(row.id);
+    setSelectedMeeting(row);
+    setShowModal(true);
+    setIsDetailLoading(true);
     try {
       const res = await api.get(`/api/v1/planner/meetings/${row.id}`, {
         params:  { workspace_id: workspaceId },
         headers: { Authorization: `Bearer ${token}` },
       });
       const detail: APIMeetingDetail = res.data?.data;
-      const fullRow = mapApiMeetingDetail(detail);
-      if (status === "Pending") {
-        setPendingRowId(row.id);
-        setSelectedMeeting(fullRow);
-        setShowConfirm(true);
-      } else {
-        setSelectedMeeting(fullRow);
-        setShowModal(true);
-      }
+      setSelectedMeeting(mapApiMeetingDetail(detail));
     } catch (err) {
       console.error("Failed to fetch meeting detail:", err);
-      // Fallback: open with list-view data
-      if (status === "Pending") {
-        setPendingRowId(row.id);
-        setSelectedMeeting(row);
-        setShowConfirm(true);
-      } else {
-        setSelectedMeeting(row);
-        setShowModal(true);
-      }
+      // Keep the basic row data already shown
+    } finally {
+      setIsDetailLoading(false);
     }
   };
 
@@ -694,7 +694,14 @@ export default function MeetingSection() {
         {/* View Tabs */}
         <div className="flex items-center gap-1 rounded-lg border border-[#E6EBF1] dark:border-[#1F2A37] bg-[#F9FAFB] dark:bg-[#0a1018] p-1">
           {VIEW_TABS.map(t => (
-            <button key={t.id} onClick={() => setViewTab(t.id)} className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${viewTab === t.id ? "bg-white dark:bg-[#0d1520] text-[#111928] dark:text-white shadow-sm border border-[#E6EBF1] dark:border-[#1F2A37]" : "text-[#6B7280] dark:text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white"}`}>
+            <button
+              key={t.id}
+              onClick={() => {
+                setViewTab(t.id);
+                fetchMeetings(startDate, endDate);
+              }}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${viewTab === t.id ? "bg-white dark:bg-[#0d1520] text-[#111928] dark:text-white shadow-sm border border-[#E6EBF1] dark:border-[#1F2A37]" : "text-[#6B7280] dark:text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white"}`}
+            >
               {t.icon}{t.label}
             </button>
           ))}
@@ -745,22 +752,35 @@ export default function MeetingSection() {
               <LuPlus size={13} />Add Meeting
             </button>
           </div>
-          <MeetingCalendar
-            meetings={rawMeetings}
-            onMonthChange={async (start, end) => {
-              setStartDate(start);
-              setEndDate(end);
-              await fetchMeetings(start, end);
-            }}
-          />
+          {/* Spinner overlay — rendered on top, MeetingCalendar stays mounted to avoid remount loop */}
+          {loading && (
+            <div className="flex flex-col items-center justify-center py-10">
+              <LuLoader className="animate-spin text-[#5750F1]" size={24} />
+              <p className="mt-2 text-sm text-[#9CA3AF]">Loading meetings...</p>
+            </div>
+          )}
+          <div className={loading ? "hidden" : undefined}>
+            <MeetingCalendar
+              meetings={rawMeetings}
+              onMonthChange={async (start, end) => {
+                setStartDate(start);
+                setEndDate(end);
+                await fetchMeetings(start, end);
+              }}
+              onEventClick={(apiMeeting) => {
+                // Convert APIMeeting → MeetingRow via same mapper used by the table
+                handleNameClick(mapApiMeeting(apiMeeting));
+              }}
+            />
+          </div>
         </div>
       )}
 
-      {/* Confirmation modal for Pending meetings */}
+      {/* Confirmation modal — shown after "Save Changes" on a Pending meeting */}
       {showConfirm && (
         <>
-          <div className="fixed inset-0 z-50 bg-black/50" onClick={() => { setShowConfirm(false); setPendingRowId(null); setSelectedMeeting(null); }} />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+          <div className="fixed inset-0 z-[60] bg-black/50" onClick={() => { setShowConfirm(false); }} />
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 pointer-events-none">
             <div className="bg-white dark:bg-[#0d1520] rounded-2xl shadow-2xl border border-[#E5E7EB] dark:border-[#1F2A37] p-6 w-full max-w-sm pointer-events-auto">
               <div className="flex items-center justify-center w-12 h-12 rounded-full bg-[#FEF3C7] mx-auto mb-4">
                 <LuTriangle size={22} className="text-[#D97706]" />
@@ -771,13 +791,13 @@ export default function MeetingSection() {
               </p>
               <div className="flex gap-3">
                 <button
-                  onClick={() => { setShowConfirm(false); setPendingRowId(null); setSelectedMeeting(null); }}
+                  onClick={() => { setShowConfirm(false); }}
                   className="flex-1 rounded-lg border border-[#D1D5DB] dark:border-[#374151] py-2.5 text-sm font-semibold text-[#374151] dark:text-white hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={() => { setShowConfirm(false); setShowModal(true); }}
+                  onClick={() => { setShowConfirm(false); handleSaved(); }}
                   className="flex-1 rounded-lg bg-[#2563eb] py-2.5 text-sm font-bold text-white hover:bg-[#1d4ed8] transition-colors"
                 >
                   Yes, Start
@@ -791,10 +811,12 @@ export default function MeetingSection() {
       {/* Main meeting modal */}
       <CreateMeetingModal
         open={showModal}
-        onClose={() => { setShowModal(false); setPendingRowId(null); }}
+        onClose={() => { setShowModal(false); setPendingRowId(null); setIsDetailLoading(false); }}
         onCreated={handleCreated}
         onSaved={handleSaved}
+        onSaveConfirm={pendingRowId ? () => { setShowModal(false); setShowConfirm(true); } : undefined}
         initialData={selectedMeeting}
+        isDetailLoading={isDetailLoading}
       />
     </div>
   );

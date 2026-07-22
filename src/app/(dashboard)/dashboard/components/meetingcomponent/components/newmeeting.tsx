@@ -5,7 +5,7 @@ import {
   LuX, LuCalendar, LuClock, LuMapPin, LuFileText,
   LuChevronDown, LuListChecks, LuPaperclip, LuSparkles,
   LuVideo, LuRepeat, LuCheck, LuUsers, LuInfo, LuLayoutGrid,
-  LuCloudUpload, LuFile, LuCircleX,
+  LuCloudUpload, LuFile, LuCircleX, LuDownload, LuLoader,
 } from "react-icons/lu";
 import { useSelector } from "react-redux";
 import type { RootState } from "@/store";
@@ -61,6 +61,8 @@ export interface MeetingRow {
   summary?:         string;
   /** Pre-populated participants for edit mode */
   participantsList?: { id: number; name: string }[];
+  /** Pre-existing uploaded files from the API */
+  files?: { key: string; url: string; size: number; filename: string; content_type: string }[];
 }
 
 export const BLANK: MeetingForm = {
@@ -753,88 +755,241 @@ function ParticipantsDropdown({
 /* --- Files Upload Section ----------------------------------------------- */
 interface UploadingFile {
   id:       string;
-  file:     File;
-  progress: number;         // 0-100
+  name:     string;
+  progress: number;   // 0-100
   done:     boolean;
   error?:   string;
 }
 interface UploadedFile {
-  filename:     string;
+  name:         string;
   size:         number;
-  content_type: string;
-  url:          string;
+  url:          string | null;
+  key:          string | null;
+  contentType:  string | null;
 }
 
 function FilesSection({
   meetingId,
   workspaceId,
   token,
+  pendingFiles,
+  onPendingChange,
+  initialFiles,
 }: {
   meetingId?: string | null;
   workspaceId: number;
   token: string;
+  /** Files staged before the meeting is created (no meetingId yet) */
+  pendingFiles: File[];
+  onPendingChange: (files: File[]) => void;
+  /** Pre-existing files loaded from the GET API response */
+  initialFiles?: { key: string; url: string; size: number; filename: string; content_type: string }[];
 }) {
-  const inputRef                                          = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading]                         = useState<UploadingFile[]>([]);
-  const [uploaded, setUploaded]                           = useState<UploadedFile[]>([]);
-  const [isDragging, setIsDragging]                       = useState(false);
+  const inputRef        = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading]   = useState<UploadingFile[]>([]);
+  const [uploaded, setUploaded]     = useState<UploadedFile[]>(() =>
+    (Array.isArray(initialFiles) ? initialFiles : []).map(f => ({
+      name:        f.filename,
+      size:        f.size,
+      url:         f.url,
+      key:         f.key,
+      contentType: f.content_type,
+    }))
+  );
+  const [isDragging, setIsDragging] = useState(false);
+  const [deletingIdx,   setDeletingIdx]   = useState<number | null>(null);
+  const [downloadingIdx, setDownloadingIdx] = useState<number | null>(null);
 
-  const canUpload = !!meetingId;
+  const API_BASE  = process.env.NEXT_PUBLIC_BACKEND_URL || "";
+
+  // Re-seed uploaded list when initialFiles changes (e.g. modal re-opened for a different meeting)
+  useEffect(() => {
+    setUploaded(
+      (Array.isArray(initialFiles) ? initialFiles : []).map(f => ({
+        name:        f.filename,
+        size:        f.size,
+        url:         f.url,
+        key:         f.key,
+        contentType: f.content_type,
+      }))
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meetingId]);
 
   const formatBytes = (b: number) =>
     b < 1024 ? `${b} B` : b < 1024 * 1024 ? `${(b / 1024).toFixed(1)} KB` : `${(b / (1024 * 1024)).toFixed(1)} MB`;
 
+  // ── Presigned-URL upload (one file at a time) ──────────────────────────────
   const uploadFiles = useCallback(async (files: FileList | File[]) => {
-    if (!canUpload) return;
     const list = Array.from(files);
     if (!list.length) return;
 
-    // Add entries to the uploading queue
-    const entries: UploadingFile[] = list.map(f => ({
-      id: `${Date.now()}_${Math.random()}`,
-      file: f,
-      progress: 0,
-      done: false,
-    }));
-    setUploading(prev => [...prev, ...entries]);
+    if (!meetingId) {
+      // No meeting ID yet — stage locally; parent will upload after creation
+      onPendingChange([...pendingFiles, ...list]);
+      return;
+    }
 
-    const formData = new FormData();
-    list.forEach(f => formData.append("files", f));
+    for (const file of list) {
+      const uid = `${Date.now()}_${Math.random()}`;
+      setUploading(prev => [...prev, { id: uid, name: file.name, progress: 0, done: false }]);
 
-    const ids = entries.map(e => e.id);
+      try {
+        // Step 1 — Initiate
+        const initiateRes = await fetch(
+          `${API_BASE}/api/v1/planner/meetings/${meetingId}/files/initiate?workspace_id=${workspaceId}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({
+              filename:     file.name,
+              size:         file.size,
+              content_type: file.type || "application/octet-stream",
+            }),
+          }
+        );
+        const initData = await initiateRes.json();
+        if (!initData.success) throw new Error(initData.message || "Initiate failed");
 
-    // Use XMLHttpRequest for real upload progress
-    await new Promise<void>((resolve) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", `https://api.lemonmaxx.com/api/v1/planner/meetings/${meetingId}/files?workspace_id=${workspaceId}`);
-      xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-      xhr.upload.onprogress = (evt) => {
-        if (evt.lengthComputable) {
-          const pct = Math.round((evt.loaded / evt.total) * 100);
-          setUploading(prev => prev.map(u => ids.includes(u.id) ? { ...u, progress: pct } : u));
-        }
-      };
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          setUploading(prev => prev.map(u => ids.includes(u.id) ? { ...u, progress: 100, done: true } : u));
-          try {
-            const res = JSON.parse(xhr.responseText);
-            const newFiles: UploadedFile[] = res?.data?.uploaded ?? [];
-            setUploaded(prev => [...prev, ...newFiles]);
-          } catch { /* ignore parse errors */ }
-          setTimeout(() => setUploading(prev => prev.filter(u => !ids.includes(u.id))), 1200);
+        const { upload_type, object_key } = initData.data;
+        let completedParts: { part_number: number; etag: string }[] | null = null;
+
+        // Step 2 — Upload to R2
+        if (upload_type === "simple") {
+          await new Promise<void>((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open("PUT", initData.data.upload_url);
+            xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+            xhr.upload.onprogress = (ev) => {
+              if (ev.lengthComputable) {
+                const pct = Math.round((ev.loaded / ev.total) * 100);
+                setUploading(prev => prev.map(u => u.id === uid ? { ...u, progress: pct } : u));
+              }
+            };
+            xhr.onload = () =>
+              xhr.status >= 200 && xhr.status < 300
+                ? resolve()
+                : reject(new Error(`R2 upload failed (${xhr.status})`));
+            xhr.onerror = () => reject(new Error("R2 upload blocked — CORS issue"));
+            xhr.send(file);
+          });
         } else {
-          setUploading(prev => prev.map(u => ids.includes(u.id) ? { ...u, error: "Upload failed" } : u));
+          // Multipart upload
+          const parts: { part_number: number; url: string }[] = initData.data.parts;
+          const partSize: number = initData.data.part_size;
+          const done: { part_number: number; etag: string }[] = [];
+          let totalUploaded = 0;
+          for (const part of parts) {
+            const start   = (part.part_number - 1) * partSize;
+            const end     = Math.min(start + partSize, file.size);
+            const blob    = file.slice(start, end);
+            const partRes = await fetch(part.url, { method: "PUT", body: blob });
+            if (!partRes.ok) throw new Error(`Part ${part.part_number} failed: ${partRes.status}`);
+            const etag = partRes.headers.get("ETag")?.replace(/"/g, "") || "";
+            done.push({ part_number: part.part_number, etag });
+            totalUploaded += end - start;
+            setUploading(prev => prev.map(u => u.id === uid
+              ? { ...u, progress: Math.round((totalUploaded / file.size) * 100) } : u));
+          }
+          completedParts = done;
         }
-        resolve();
-      };
-      xhr.onerror = () => {
-        setUploading(prev => prev.map(u => ids.includes(u.id) ? { ...u, error: "Network error" } : u));
-        resolve();
-      };
-      xhr.send(formData);
-    });
-  }, [canUpload, meetingId, workspaceId, token]);
+
+        // Step 3 — Complete
+        const completeParams = new URLSearchParams({
+          workspace_id: String(workspaceId),
+          object_key,
+          filename:     file.name,
+          size:         String(file.size),
+          content_type: file.type || "application/octet-stream",
+          upload_type,
+        });
+        if (initData.data.upload_id) completeParams.set("upload_id", initData.data.upload_id);
+
+        const completeRes = await fetch(
+          `${API_BASE}/api/v1/planner/meetings/${meetingId}/files/complete?${completeParams}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ parts: completedParts }),
+          }
+        );
+        const completeData = await completeRes.json();
+        if (!completeData.success) throw new Error(completeData.message || "Complete failed");
+
+        const att = completeData.data;
+        setUploaded(prev => [...prev, {
+          name:        att.filename     || file.name,
+          size:        att.size         || file.size,
+          url:         att.url          || null,
+          key:         att.key          || null,
+          contentType: att.content_type || file.type || null,
+        }]);
+        setUploading(prev => prev.map(u => u.id === uid ? { ...u, progress: 100, done: true } : u));
+        setTimeout(() => setUploading(prev => prev.filter(u => u.id !== uid)), 1200);
+
+      } catch (err: any) {
+        console.error("File upload failed:", err);
+        setUploading(prev => prev.map(u => u.id === uid ? { ...u, error: err.message || "Upload failed" } : u));
+      }
+    }
+  }, [meetingId, workspaceId, token, API_BASE, pendingFiles, onPendingChange]);
+
+  const handleRemove = async (i: number) => {
+    const removed = uploaded[i];
+    if (removed?.key && meetingId) {
+      setDeletingIdx(i);
+      try {
+        await fetch(
+          `${API_BASE}/api/v1/planner/meetings/${meetingId}/files?workspace_id=${workspaceId}&object_key=${encodeURIComponent(removed.key)}`,
+          { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }
+        );
+      } catch (err) {
+        console.error("Failed to delete file:", err);
+        setDeletingIdx(null);
+        return;
+      } finally {
+        setDeletingIdx(null);
+      }
+    }
+    setUploaded(prev => prev.filter((_, idx) => idx !== i));
+  };
+
+  const handleDownload = async (i: number) => {
+    const file = uploaded[i];
+    if (!file?.key || !meetingId) return;
+    setDownloadingIdx(i);
+    try {
+      // Step 1 — get a fresh presigned download URL from the backend
+      const res = await api.get(
+        `/api/v1/planner/meetings/${meetingId}/files/download`,
+        {
+          params: { workspace_id: workspaceId, object_key: file.key },
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      const presignedUrl: string = res.data?.data?.url;
+      if (!presignedUrl) throw new Error("No download URL returned");
+
+      // Step 2 — fetch bytes and build a Blob
+      const response = await fetch(presignedUrl);
+      if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
+      const blob = await response.blob();
+
+      // Step 3 — trigger browser save-as dialog
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = file.name;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(objectUrl);
+    } catch (err) {
+      console.error("Download failed:", err);
+    } finally {
+      setDownloadingIdx(null);
+    }
+  };
 
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -849,43 +1004,64 @@ function FilesSection({
         <span className="text-[10px] font-bold text-[#6B7280] dark:text-[#9CA3AF] uppercase tracking-widest">Files</span>
       </div>
 
-      {/* Drop zone */}
-      {canUpload ? (
-        <div
-          onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
-          onDragLeave={() => setIsDragging(false)}
-          onDrop={onDrop}
-          onClick={() => inputRef.current?.click()}
-          className={`flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed cursor-pointer transition-all py-6 ${
-            isDragging
-              ? "border-[#2563eb] bg-[#EFF6FF] dark:bg-[#0d1a2e]"
-              : "border-[#D1D5DB] dark:border-[#374151] hover:border-[#2563eb]/60 hover:bg-[#F9FAFB] dark:hover:bg-[#0d1520]"
-          }`}
-        >
-          <LuCloudUpload size={22} className={isDragging ? "text-[#2563eb]" : "text-[#9CA3AF]"} />
-          <p className="text-xs font-semibold text-[#6B7280] dark:text-[#9CA3AF]">
-            <span className="text-[#2563eb] font-bold">Click to upload</span> or drag &amp; drop
-          </p>
-          <p className="text-[10px] text-[#9CA3AF]">Any file type · Multiple files supported</p>
-          <input
-            ref={inputRef}
-            type="file"
-            multiple
-            className="hidden"
-            onChange={e => { if (e.target.files) uploadFiles(e.target.files); e.target.value = ""; }}
-          />
+      {/* Drop zone — always shown; stages locally when no meetingId */}
+      <div
+        onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
+        onDragLeave={() => setIsDragging(false)}
+        onDrop={onDrop}
+        onClick={() => inputRef.current?.click()}
+        className={`flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed cursor-pointer transition-all py-6 ${
+          isDragging
+            ? "border-[#2563eb] bg-[#EFF6FF] dark:bg-[#0d1a2e]"
+            : "border-[#D1D5DB] dark:border-[#374151] hover:border-[#2563eb]/60 hover:bg-[#F9FAFB] dark:hover:bg-[#0d1520]"
+        }`}
+      >
+        <LuCloudUpload size={22} className={isDragging ? "text-[#2563eb]" : "text-[#9CA3AF]"} />
+        <p className="text-xs font-semibold text-[#6B7280] dark:text-[#9CA3AF]">
+          <span className="text-[#2563eb] font-bold">Click to upload</span> or drag &amp; drop
+        </p>
+        <p className="text-[10px] text-[#9CA3AF]">
+          {meetingId ? "Any file type · Multiple files supported" : "Files will be uploaded when the meeting is created"}
+        </p>
+        <input
+          ref={inputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={e => { if (e.target.files) uploadFiles(e.target.files); e.target.value = ""; }}
+        />
+      </div>
+
+      {/* Pending (staged) files — shown when no meetingId yet */}
+      {pendingFiles.length > 0 && (
+        <div className="mt-3 flex flex-col gap-1.5">
+          {pendingFiles.map((f, i) => (
+            <div key={i} className="flex items-center gap-2 rounded-lg border border-[#E5E7EB] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] px-3 py-2">
+              <LuFile size={14} className="shrink-0 text-[#6B7280] dark:text-[#9CA3AF]" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-[#111928] dark:text-white truncate">{f.name}</p>
+                <p className="text-[10px] text-[#9CA3AF]">{formatBytes(f.size)}</p>
+              </div>
+              <span className="text-[9px] font-semibold text-[#f59e0b] bg-[#fef3c7] dark:bg-[#451a03]/40 dark:text-[#fbbf24] px-1.5 py-0.5 rounded-full shrink-0">Staged</span>
+              <button
+                type="button"
+                onClick={() => onPendingChange(pendingFiles.filter((_, idx) => idx !== i))}
+                className="shrink-0 text-[#9CA3AF] hover:text-red-500 transition-colors"
+              >
+                <LuCircleX size={14} />
+              </button>
+            </div>
+          ))}
         </div>
-      ) : (
-        <p className="text-xs text-[#9CA3AF] italic">Save the meeting first to attach files.</p>
       )}
 
-      {/* Uploading queue with progress bars */}
+      {/* Uploading progress bars */}
       {uploading.length > 0 && (
         <div className="mt-3 flex flex-col gap-2">
           {uploading.map(u => (
             <div key={u.id} className="rounded-lg border border-[#E5E7EB] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] px-3 py-2">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-medium text-[#111928] dark:text-white truncate max-w-[200px]">{u.file.name}</span>
+                <span className="text-xs font-medium text-[#111928] dark:text-white truncate max-w-[200px]">{u.name}</span>
                 <span className="text-[10px] text-[#9CA3AF]">
                   {u.error ? <span className="text-red-500">{u.error}</span> : u.done ? "✓ Done" : `${u.progress}%`}
                 </span>
@@ -894,10 +1070,7 @@ function FilesSection({
                 <div className="h-1.5 rounded-full bg-[#E5E7EB] dark:bg-[#1F2A37] overflow-hidden">
                   <div
                     className="h-full rounded-full transition-all duration-300"
-                    style={{
-                      width: `${u.progress}%`,
-                      backgroundColor: u.done ? "#22c55e" : "#2563eb",
-                    }}
+                    style={{ width: `${u.progress}%`, backgroundColor: u.done ? "#22c55e" : "#2563eb" }}
                   />
                 </div>
               )}
@@ -909,22 +1082,72 @@ function FilesSection({
       {/* Uploaded files list */}
       {uploaded.length > 0 && (
         <div className="mt-3 flex flex-col gap-1.5">
-          {uploaded.map((f, i) => (
-            <div key={i} className="flex items-center gap-2 rounded-lg border border-[#E5E7EB] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] px-3 py-2">
-              <LuFile size={14} className="shrink-0 text-[#6B7280] dark:text-[#9CA3AF]" />
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-[#111928] dark:text-white truncate">{f.filename}</p>
-                <p className="text-[10px] text-[#9CA3AF]">{formatBytes(f.size)} · {f.content_type}</p>
+          {uploaded.map((f, i) => {
+            const isImage = (f.contentType?.startsWith("image/") || /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(f.name));
+            return (
+              <div key={i} className="flex items-center gap-2 group rounded-md bg-[#F3F4F6] dark:bg-[#0a1018] px-2.5 py-1.5">
+                {/* Thumbnail or file icon */}
+                {f.url && isImage ? (
+                  <div className="h-7 w-7 rounded border border-[#E6EBF1] dark:border-[#1F2A37] overflow-hidden shrink-0 bg-white dark:bg-[#0d1520]">
+                    <img src={f.url} alt={f.name} className="h-full w-full object-cover" />
+                  </div>
+                ) : (
+                  <LuFile size={14} className="text-[#5750F1] shrink-0" />
+                )}
+
+                {/* File name — clickable link if url available */}
+                <span className="text-[11px] text-[#111928] dark:text-[#D1D5DB] flex-1 min-w-0 truncate">
+                  {f.url ? (
+                    <a
+                      href={f.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="hover:text-[#5750F1] dark:hover:text-[#7c78f3] hover:underline"
+                    >
+                      {f.name}
+                    </a>
+                  ) : (
+                    f.name
+                  )}
+                </span>
+
+                {/* File size */}
+                <span className="text-[10px] text-[#9CA3AF] shrink-0">{formatBytes(f.size)}</span>
+
+                {/* Download button */}
+                {f.key && meetingId ? (
+                  <button
+                    type="button"
+                    onClick={() => handleDownload(i)}
+                    disabled={downloadingIdx === i}
+                    className="text-[#9CA3AF] hover:text-[#5750F1] transition-colors shrink-0 p-1 disabled:opacity-60 disabled:cursor-wait"
+                    title="Download file"
+                  >
+                    {downloadingIdx === i
+                      ? <svg className="animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" strokeOpacity="0.25" /><path d="M12 2a10 10 0 0 1 10 10" /></svg>
+                      : <LuDownload size={12} />}
+                  </button>
+                ) : (
+                  <span className="text-[#D1D5DB] dark:text-[#374151] shrink-0 p-1 cursor-not-allowed" title="Upload in progress">
+                    <LuDownload size={12} />
+                  </span>
+                )}
+
+                {/* Delete button */}
+                <button
+                  type="button"
+                  disabled={deletingIdx === i}
+                  onClick={() => handleRemove(i)}
+                  className="text-[#9CA3AF] hover:text-red-500 transition-colors disabled:opacity-40 shrink-0 p-1"
+                  title="Delete file"
+                >
+                  {deletingIdx === i
+                    ? <span className="animate-spin inline-block w-3 h-3 border-2 border-[#9CA3AF] border-t-transparent rounded-full" />
+                    : <LuCircleX size={12} />}
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setUploaded(prev => prev.filter((_, idx) => idx !== i))}
-                className="shrink-0 text-[#9CA3AF] hover:text-red-500 transition-colors"
-              >
-                <LuCircleX size={14} />
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -939,16 +1162,23 @@ export default function CreateMeetingModal({
   onClose,
   onCreated,
   onSaved,
+  onSaveConfirm,
   initialData,
+  isDetailLoading = false,
 }: {
   open: boolean;
   onClose: () => void;
   onCreated?: (form: MeetingForm) => void;
   onSaved?: () => void;
+  /** Called instead of saving when a Pending meeting's "Save Changes" is clicked */
+  onSaveConfirm?: () => void;
   initialData?: MeetingRow | null;
+  /** When true, show a loading overlay while the detail API is being fetched */
+  isDetailLoading?: boolean;
 }) {
   const [tab, setTab] = useState<ModalTab>("design");
   const [form, setForm] = useState<MeetingForm>(BLANK);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<{ id: number; name: string }[]>([]);
   const [users, setUsers] = useState<{ id: number; name: string }[]>([]);
   // Recurrence sub-fields
@@ -956,6 +1186,7 @@ export default function CreateMeetingModal({
   const [repeatDays, setRepeatDays] = useState<Set<string>>(new Set());
   const [monthlyDates, setMonthlyDates] = useState<Set<number>>(new Set());
   const [showMonthPicker, setShowMonthPicker] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const workspaceId = useSelector((state: RootState) => state.workspace.selectedId ?? 1);
   const { token } = useAuth();
 
@@ -1050,6 +1281,58 @@ export default function CreateMeetingModal({
   const set = (field: keyof MeetingForm) => (value: string | boolean) =>
     setForm(prev => ({ ...prev, [field]: value }));
 
+  // ── Presigned-URL upload helper (mirrors FilesSection's logic) ──────────────
+  const uploadFilesToMeeting = async (meetingId: string, files: File[]) => {
+    const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "";
+    for (const file of files) {
+      try {
+        const initiateRes = await fetch(
+          `${API_BASE}/api/v1/planner/meetings/${meetingId}/files/initiate?workspace_id=${workspaceId}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ filename: file.name, size: file.size, content_type: file.type || "application/octet-stream" }),
+          }
+        );
+        const initData = await initiateRes.json();
+        if (!initData.success) throw new Error(initData.message || "Initiate failed");
+        const { upload_type, object_key } = initData.data;
+        let completedParts: { part_number: number; etag: string }[] | null = null;
+        if (upload_type === "simple") {
+          await new Promise<void>((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open("PUT", initData.data.upload_url);
+            xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+            xhr.onload = () => xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`R2 upload failed (${xhr.status})`));
+            xhr.onerror = () => reject(new Error("R2 CORS error"));
+            xhr.send(file);
+          });
+        } else {
+          const parts: { part_number: number; url: string }[] = initData.data.parts;
+          const partSize: number = initData.data.part_size;
+          const done: { part_number: number; etag: string }[] = [];
+          for (const part of parts) {
+            const start = (part.part_number - 1) * partSize;
+            const end   = Math.min(start + partSize, file.size);
+            const partRes = await fetch(part.url, { method: "PUT", body: file.slice(start, end) });
+            if (!partRes.ok) throw new Error(`Part ${part.part_number} failed`);
+            done.push({ part_number: part.part_number, etag: partRes.headers.get("ETag")?.replace(/"/g, "") || "" });
+          }
+          completedParts = done;
+        }
+        const completeParams = new URLSearchParams({ workspace_id: String(workspaceId), object_key, filename: file.name, size: String(file.size), content_type: file.type || "application/octet-stream", upload_type });
+        if (initData.data.upload_id) completeParams.set("upload_id", initData.data.upload_id);
+        await fetch(`${API_BASE}/api/v1/planner/meetings/${meetingId}/files/complete?${completeParams}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ parts: completedParts }),
+        });
+      } catch (err) {
+        console.error("Pending file upload failed:", err);
+      }
+    }
+  };
+
   const handleCreate = async () => {
     if (isReadOnly) {
       // ---- UPDATE existing meeting via PUT ----
@@ -1083,13 +1366,23 @@ export default function CreateMeetingModal({
         score:            form.reportScore ? parseFloat(form.reportScore) : 0,
       };
 
+      setIsSaving(true);
       try {
         await api.put(`/api/v1/planner/meetings/${initialData!.id}`, updatePayload, {
           headers: { Authorization: `Bearer ${token}` },
         });
+
+        if (onSaveConfirm) {
+          onSaveConfirm();
+          setForm(BLANK);
+          return;
+        }
+
         onSaved?.();
       } catch (err) {
         console.error("Failed to update meeting via API:", err);
+      } finally {
+        setIsSaving(false);
       }
 
       onClose();
@@ -1132,13 +1425,22 @@ export default function CreateMeetingModal({
       status:           "pending"
     };
 
+    setIsSaving(true);
     try {
-      await api.post("/api/v1/planner/meetings", payload, {
+      const res = await api.post("/api/v1/planner/meetings", payload, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      const newId = res.data?.data?.id ?? res.data?.id;
+      // Upload any files staged before the meeting existed
+      if (newId && pendingFiles.length > 0) {
+        await uploadFilesToMeeting(String(newId), pendingFiles);
+        setPendingFiles([]);
+      }
       onCreated?.(form);
     } catch (err) {
       console.error("Failed to create meeting via API:", err);
+    } finally {
+      setIsSaving(false);
     }
 
     onClose();
@@ -1174,6 +1476,14 @@ export default function CreateMeetingModal({
             </button>
           ))}
         </div>
+
+        {/* Detail loading overlay */}
+        {isDetailLoading && (
+          <div className="absolute inset-0 top-[105px] z-20 flex flex-col items-center justify-center bg-white/80 dark:bg-[#0d1520]/80 backdrop-blur-sm">
+            <LuLoader className="animate-spin text-[#5750F1]" size={28} />
+            <p className="mt-3 text-sm text-[#6B7280] dark:text-[#9CA3AF]">Loading meeting details...</p>
+          </div>
+        )}
 
         {/* Body — Design tab */}
         {tab === "design" && (
@@ -1374,14 +1684,79 @@ export default function CreateMeetingModal({
             {/* Right panel: always editable (Agenda, Prework, Files) */}
             <div className="w-full lg:w-[550px] shrink-0 lg:overflow-y-auto bg-[#F9FAFB] dark:bg-[#080f1a]">
               <div className="px-5 py-5 flex flex-col gap-6">
+                {/* Score picker — shown for 1-to-1 meetings */}
+                {form.type === "1-to-1" && (
+                  <>
+                    <div className="rounded-xl border border-[#E5E7EB] dark:border-[#1F2A37] bg-white dark:bg-[#0a1628] p-4">
+                      <p className="text-[10px] font-bold text-[#6B7280] dark:text-[#9CA3AF] uppercase tracking-widest mb-3">Report Score</p>
+                      <div className="flex items-center gap-4">
+                        {/* Decrement */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const cur = parseInt(form.reportScore || "1", 10);
+                            if (cur > 1) set("reportScore")(String(cur - 1));
+                          }}
+                          className="flex items-center justify-center w-9 h-9 rounded-full border border-[#D1D5DB] dark:border-[#374151] bg-white dark:bg-[#0d1520] text-[#6B7280] dark:text-[#9CA3AF] hover:border-[#2563eb] hover:text-[#2563eb] transition-colors text-lg font-bold select-none"
+                        >−</button>
+
+                        {/* Score display */}
+                        <div className="flex flex-col items-center flex-1">
+                          <span className="text-4xl font-extrabold text-[#111928] dark:text-white leading-none">
+                            {form.reportScore || "—"}
+                          </span>
+                          <span className="text-[10px] text-[#9CA3AF] mt-1">out of 10</span>
+                        </div>
+
+                        {/* Increment */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const cur = parseInt(form.reportScore || "0", 10);
+                            if (cur < 10) set("reportScore")(String(cur + 1));
+                          }}
+                          className="flex items-center justify-center w-9 h-9 rounded-full border border-[#D1D5DB] dark:border-[#374151] bg-white dark:bg-[#0d1520] text-[#6B7280] dark:text-[#9CA3AF] hover:border-[#2563eb] hover:text-[#2563eb] transition-colors text-lg font-bold select-none"
+                        >+</button>
+                      </div>
+
+                      {/* Segmented bar 1–10 */}
+                      <div className="flex gap-1 mt-4">
+                        {Array.from({ length: 10 }, (_, i) => i + 1).map(n => {
+                          const active = parseInt(form.reportScore || "0", 10) >= n;
+                          const color = n <= 3 ? "#ef4444" : n <= 6 ? "#f59e0b" : "#22c55e";
+                          return (
+                            <button
+                              key={n}
+                              type="button"
+                              onClick={() => set("reportScore")(String(n))}
+                              style={{ backgroundColor: active ? color : undefined }}
+                              className={`flex-1 h-2 rounded-full transition-all ${active ? "" : "bg-[#E5E7EB] dark:bg-[#1F2A37]"}`}
+                              title={String(n)}
+                            />
+                          );
+                        })}
+                      </div>
+                      <div className="flex justify-between mt-1 px-0.5">
+                        <span className="text-[9px] text-[#EF4444] font-semibold">Low</span>
+                        <span className="text-[9px] text-[#F59E0B] font-semibold">Mid</span>
+                        <span className="text-[9px] text-[#22C55E] font-semibold">High</span>
+                      </div>
+                    </div>
+                    <div className="h-px bg-[#E5E7EB] dark:bg-[#1F2A37]" />
+                  </>
+                )}
                 <div><RightHeading icon={<LuListChecks size={13} />} label="Agenda" /><RichNoteEditor placeholder="Write agenda items..." readOnly={false} value={form.agenda} onChange={set("agenda")} /></div>
                 <div className="h-px bg-[#E5E7EB] dark:bg-[#1F2A37]" />
                 <div><RightHeading icon={<LuRepeat size={13} />} label="Prework" /><RichNoteEditor placeholder="Write prework actions..." readOnly={false} value={form.prework} onChange={set("prework")} /></div>
                 <div className="h-px bg-[#E5E7EB] dark:bg-[#1F2A37]" />
                 <FilesSection
+                  key={initialData?.id ?? "new"}
                   meetingId={initialData?.id ?? null}
                   workspaceId={Number(workspaceId)}
                   token={token ?? ""}
+                  pendingFiles={pendingFiles}
+                  onPendingChange={setPendingFiles}
+                  initialFiles={initialData?.files}
                 />
               </div>
             </div>
@@ -1390,65 +1765,6 @@ export default function CreateMeetingModal({
 
         {tab === "reports" && (
           <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4">
-
-            {/* Score picker — shown for 1-to-1 meetings */}
-            {form.type === "1-to-1" && (
-              <div className="rounded-xl border border-[#E5E7EB] dark:border-[#1F2A37] bg-[#F9FAFB] dark:bg-[#0a1628] p-4">
-                <p className="text-[10px] font-bold text-[#6B7280] dark:text-[#9CA3AF] uppercase tracking-widest mb-3">Report Score</p>
-                <div className="flex items-center gap-4">
-                  {/* Decrement */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const cur = parseInt(form.reportScore || "1", 10);
-                      if (cur > 1) set("reportScore")(String(cur - 1));
-                    }}
-                    className="flex items-center justify-center w-9 h-9 rounded-full border border-[#D1D5DB] dark:border-[#374151] bg-white dark:bg-[#0d1520] text-[#6B7280] dark:text-[#9CA3AF] hover:border-[#2563eb] hover:text-[#2563eb] transition-colors text-lg font-bold select-none"
-                  >−</button>
-
-                  {/* Score display */}
-                  <div className="flex flex-col items-center flex-1">
-                    <span className="text-4xl font-extrabold text-[#111928] dark:text-white leading-none">
-                      {form.reportScore || "—"}
-                    </span>
-                    <span className="text-[10px] text-[#9CA3AF] mt-1">out of 10</span>
-                  </div>
-
-                  {/* Increment */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const cur = parseInt(form.reportScore || "0", 10);
-                      if (cur < 10) set("reportScore")(String(cur + 1));
-                    }}
-                    className="flex items-center justify-center w-9 h-9 rounded-full border border-[#D1D5DB] dark:border-[#374151] bg-white dark:bg-[#0d1520] text-[#6B7280] dark:text-[#9CA3AF] hover:border-[#2563eb] hover:text-[#2563eb] transition-colors text-lg font-bold select-none"
-                  >+</button>
-                </div>
-
-                {/* Segmented bar 1–10 */}
-                <div className="flex gap-1 mt-4">
-                  {Array.from({ length: 10 }, (_, i) => i + 1).map(n => {
-                    const active = parseInt(form.reportScore || "0", 10) >= n;
-                    const color = n <= 3 ? "#ef4444" : n <= 6 ? "#f59e0b" : "#22c55e";
-                    return (
-                      <button
-                        key={n}
-                        type="button"
-                        onClick={() => set("reportScore")(String(n))}
-                        style={{ backgroundColor: active ? color : undefined }}
-                        className={`flex-1 h-2 rounded-full transition-all ${active ? "" : "bg-[#E5E7EB] dark:bg-[#1F2A37]"}`}
-                        title={String(n)}
-                      />
-                    );
-                  })}
-                </div>
-                <div className="flex justify-between mt-1 px-0.5">
-                  <span className="text-[9px] text-[#EF4444] font-semibold">Low</span>
-                  <span className="text-[9px] text-[#F59E0B] font-semibold">Mid</span>
-                  <span className="text-[9px] text-[#22C55E] font-semibold">High</span>
-                </div>
-              </div>
-            )}
 
             <div>
               <p className="text-[10px] font-bold text-[#6B7280] dark:text-[#9CA3AF] uppercase tracking-widest mb-2">Report Notes</p>
@@ -1466,9 +1782,20 @@ export default function CreateMeetingModal({
 
         {/* Footer */}
         <div className={`flex gap-3 px-6 py-4 border-t ${borderColor} shrink-0 ${panelBg}`}>
-          <button onClick={onClose} className="flex-1 rounded-lg border border-[#D1D5DB] dark:border-[#374151] py-3 text-sm font-semibold text-[#374151] dark:text-white hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors">Cancel</button>
-          <button onClick={handleCreate} disabled={!form.name.trim()} className="flex-1 rounded-lg bg-[#2563eb] py-3 text-sm font-bold text-white hover:bg-[#1d4ed8] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-            {isReadOnly ? "Save Changes" : "Create Meeting"}
+          <button onClick={onClose} disabled={isSaving} className="flex-1 rounded-lg border border-[#D1D5DB] dark:border-[#374151] py-3 text-sm font-semibold text-[#374151] dark:text-white hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Cancel</button>
+          <button
+            onClick={handleCreate}
+            disabled={!form.name.trim() || isSaving}
+            className="flex-1 rounded-lg bg-[#2563eb] py-3 text-sm font-bold text-white hover:bg-[#1d4ed8] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+          >
+            {isSaving ? (
+              <>
+                <svg className="animate-spin" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" strokeOpacity="0.25" /><path d="M12 2a10 10 0 0 1 10 10" /></svg>
+                {isReadOnly ? "Saving..." : "Creating..."}
+              </>
+            ) : (
+              isReadOnly ? "Save Changes" : "Create Meeting"
+            )}
           </button>
         </div>
       </div>
