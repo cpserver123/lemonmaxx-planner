@@ -5,15 +5,15 @@ import { LuCalendar, LuChevronLeft, LuChevronRight } from "react-icons/lu";
 
 /* --- Types -------------------------------------------------------------- */
 export interface MeetingEvent {
-  id:       string;
-  title:    string;
+  id:        string;
+  title:     string;
   dayOfWeek: number;   // 0=Mon ... 6=Sun
-  startHr:  number;
-  startMin: number;
-  endHr:    number;
-  endMin:   number;
-  color:    string;
-  dueDate?: string;
+  startHr:   number;
+  startMin:  number;
+  endHr:     number;
+  endMin:    number;
+  color:     string;
+  dueDate?:  string;
 }
 
 /* --- Constants ---------------------------------------------------------- */
@@ -31,7 +31,7 @@ export const DUMMY_EVENTS: MeetingEvent[] = [
 
 /* --- Calendar helpers --------------------------------------------------- */
 const HOURS_CAL       = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
-const PX_PER_HOUR_CAL = 64;
+const PX_PER_HOUR_CAL = 80;
 const TIME_COL_W      = 56;
 const DAYS_SHORT      = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const LONG_MONTHS_CAL = ["January","February","March","April","May","June","July","August","September","October","November","December"];
@@ -41,7 +41,7 @@ function calTop(hr: number, min: number) {
   return ((hr - HOURS_CAL[0]) + min / 60) * PX_PER_HOUR_CAL;
 }
 function calHeight(sHr: number, sMin: number, eHr: number, eMin: number) {
-  return Math.max(((eHr - sHr) + (eMin - sMin) / 60) * PX_PER_HOUR_CAL, 48);
+  return Math.max(((eHr - sHr) + (eMin - sMin) / 60) * PX_PER_HOUR_CAL, 44);
 }
 
 /** Get Monday of the week containing `date` */
@@ -54,28 +54,85 @@ function getMonday(d: Date) {
   return m;
 }
 
+/** Convert event time to minutes-from-midnight for overlap math */
+function toMins(hr: number, min: number) { return hr * 60 + min; }
+
+/**
+ * Assigns each event a `col` (0-indexed) and `totalCols` so overlapping
+ * events sit side-by-side rather than stacked.
+ */
+function layoutEvents(events: MeetingEvent[]) {
+  type LayoutEvent = MeetingEvent & { col: number; totalCols: number };
+
+  if (!events.length) return [] as LayoutEvent[];
+
+  // Sort by start time
+  const sorted = [...events].sort(
+    (a, b) => toMins(a.startHr, a.startMin) - toMins(b.startHr, b.startMin)
+  );
+
+  const result: LayoutEvent[] = sorted.map(e => ({ ...e, col: 0, totalCols: 1 }));
+
+  // Find clusters of overlapping events
+  let i = 0;
+  while (i < result.length) {
+    // Grow cluster while next event overlaps current cluster end
+    let clusterEnd = toMins(result[i].endHr, result[i].endMin);
+    let j = i + 1;
+    while (j < result.length && toMins(result[j].startHr, result[j].startMin) < clusterEnd) {
+      clusterEnd = Math.max(clusterEnd, toMins(result[j].endHr, result[j].endMin));
+      j++;
+    }
+    // Assign columns within cluster using a greedy algorithm
+    const cluster = result.slice(i, j);
+    const cols: number[] = []; // cols[k] = end-minute of last event assigned to column k
+    cluster.forEach(ev => {
+      let assigned = -1;
+      for (let c = 0; c < cols.length; c++) {
+        if (toMins(ev.startHr, ev.startMin) >= cols[c]) {
+          assigned = c;
+          cols[c] = toMins(ev.endHr, ev.endMin);
+          break;
+        }
+      }
+      if (assigned === -1) {
+        assigned = cols.length;
+        cols.push(toMins(ev.endHr, ev.endMin));
+      }
+      ev.col = assigned;
+    });
+    // Set totalCols for all events in cluster
+    cluster.forEach(ev => { ev.totalCols = cols.length; });
+    i = j;
+  }
+
+  return result;
+}
+
 export interface APIMeeting {
-  id:               number;
-  name:             string;
-  type:             string;
-  recurrence:       string;
-  weekly_days:      string[];
-  due_date_time:    string;
-  start_date_time:  string | null;
-  duration:         number;
-  status:           string;
-  created_by_name:  string;
+  id:                number;
+  name:              string;
+  type:              string;
+  recurrence:        string;
+  weekly_days:       string[];
+  due_date_time:     string;
+  start_date_time:   string | null;
+  duration:          number;
+  status:            string;
+  created_by_name:   string;
   participant_count: number;
-  next_instance:    string | null;
+  next_instance:     string | null;
 }
 
 /* --- Meeting Calendar --------------------------------------------------- */
 export default function MeetingCalendar({
   meetings = [],
   onMonthChange,
+  onEventClick,
 }: {
-  meetings?: APIMeeting[];
+  meetings?:      APIMeeting[];
   onMonthChange?: (start: Date, end: Date) => void;
+  onEventClick?:  (meeting: APIMeeting) => void;
 }) {
   const today      = useMemo(() => new Date(), []);
   const [weekStart, setWeekStart] = useState(() => getMonday(today));
@@ -83,7 +140,10 @@ export default function MeetingCalendar({
   const [pickerYear,  setPickerYear]  = useState(today.getFullYear());
   const [pickerMonth, setPickerMonth] = useState(today.getMonth());
 
-  const lastFiredRef = useRef<string>("");
+  const lastFiredRef    = useRef<string>("");
+  const onMonthChangeRef = useRef(onMonthChange);
+  // Keep ref in sync without making it a useEffect dependency
+  onMonthChangeRef.current = onMonthChange;
 
   useEffect(() => {
     const midWeek = new Date(weekStart);
@@ -95,9 +155,9 @@ export default function MeetingCalendar({
       lastFiredRef.current = key;
       const start = new Date(y, m, 1);
       const end = new Date(y, m + 1, 0);
-      onMonthChange?.(start, end);
+      onMonthChangeRef.current?.(start, end);
     }
-  }, [weekStart, onMonthChange]);
+  }, [weekStart]); // ← onMonthChange intentionally excluded via ref pattern
 
   const prevWeek = () => setWeekStart(d => { const n = new Date(d); n.setDate(d.getDate() - 7); return n; });
   const nextWeek = () => setWeekStart(d => { const n = new Date(d); n.setDate(d.getDate() + 7); return n; });
@@ -114,11 +174,18 @@ export default function MeetingCalendar({
     return d;
   });
 
-  const totalH    = HOURS_CAL.length * PX_PER_HOUR_CAL;
+  const totalH = HOURS_CAL.length * PX_PER_HOUR_CAL;
+
+  // Map meeting id → APIMeeting for click handler
+  const meetingById = useMemo(() => {
+    const map = new Map<string, APIMeeting>();
+    meetings.forEach(m => map.set(String(m.id), m));
+    return map;
+  }, [meetings]);
 
   const allEvents = useMemo(() => {
     const startT = weekStart.getTime();
-    const endT = weekEnd.getTime() + 24 * 60 * 60 * 1000;
+    const endT   = weekEnd.getTime() + 24 * 60 * 60 * 1000;
 
     return meetings.map((m) => {
       const displayDate = m.start_date_time || m.next_instance || m.due_date_time;
@@ -127,16 +194,16 @@ export default function MeetingCalendar({
       const t = mDate.getTime();
       if (t < startT || t >= endT) return null;
 
-      const jsDay = mDate.getDay();
+      const jsDay    = mDate.getDay();
       const dayOfWeek = jsDay === 0 ? 6 : jsDay - 1;
 
-      const startHr = mDate.getHours();
+      const startHr  = mDate.getHours();
       const startMin = mDate.getMinutes();
 
       const duration = m.duration || 30;
-      const endDate = new Date(mDate.getTime() + duration * 60 * 1000);
-      const endHr = endDate.getHours();
-      const endMin = endDate.getMinutes();
+      const endDate  = new Date(mDate.getTime() + duration * 60 * 1000);
+      const endHr    = endDate.getHours();
+      const endMin   = endDate.getMinutes();
 
       const typeColors: Record<string, string> = {
         Strategic: "#8b5cf6",
@@ -158,9 +225,18 @@ export default function MeetingCalendar({
         endMin,
         color,
         dueDate: m.due_date_time,
-      };
+      } as MeetingEvent;
     }).filter(Boolean) as MeetingEvent[];
   }, [meetings, weekStart, weekEnd]);
+
+  // Pre-layout events per day column (resolves overlaps)
+  const layoutByDay = useMemo(() => {
+    const map: Record<number, ReturnType<typeof layoutEvents>> = {};
+    for (let d = 0; d < 7; d++) {
+      map[d] = layoutEvents(allEvents.filter(e => e.dayOfWeek === d));
+    }
+    return map;
+  }, [allEvents]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -198,6 +274,13 @@ export default function MeetingCalendar({
                           setWeekStart(getMonday(target));
                           setPickerMonth(i);
                           setShowPicker(false);
+                          // Directly fire API fetch for the full selected month.
+                          // Don't rely on the useEffect (it may skip if the key already matches).
+                          const start = new Date(pickerYear, i, 1);
+                          const end   = new Date(pickerYear, i + 1, 0);
+                          // Update ref so the useEffect won't double-fire for the same month
+                          lastFiredRef.current = `${pickerYear}-${i}`;
+                          onMonthChange?.(start, end);
                         }}
                         className={`rounded-lg py-1.5 text-xs font-medium transition-colors ${
                           i === pickerMonth && pickerYear === weekStart.getFullYear()
@@ -224,7 +307,7 @@ export default function MeetingCalendar({
       {/* Grid */}
       <div className="rounded-xl border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] overflow-hidden">
         <div className="overflow-x-auto">
-          <div className="w-full">
+          <div className="w-full" style={{ minWidth: 640 }}>
             {/* Day header */}
             <div className="flex border-b border-[#E6EBF1] dark:border-[#1F2A37] bg-[#F9FAFB] dark:bg-[#0a1018] sticky top-0 z-20" style={{ paddingLeft: TIME_COL_W }}>
               {dayDates.map((d, di) => {
@@ -251,39 +334,49 @@ export default function MeetingCalendar({
 
               {/* Day columns */}
               {dayDates.map((_, di) => {
-                const colEvents = allEvents.filter(e => e.dayOfWeek === di);
+                const colEvents = layoutByDay[di] ?? [];
                 return (
                   <div key={di} className="flex-1 border-l border-[#E6EBF1] dark:border-[#1F2A37] relative" style={{ height: totalH }}>
+                    {/* Hour grid lines */}
                     {HOURS_CAL.map((_, hi) => (
                       <div key={hi} className="absolute left-0 right-0 border-t border-[#E6EBF1] dark:border-[#1F2A37]" style={{ top: hi * PX_PER_HOUR_CAL }} />
                     ))}
+
+                    {/* Events — laid out side-by-side when overlapping */}
                     {colEvents.map(ev => {
                       const top    = calTop(ev.startHr, ev.startMin);
                       const height = calHeight(ev.startHr, ev.startMin, ev.endHr, ev.endMin);
+                      const pct    = 100 / ev.totalCols;
+                      const left   = `calc(${ev.col * pct}% + 2px)`;
+                      const width  = `calc(${pct}% - 4px)`;
+                      const raw    = meetingById.get(ev.id);
+
                       return (
                         <div
                           key={ev.id}
-                          className="absolute left-0.5 right-0.5 rounded-md px-1.5 py-1 overflow-hidden cursor-pointer hover:opacity-90 transition-opacity flex flex-col justify-start"
-                          style={{ top: top + 1, height: height - 2, background: ev.color + "cc", borderLeft: `3px solid ${ev.color}` }}
+                          className="absolute rounded-md px-2 py-1.5 overflow-hidden cursor-pointer hover:brightness-110 active:scale-[0.98] transition-all flex flex-col justify-start"
+                          style={{
+                            top:    top + 1,
+                            height: height - 2,
+                            left,
+                            width,
+                            background:  ev.color + "dd",
+                            borderLeft: `3px solid ${ev.color}`,
+                          }}
+                          onClick={() => raw && onEventClick?.(raw)}
                         >
-                          <p className="text-[9px] font-semibold text-white leading-tight truncate">{ev.title}</p>
-                          <p className="text-[8px] text-white/70 mt-0.5 font-medium">
-                            {String(ev.startHr).padStart(2, "0")}:{String(ev.startMin).padStart(2, "0")}-{String(ev.endHr).padStart(2, "0")}:{String(ev.endMin).padStart(2, "0")}
+                          <p className="text-[11px] font-bold text-white leading-tight" style={{ overflow: "hidden", display: "-webkit-box", WebkitLineClamp: height - 2 > 54 ? 2 : 1, WebkitBoxOrient: "vertical" }}>{ev.title}</p>
+                          <p className="text-[10px] text-white/80 mt-0.5 font-medium whitespace-nowrap">
+                            {String(ev.startHr).padStart(2, "0")}:{String(ev.startMin).padStart(2, "0")}–{String(ev.endHr).padStart(2, "0")}:{String(ev.endMin).padStart(2, "0")}
                           </p>
-                          {ev.dueDate && (
-                            <p className="text-[7.5px] text-white/60 mt-0.5 truncate font-normal">
+                          {ev.dueDate && height - 2 >= 72 && (
+                            <p className="text-[9px] text-white/60 mt-0.5 truncate font-normal">
                               Due: {(() => {
                                 try {
-                                  const d = new Date(ev.dueDate);
-                                  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-                                  const mName = months[d.getMonth()];
-                                  const dateNum = d.getDate();
-                                  const hrVal = String(d.getHours()).padStart(2, "0");
-                                  const minVal = String(d.getMinutes()).padStart(2, "0");
-                                  return `${mName} ${dateNum}, ${hrVal}:${minVal}`;
-                                } catch (e) {
-                                  return ev.dueDate;
-                                }
+                                  const d = new Date(ev.dueDate!);
+                                  const mName = MONTH_NAMES_CAL[d.getMonth()];
+                                  return `${mName} ${d.getDate()}, ${String(d.getHours()).padStart(2,"00")}:${String(d.getMinutes()).padStart(2,"00")}`;
+                                } catch { return ev.dueDate; }
                               })()}
                             </p>
                           )}
