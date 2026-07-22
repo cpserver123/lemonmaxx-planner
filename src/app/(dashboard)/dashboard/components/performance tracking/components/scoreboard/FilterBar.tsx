@@ -1,12 +1,10 @@
 "use client";
 
 import { useRef, useEffect, useState } from "react";
-import { LuCalendar, LuChevronLeft, LuChevronRight, LuSearch } from "react-icons/lu";
+import { LuCalendar, LuChevronLeft, LuChevronRight, LuRefreshCw } from "react-icons/lu";
 
-const TIME_FILTERS = ["Yest", "7D", "MTD", "LM"];
-const MONTH_NAMES  = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
-/** Build a compact label from a Set of selected month indices */
 function buildLabel(months: Set<number>, year: number): string {
   if (months.size === 0) return `— ${year}`;
   const sorted = [...months].sort((a, b) => a - b);
@@ -17,120 +15,155 @@ function buildLabel(months: Set<number>, year: number): string {
   return `${sorted.length} months ${year}`;
 }
 
-export default function FilterBar() {
-  const [search,     setSearch]     = useState("");
-  const [activeTime, setActiveTime] = useState(1);
+export default function FilterBar({
+  defaultYear    = new Date().getFullYear(),
+  defaultMonths  = new Set([new Date().getMonth()]),
+  onCommit       = () => {},
+  onRefresh      = () => {},
+  isRefreshing   = false,
+}: {
+  defaultYear?:   number;
+  defaultMonths?: Set<number>;
+  onCommit?:      (year: number, months: Set<number>) => void;
+  onRefresh?:     () => void;
+  isRefreshing?:  boolean;
+  // Legacy optional props (kept so other tabs using FilterBar still compile)
+  selectedYear?:    number;
+  setSelectedYear?: (y: number) => void;
+  selectedMonths?:  Set<number>;
+  setSelectedMonths?: (s: Set<number>) => void;
+} = {}) {
   const [showPicker, setShowPicker] = useState(false);
+  const [pickerCoords, setPickerCoords] = useState({ top: 0, right: 0 });
 
-  // Multi-month selection
-  const today = new Date();
-  const [selectedYear,   setSelectedYear]   = useState(today.getFullYear());
-  const [selectedMonths, setSelectedMonths] = useState<Set<number>>(new Set([today.getMonth()]));
+  // Draft state — only committed to parent on Done click
+  const [draftYear,   setDraftYear]   = useState(defaultYear);
+  const [draftMonths, setDraftMonths] = useState<Set<number>>(new Set(defaultMonths));
 
-  // Picker year (navigation inside picker)
-  const [pickerYear, setPickerYear] = useState(selectedYear);
+  // Label reflects what was last committed (defaultYear/defaultMonths)
+  const committedLabel = buildLabel(defaultMonths, defaultYear);
 
-  const dropRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef   = useRef<HTMLDivElement>(null);
 
-  // Close on outside click
+  // Close on outside click / scroll / resize
   useEffect(() => {
     if (!showPicker) return;
     const handler = (e: MouseEvent) => {
-      if (dropRef.current && !dropRef.current.contains(e.target as Node)) {
+      if (
+        triggerRef.current && !triggerRef.current.contains(e.target as Node) &&
+        panelRef.current   && !panelRef.current.contains(e.target as Node)
+      ) {
         setShowPicker(false);
+        setDraftYear(defaultYear);
+        setDraftMonths(new Set(defaultMonths));
       }
     };
+    const close = () => setShowPicker(false);
     document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [showPicker]);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [showPicker, defaultYear, defaultMonths]);
 
   const openPicker = () => {
-    setPickerYear(selectedYear);
+    if (triggerRef.current) {
+      const r = triggerRef.current.getBoundingClientRect();
+      setPickerCoords({
+        top:   r.bottom + 4,
+        right: window.innerWidth - r.right,
+      });
+    }
+    // Sync draft to current committed on open
+    setDraftYear(defaultYear);
+    setDraftMonths(new Set(defaultMonths));
     setShowPicker(p => !p);
   };
 
   const toggleMonth = (i: number) => {
-    setSelectedMonths(prev => {
+    setDraftMonths(prev => {
       const next = new Set(prev);
       next.has(i) ? next.delete(i) : next.add(i);
       return next;
     });
-    // Commit picker year when any month is toggled
-    setSelectedYear(pickerYear);
   };
 
-  const label = buildLabel(selectedMonths, selectedYear);
+  const handleDone = () => {
+    setShowPicker(false);
+    onCommit(draftYear, draftMonths);
+  };
+
+  const handleClear = () => {
+    setDraftMonths(new Set());
+  };
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
 
-      {/* Time pills */}
-      <div className="flex items-center gap-1 bg-[#F3F4F6] dark:bg-[#122031] rounded-lg p-0.5">
-        {TIME_FILTERS.map((f, i) => (
-          <button
-            key={f}
-            onClick={() => setActiveTime(i)}
-            className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${
-              i === activeTime
-                ? "bg-white dark:bg-[#1a2332] text-[#111928] dark:text-white shadow-sm"
-                : "text-[#6B7280] dark:text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white"
-            }`}
-          >
-            {f}
-          </button>
-        ))}
-      </div>
-
-      {/* Search */}
-      <div className="flex items-center gap-1.5 rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] px-2.5 py-1.5 w-44">
-        <LuSearch size={12} className="text-[#9CA3AF] shrink-0" />
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search..."
-          className="flex-1 bg-transparent text-[11px] text-[#111928] dark:text-white placeholder-[#9CA3AF] outline-none"
-        />
-      </div>
-
       {/* Multi-month picker */}
-      <div ref={dropRef} className="ml-auto relative">
-        {/* Trigger button */}
-        <button
-          onClick={openPicker}
-          className="flex items-center gap-1.5 rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] px-2.5 py-1.5 text-[11px] font-medium text-[#111928] dark:text-white hover:border-[#5750F1]/40 transition-colors"
-        >
-          <LuCalendar size={12} className="text-[#9CA3AF]" />
-          {label}
-          <LuChevronLeft size={11} className="text-[#9CA3AF]" />
-          <LuChevronRight size={11} className="text-[#9CA3AF]" />
-        </button>
+      <div className="relative ml-auto">
+        <div className="flex items-center gap-1.5">
+          {/* Refresh button */}
+          <button
+            onClick={onRefresh}
+            disabled={isRefreshing}
+            title="Refresh data"
+            className="flex items-center justify-center w-7 h-7 rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] text-[#6B7280] dark:text-[#9CA3AF] hover:border-[#5750F1]/40 hover:text-[#5750F1] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <LuRefreshCw size={12} className={isRefreshing ? "animate-spin" : ""} />
+          </button>
 
-        {/* Dropdown picker */}
-        {showPicker && (
-          <div className="absolute right-0 top-full mt-1 z-50 w-64 rounded-xl border border-[#E6EBF1] dark:border-[#27303E] bg-white dark:bg-[#122031] shadow-xl p-4">
+          {/* Date picker trigger */}
+          <button
+            ref={triggerRef}
+            onClick={openPicker}
+            className="flex items-center gap-1.5 rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] px-2.5 py-1.5 text-[11px] font-medium text-[#111928] dark:text-white hover:border-[#5750F1]/40 transition-colors"
+          >
+            <LuCalendar size={12} className="text-[#9CA3AF]" />
+            {committedLabel}
+            <LuChevronLeft size={11} className="text-[#9CA3AF]" />
+            <LuChevronRight size={11} className="text-[#9CA3AF]" />
+          </button>
+        </div>
+
+        {/* Dropdown picker — position:fixed to escape all stacking contexts */}
+        {showPicker && typeof window !== "undefined" && (
+          <div
+            ref={panelRef}
+            style={{
+              position: "fixed",
+              top:   pickerCoords.top,
+              right: pickerCoords.right,
+              zIndex: 99999,
+            }}
+            className="w-64 rounded-xl border border-[#E6EBF1] dark:border-[#27303E] bg-white dark:bg-[#122031] shadow-xl p-4"
+          >
 
             {/* Year navigation */}
             <div className="flex items-center justify-between mb-4">
               <button
-                onClick={() => setPickerYear(y => y - 1)}
+                onClick={() => setDraftYear(y => y - 1)}
                 className="p-1 rounded-md text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"
               >
                 <LuChevronLeft size={14} />
               </button>
-              <span className="text-sm font-bold text-[#111928] dark:text-white">{pickerYear}</span>
+              <span className="text-sm font-bold text-[#111928] dark:text-white">{draftYear}</span>
               <button
-                onClick={() => setPickerYear(y => y + 1)}
+                onClick={() => setDraftYear(y => y + 1)}
                 className="p-1 rounded-md text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"
               >
                 <LuChevronRight size={14} />
               </button>
             </div>
 
-            {/* Month grid — multi-select */}
+            {/* Month grid — multi-select (draft only) */}
             <div className="grid grid-cols-3 gap-1.5">
               {MONTH_NAMES.map((m, i) => {
-                const active = selectedMonths.has(i) && pickerYear === selectedYear;
+                const active = draftMonths.has(i);
                 return (
                   <button
                     key={m}
@@ -157,13 +190,13 @@ export default function FilterBar() {
             {/* Footer */}
             <div className="flex items-center justify-between mt-3 pt-2 border-t border-[#E6EBF1] dark:border-[#27303E]">
               <button
-                onClick={() => setSelectedMonths(new Set())}
+                onClick={handleClear}
                 className="text-[10px] text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white transition-colors"
               >
                 Clear
               </button>
               <button
-                onClick={() => setShowPicker(false)}
+                onClick={handleDone}
                 className="rounded-md bg-[#5750F1] px-2.5 py-1 text-[10px] font-semibold text-white hover:bg-[#4742d4] transition-colors"
               >
                 Done

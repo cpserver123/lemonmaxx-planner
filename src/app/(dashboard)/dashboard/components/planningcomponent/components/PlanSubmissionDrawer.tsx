@@ -8,6 +8,7 @@ import { useSelector } from "react-redux";
 import type { RootState } from "@/store";
 import api from "@/app/utils/axios";
 import { useAuth } from "@/context/AuthContext";
+import { toast } from "react-toastify";
 
 /* --- Types ----------------------------------------------------------- */
 interface PlanRow {
@@ -278,12 +279,15 @@ function PlanResourceCell({
   // Sync API call
   const syncResources = async (ids: Set<number>) => {
     try {
-      await api.put(`/api/v1/planner/plans/${planId}/resources`, {
+      const res = await api.put(`/api/v1/planner/plans/${planId}/resources`, {
         workspace_id: Number(workspaceId),
         user_ids: [...ids],
       }, { headers: { Authorization: `Bearer ${token}` } });
+      toast.success((res.data as any)?.message ?? "Resources updated");
     } catch (err) {
+      const msg = (err as any)?.response?.data?.message ?? "Failed to sync resources";
       console.error("Failed to sync resources", err);
+      toast.error(msg);
     }
   };
 
@@ -431,9 +435,11 @@ function EditableCell({
 export default function PlanSubmissionDrawer({
   open,
   onClose,
+  onSubmit,
 }: {
   open:    boolean;
   onClose: () => void;
+  onSubmit?: () => void;
 }) {
   const workspaceId = useSelector((state: RootState) => state.workspace.selectedId ?? 1);
   const { token } = useAuth();
@@ -462,8 +468,11 @@ export default function PlanSubmissionDrawer({
       const data = res.data?.data;
       if (data?.plan_totals) setGoalPlanTotals(data.plan_totals as ApiPlanTotals);
       if (data?.user_goals)  setGoalInitialGoals(data.user_goals as ApiUserGoal[]);
+      toast.success(res.data?.message ?? "Goals loaded successfully");
     } catch (err) {
+      const msg = (err as any)?.response?.data?.message ?? "Failed to fetch user goals";
       console.error("Failed to fetch user goals", err);
+      toast.error(msg);
     } finally {
       setGoalLoading(false);
     }
@@ -504,6 +513,7 @@ export default function PlanSubmissionDrawer({
     }
 
     setSubmitError(null);
+    onSubmit?.();
     onClose();
   };
 
@@ -554,7 +564,9 @@ export default function PlanSubmissionDrawer({
           setSelectedVertical(null);
           setOwnOffers([]);
         } catch (err) {
+          const msg = (err as any)?.response?.data?.message ?? "Failed to fetch verticals";
           console.error("Failed to fetch verticals", err);
+          toast.error(msg);
         } finally {
           setLoadingVerticals(false);
         }
@@ -579,7 +591,9 @@ export default function PlanSubmissionDrawer({
         });
         setOwnOffers(res.data?.data?.own_offers || []);
       } catch (err) {
+        const msg = (err as any)?.response?.data?.message ?? "Failed to fetch offers";
         console.error("Failed to fetch own offers", err);
+        toast.error(msg);
         setOwnOffers([]);
       } finally {
         setLoadingOffers(false);
@@ -601,8 +615,8 @@ export default function PlanSubmissionDrawer({
     resources: PlanResource[];
   }
   const [plansByOffer, setPlansByOffer] = useState<Record<number, PlanPlatform[]>>({});
-  const [planYear,  setPlanYear]  = useState(2026);
-  const [planMonth, setPlanMonth] = useState(5); // June
+  const [planYear,  setPlanYear]  = useState(() => new Date().getFullYear());
+  const [planMonth, setPlanMonth] = useState(() => new Date().getMonth());
   const [showPlanPicker, setShowPlanPicker] = useState(false);
 
   /* --- Fetch plans from API ---- */
@@ -617,8 +631,11 @@ export default function PlanSubmissionDrawer({
       const byOffer: Record<number, PlanPlatform[]> = {};
       offers.forEach(o => { byOffer[o.own_offer_id] = o.platforms || []; });
       setPlansByOffer(byOffer);
+      toast.success(res.data?.message ?? "Plans loaded");
     } catch (err) {
+      const msg = (err as any)?.response?.data?.message ?? "Failed to fetch plans";
       console.error("Failed to fetch plans", err);
+      toast.error(msg);
     }
   };
 
@@ -698,7 +715,7 @@ export default function PlanSubmissionDrawer({
     if (!current) return;
 
     try {
-      await api.put(`/api/v1/planner/plans/${planId}`, {
+      const res = await api.put(`/api/v1/planner/plans/${planId}`, {
         workspace_id: workspaceId,
         platform: field === "platform" ? value : current.platform,
         promise: field === "promise" ? numVal : current.promise,
@@ -707,8 +724,11 @@ export default function PlanSubmissionDrawer({
         delta_loss: field === "delta_loss" ? numVal : current.delta_loss,
         net_promise: field === "net_promise" ? numVal : current.net_promise,
       }, { headers: { Authorization: `Bearer ${token}` } });
+      toast.success((res.data as any)?.message ?? "Plan updated");
     } catch (err) {
+      const msg = (err as any)?.response?.data?.message ?? "Failed to update plan";
       console.error("Failed to update plan", err);
+      toast.error(msg);
       // Re-fetch to restore correct data on error
       if (selectedVertical) fetchPlans(selectedVertical.id, planYear, planMonth);
     }
@@ -752,7 +772,7 @@ export default function PlanSubmissionDrawer({
       if (!current) return;
 
       try {
-        await api.put(`/api/v1/planner/plans/${planId}`, {
+        const res = await api.put(`/api/v1/planner/plans/${planId}`, {
           workspace_id: workspaceId,
           platform: opt,
           promise: current.promise,
@@ -761,8 +781,11 @@ export default function PlanSubmissionDrawer({
           delta_loss: current.delta_loss,
           net_promise: current.net_promise,
         }, { headers: { Authorization: `Bearer ${token}` } });
+        toast.success((res.data as any)?.message ?? "Platform updated");
       } catch (err) {
+        const msg = (err as any)?.response?.data?.message ?? "Failed to update platform";
         console.error("Failed to update platform", err);
+        toast.error(msg);
         if (selectedVertical) fetchPlans(selectedVertical.id, planYear, planMonth);
       }
     };
@@ -826,11 +849,14 @@ export default function PlanSubmissionDrawer({
 
 
       setShowAddPlatform(false);
+      toast.success(res.data?.message ?? "Plan created successfully");
       // Re-fetch plans to get server data with users
       if (selectedVertical) fetchPlans(selectedVertical.id, planYear, planMonth);
 
     } catch (err: any) {
-      setPlatformSaveError(err.response?.data?.message || "Failed to save plan");
+      const msg = err.response?.data?.message || "Failed to save plan";
+      setPlatformSaveError(msg);
+      toast.error(msg);
     } finally {
       setPlatformSaving(false);
     }

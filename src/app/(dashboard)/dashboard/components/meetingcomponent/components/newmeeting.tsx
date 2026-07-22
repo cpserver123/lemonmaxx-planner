@@ -11,6 +11,7 @@ import { useSelector } from "react-redux";
 import type { RootState } from "@/store";
 import api from "@/app/utils/axios";
 import { useAuth } from "@/context/AuthContext";
+import { toast } from "react-toastify";
 
 /* --- Types -------------------------------------------------------------- */
 export interface MeetingForm {
@@ -926,10 +927,13 @@ function FilesSection({
         }]);
         setUploading(prev => prev.map(u => u.id === uid ? { ...u, progress: 100, done: true } : u));
         setTimeout(() => setUploading(prev => prev.filter(u => u.id !== uid)), 1200);
+        toast.success(`${file.name} uploaded successfully`);
 
       } catch (err: any) {
         console.error("File upload failed:", err);
-        setUploading(prev => prev.map(u => u.id === uid ? { ...u, error: err.message || "Upload failed" } : u));
+        const msg = err?.message || "Upload failed";
+        toast.error(msg);
+        setUploading(prev => prev.map(u => u.id === uid ? { ...u, error: msg } : u));
       }
     }
   }, [meetingId, workspaceId, token, API_BASE, pendingFiles, onPendingChange]);
@@ -945,6 +949,8 @@ function FilesSection({
         );
       } catch (err) {
         console.error("Failed to delete file:", err);
+        const msg = (err as any)?.message || "Failed to delete file";
+        toast.error(msg);
         setDeletingIdx(null);
         return;
       } finally {
@@ -985,7 +991,9 @@ function FilesSection({
       document.body.removeChild(anchor);
       URL.revokeObjectURL(objectUrl);
     } catch (err) {
+      const msg = (err as any)?.message || "Download failed";
       console.error("Download failed:", err);
+      toast.error(msg);
     } finally {
       setDownloadingIdx(null);
     }
@@ -1203,7 +1211,9 @@ export default function CreateMeetingModal({
           setUsers(res.data.data.users || []);
         }
       } catch (error) {
+        const msg = (error as any)?.response?.data?.message ?? "Failed to load users";
         console.error("Failed to fetch users in modal:", error);
+        toast.error(msg);
       }
     };
     fetchUsers();
@@ -1368,9 +1378,10 @@ export default function CreateMeetingModal({
 
       setIsSaving(true);
       try {
-        await api.put(`/api/v1/planner/meetings/${initialData!.id}`, updatePayload, {
+        const res = await api.put(`/api/v1/planner/meetings/${initialData!.id}`, updatePayload, {
           headers: { Authorization: `Bearer ${token}` },
         });
+        toast.success((res.data as any)?.message ?? "Meeting updated successfully");
 
         if (onSaveConfirm) {
           onSaveConfirm();
@@ -1380,7 +1391,9 @@ export default function CreateMeetingModal({
 
         onSaved?.();
       } catch (err) {
+        const msg = (err as any)?.response?.data?.message ?? "Failed to update meeting";
         console.error("Failed to update meeting via API:", err);
+        toast.error(msg);
       } finally {
         setIsSaving(false);
       }
@@ -1431,6 +1444,7 @@ export default function CreateMeetingModal({
         headers: { Authorization: `Bearer ${token}` }
       });
       const newId = res.data?.data?.id ?? res.data?.id;
+      toast.success(res.data?.message ?? "Meeting created successfully");
       // Upload any files staged before the meeting existed
       if (newId && pendingFiles.length > 0) {
         await uploadFilesToMeeting(String(newId), pendingFiles);
@@ -1438,7 +1452,9 @@ export default function CreateMeetingModal({
       }
       onCreated?.(form);
     } catch (err) {
+      const msg = (err as any)?.response?.data?.message ?? "Failed to create meeting";
       console.error("Failed to create meeting via API:", err);
+      toast.error(msg);
     } finally {
       setIsSaving(false);
     }

@@ -1,133 +1,163 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { LuChevronDown, LuChevronRight, LuRefreshCw, LuDownload, LuCheck } from "react-icons/lu";
-import { TbRefresh } from "react-icons/tb";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { LuChevronDown, LuChevronRight, LuCheck, LuX, LuLoader } from "react-icons/lu";
 import FilterBar from "./FilterBar";
+import { useSelector } from "react-redux";
+import type { RootState } from "@/store";
+import api from "@/app/utils/axios";
+import { useAuth } from "@/context/AuthContext";
+import { toast } from "react-toastify";
 
-/* --- Data ------------------------------------------------------------ */
-interface Row {
-  id:        string;
-  label:     string;
-  spend:     string;
-  revenue:   string;
-  xRevenue:  string;
-  margin:    string;
-  marginPct: string;
-  roi:       string;
-  roiNeg:    boolean;
-  promise:   string;
-  progress:  string;
-  progNeg:   boolean;
-  children?: Row[];
+/* --- API Types --------------------------------------------------------- */
+interface BreakdownItem {
+  key:          number;
+  label:        string;
+  spend:        number;
+  revenue:      number;
+  margin:       number;
+  roi_pct:      number;
+  share_pct:    number;
+  promise:      number;
+  progress_pct: number;
+}
+interface GroupItem extends BreakdownItem {
+  breakdown: BreakdownItem[];
+}
+interface Summary {
+  total_spend:   number;
+  total_revenue: number;
+  roi_pct:       number;
+  gross_margin:  number;
 }
 
-const TABLE_DATA: Row[] = [
-  {
-    id: "telehealth",
-    label: "Telehealth",
-    spend: "$53,702", revenue: "$34,181", xRevenue: "$0",
-    margin: "-$19,521", marginPct: "", roi: "-36.4%", roiNeg: true,
-    promise: "$20,000", progress: "-97.6%", progNeg: true,
-  },
-  {
-    id: "vsl",
-    label: "VSL",
-    spend: "$194,946", revenue: "$273,694", xRevenue: "$1,660",
-    margin: "$80,428", marginPct: "", roi: "41.3%", roiNeg: false,
-    promise: "$180,000", progress: "44.7%", progNeg: false,
-    children: [
-      {
-        id: "bloodsugar",
-        label: "Blood Sugar",
-        spend: "$1,877", revenue: "$1,720", xRevenue: "$0",
-        margin: "-$157", marginPct: "", roi: "-8.4%", roiNeg: true,
-        promise: "$30,000", progress: "-0.5%", progNeg: true,
-      },
-      {
-        id: "memory",
-        label: "Memory",
-        spend: "$23,809", revenue: "$28,170", xRevenue: "$1,680",
-        margin: "$6,041", marginPct: "", roi: "25.4%", roiNeg: false,
-        promise: "$110,000", progress: "5.5%", progNeg: false,
-      },
-      {
-        id: "weightloss",
-        label: "Weight Loss",
-        spend: "$169,260", revenue: "$243,804", xRevenue: "$0",
-        margin: "$74,544", marginPct: "", roi: "44.0%", roiNeg: false,
-        promise: "$40,000", progress: "186.4%", progNeg: false,
-      },
-    ],
-  },
-];
+/* --- Formatters -------------------------------------------------------- */
+function fmtMoney(n: number) {
+  const abs = Math.abs(n);
+  const str = abs >= 1_000_000
+    ? `$${(abs / 1_000_000).toFixed(1)}M`
+    : `$${Math.round(abs).toLocaleString("en-US")}`;
+  return n < 0 ? `-${str}` : str;
+}
+function fmtPct(n: number) { return `${n.toFixed(1)}%`; }
 
-const TOTAL_ROW: Row = {
-  id: "total",
-  label: "Total",
-  spend: "$248,649", revenue: "$307,875", xRevenue: "$1,680",
-  margin: "$60,906", marginPct: "", roi: "24.5%", roiNeg: false,
-  promise: "$200,000", progress: "30.5%", progNeg: false,
+/* --- Dropdown option → API param map ----------------------------------- */
+const OPTION_TO_PARAM: Record<string, string> = {
+  "None":        "none",
+  "Vertical":    "vertical",
+  "Member":      "member",
+  "offer ":      "offer",
+  "Team Leader": "team",
+  "Platform":    "platform",
+  "Week":        "week",
+  "Date":        "date",
 };
 
-/* --- Group-By Dropdown ----------------------------------------------- */
+/* --- Group-By Dropdown ------------------------------------------------- */
 const GROUP_BY_OPTIONS = ["None", "Vertical", "Member", "offer ", "Team Leader", "Platform", "Week", "Date"] as const;
 type GroupByOption = typeof GROUP_BY_OPTIONS[number];
 
-function GroupByDropdown({ value, onChange }: { value: GroupByOption; onChange: (v: GroupByOption) => void }) {
+function GroupByDropdown({
+  value,
+  onChange,
+  exclude,
+}: {
+  value: GroupByOption;
+  onChange: (v: GroupByOption) => void;
+  exclude?: GroupByOption;
+}) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  const openDropdown = () => {
+    if (btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setCoords({ top: r.bottom + 4, left: r.left, width: r.width });
+    }
+    setOpen(o => !o);
+  };
 
   useEffect(() => {
     if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+    const close = () => setOpen(false);
+    document.addEventListener("mousedown", (e) => {
+      // Close only if click is outside both button and panel
+      const panel = document.getElementById("groupby-panel");
+      if (
+        btnRef.current && !btnRef.current.contains(e.target as Node) &&
+        (!panel || !panel.contains(e.target as Node))
+      ) close();
+    });
+    window.addEventListener("scroll",  close, true);
+    window.addEventListener("resize",  close);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      window.removeEventListener("scroll",  close, true);
+      window.removeEventListener("resize",  close);
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
   return (
-    <div ref={ref} className="relative inline-block text-left">
+    <>
       <button
+        ref={btnRef}
         type="button"
-        onClick={() => setOpen(o => !o)}
+        onClick={openDropdown}
         className="flex items-center gap-1.5 rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] px-2.5 py-1.5 text-[11px] font-medium text-[#111928] dark:text-white hover:border-[#5750F1]/40 transition-colors"
       >
         {value} <LuChevronDown size={11} className={`transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
       </button>
 
-      {open && (
-        <div className="absolute left-0 mt-1 z-[9999] min-w-[160px] rounded-xl border border-[#E6EBF1] dark:border-[#27303E] bg-white dark:bg-[#111927] shadow-xl py-1 overflow-hidden">
-          {GROUP_BY_OPTIONS.map(opt => (
-            <button
-              key={opt}
-              type="button"
-              onClick={() => {
-                onChange(opt);
-                setOpen(false);
-              }}
-              className={`w-full flex items-center gap-2 px-3 py-2 text-[12px] font-medium transition-colors text-left ${
-                opt === value
-                  ? "bg-[#CCFF00] text-black"
-                  : "text-[#111928] dark:text-[#D1D5DB] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332]"
-              }`}
-            >
-              {opt === value ? <LuCheck size={12} className="shrink-0" /> : <span className="w-3 shrink-0" />}
-              {opt}
-            </button>
-          ))}
+      {open && typeof window !== "undefined" && (
+        <div
+          id="groupby-panel"
+          style={{
+            position: "fixed",
+            top:  coords.top,
+            left: coords.left,
+            minWidth: Math.max(coords.width, 160),
+            zIndex: 99999,
+          }}
+          className="rounded-xl border border-[#E6EBF1] dark:border-[#27303E] bg-white dark:bg-[#111927] shadow-xl py-1 overflow-hidden"
+        >
+          {GROUP_BY_OPTIONS.map(opt => {
+            const isSelected = opt === value;
+            const isExcluded = opt === exclude;
+            return (
+              <button
+                key={opt}
+                type="button"
+                disabled={isExcluded}
+                onClick={() => { if (!isExcluded) { onChange(opt); setOpen(false); } }}
+                title={isExcluded ? "Already selected in the other group-by" : undefined}
+                className={`w-full flex items-center gap-2 px-3 py-2 text-[12px] font-medium transition-colors text-left ${
+                  isSelected
+                    ? "bg-[#CCFF00] text-black"
+                    : isExcluded
+                    ? "opacity-35 cursor-not-allowed text-[#111928] dark:text-[#D1D5DB]"
+                    : "text-[#111928] dark:text-[#D1D5DB] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332]"
+                }`}
+              >
+                {isSelected
+                  ? <LuCheck size={12} className="shrink-0" />
+                  : isExcluded
+                  ? <LuX size={12} className="shrink-0 opacity-50" />
+                  : <span className="w-3 shrink-0" />}
+                {opt}
+                {isExcluded && <span className="ml-auto text-[9px] text-[#9CA3AF]">in use</span>}
+              </button>
+            );
+          })}
         </div>
       )}
-    </div>
+    </>
   );
 }
 
-/* --- Progress Ring --------------------------------------------------- */
+/* --- Progress Ring ----------------------------------------------------- */
 function ProgressRing({ pct, neg }: { pct: number; neg: boolean }) {
-  const r   = 9;
+  const r    = 9;
   const circ = 2 * Math.PI * r;
   const clamped = Math.min(Math.abs(pct), 100);
   const dash  = (clamped / 100) * circ;
@@ -146,13 +176,19 @@ function ProgressRing({ pct, neg }: { pct: number; neg: boolean }) {
   );
 }
 
-/* --- Table Row ------------------------------------------------------- */
-function TableRow({ row, depth = 0, expanded, onToggle }: {
-  row: Row; depth?: number; expanded: Set<string>; onToggle: (id: string) => void;
+/* --- Table Row (renders group + its breakdown children) --------------- */
+function GroupRow({ group, depth = 0, expanded, onToggle }: {
+  group: GroupItem | BreakdownItem;
+  depth?: number;
+  expanded: Set<string>;
+  onToggle: (id: string) => void;
 }) {
-  const hasChildren = !!row.children?.length;
-  const isExpanded  = expanded.has(row.id);
-  const pctNum      = parseFloat(row.progress);
+  const id         = String((group as GroupItem).key);
+  const breakdown  = (group as GroupItem).breakdown ?? [];
+  const hasChildren = breakdown.length > 0;
+  const isExpanded  = expanded.has(id);
+  const neg         = group.margin < 0 || group.roi_pct < 0;
+  const progNeg     = group.progress_pct < 0;
 
   return (
     <>
@@ -161,90 +197,150 @@ function TableRow({ row, depth = 0, expanded, onToggle }: {
         <td className="px-3 py-2.5">
           <div className="flex items-center gap-1.5" style={{ paddingLeft: depth * 20 }}>
             {hasChildren ? (
-              <button onClick={() => onToggle(row.id)} className="text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white">
+              <button onClick={() => onToggle(id)} className="text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white">
                 {isExpanded ? <LuChevronDown size={13} /> : <LuChevronRight size={13} />}
               </button>
             ) : (
               <span className="w-[13px]" />
             )}
             <span className={`text-xs ${depth === 0 ? "font-semibold text-[#111928] dark:text-white" : "text-[#6B7280] dark:text-[#9CA3AF]"}`}>
-              {row.label}
+              {group.label}
             </span>
           </div>
         </td>
-        {/* Dots menu */}
-        <td className="px-2 py-2.5 w-6">
-          <button className="text-[#D1D5DB] dark:text-[#374151] hover:text-[#6B7280]"><LuRefreshCw size={13} /></button>
+        <td className="px-3 py-2.5 text-xs text-[#111928] dark:text-[#D1D5DB] whitespace-nowrap">{fmtMoney(group.spend)}</td>
+        <td className="px-3 py-2.5 text-xs text-[#111928] dark:text-[#D1D5DB] whitespace-nowrap">{fmtMoney(group.revenue)}</td>
+        <td className={`px-3 py-2.5 text-xs font-semibold whitespace-nowrap ${group.margin < 0 ? "text-red-500 dark:text-red-400" : "text-[#2563eb]"}`}>
+          {fmtMoney(group.margin)}
         </td>
-        {/* Spend */}
-        <td className="px-3 py-2.5 text-xs text-[#111928] dark:text-[#D1D5DB] whitespace-nowrap">{row.spend}</td>
-        <td className="px-2 py-2.5 w-6"><button className="text-[#D1D5DB] dark:text-[#374151] hover:text-[#6B7280]"><LuRefreshCw size={13} /></button></td>
-        {/* Revenue */}
-        <td className="px-3 py-2.5 text-xs text-[#111928] dark:text-[#D1D5DB] whitespace-nowrap">{row.revenue}</td>
-        <td className="px-2 py-2.5 w-6"><button className="text-[#D1D5DB] dark:text-[#374151] hover:text-[#6B7280]"><LuRefreshCw size={13} /></button></td>
-        {/* X-Revenue */}
-        <td className="px-3 py-2.5 text-xs text-[#6B7280] dark:text-[#9CA3AF] whitespace-nowrap">{row.xRevenue}</td>
-        <td className="px-2 py-2.5 w-6"><button className="text-[#D1D5DB] dark:text-[#374151] hover:text-[#6B7280]"><LuRefreshCw size={13} /></button></td>
-        {/* Gross Margin */}
-        <td className={`px-3 py-2.5 text-xs font-semibold whitespace-nowrap ${row.roiNeg ? "text-red-500 dark:text-red-400" : "text-[#2563eb]"}`}>{row.margin}</td>
-        <td className="px-2 py-2.5 w-6"><button className="text-[#D1D5DB] dark:text-[#374151] hover:text-[#6B7280]"><LuRefreshCw size={13} /></button></td>
-        {/* ROI */}
-        <td className={`px-3 py-2.5 text-xs font-semibold whitespace-nowrap ${row.roiNeg ? "text-red-500 dark:text-red-400" : "text-[#2563eb]"}`}>{row.roi}</td>
-        <td className="px-2 py-2.5 w-6"><button className="text-[#D1D5DB] dark:text-[#374151] hover:text-[#6B7280]"><LuRefreshCw size={13} /></button></td>
-        {/* Promise */}
-        <td className="px-3 py-2.5 text-xs text-[#111928] dark:text-[#D1D5DB] whitespace-nowrap">{row.promise}</td>
-        <td className="px-2 py-2.5 w-6"><button className="text-[#D1D5DB] dark:text-[#374151] hover:text-[#6B7280]"><LuRefreshCw size={13} /></button></td>
-        {/* Progress */}
+        <td className={`px-3 py-2.5 text-xs font-semibold whitespace-nowrap ${group.roi_pct < 0 ? "text-red-500 dark:text-red-400" : "text-[#2563eb]"}`}>
+          {fmtPct(group.roi_pct)}
+        </td>
+        <td className="px-3 py-2.5 text-xs text-[#6B7280] dark:text-[#9CA3AF] whitespace-nowrap">{fmtPct(group.share_pct)}</td>
+        <td className="px-3 py-2.5 text-xs text-[#111928] dark:text-[#D1D5DB] whitespace-nowrap">{fmtMoney(group.promise)}</td>
         <td className="px-3 py-2.5">
           <div className="flex items-center gap-1.5">
-            <ProgressRing pct={pctNum} neg={row.progNeg} />
-            <span className={`text-xs font-semibold whitespace-nowrap ${row.progNeg ? "text-red-500 dark:text-red-400" : "text-[#2563eb]"}`}>
-              {row.progress}
+            <ProgressRing pct={group.progress_pct} neg={progNeg} />
+            <span className={`text-xs font-semibold whitespace-nowrap ${progNeg ? "text-red-500 dark:text-red-400" : "text-[#2563eb]"}`}>
+              {fmtPct(group.progress_pct)}
             </span>
           </div>
         </td>
-        <td className="px-2 py-2.5 w-6"><button className="text-[#D1D5DB] dark:text-[#374151] hover:text-[#6B7280]"><LuRefreshCw size={13} /></button></td>
       </tr>
-      {/* Children */}
-      {hasChildren && isExpanded && row.children!.map((child) => (
-        <TableRow key={child.id} row={child} depth={depth + 1} expanded={expanded} onToggle={onToggle} />
+      {/* Breakdown children */}
+      {hasChildren && isExpanded && breakdown.map(child => (
+        <GroupRow
+          key={child.key}
+          group={{ ...child, breakdown: [] } as GroupItem}
+          depth={depth + 1}
+          expanded={expanded}
+          onToggle={onToggle}
+        />
       ))}
     </>
   );
 }
 
-/* --- Business Tab ---------------------------------------------------- */
+/* --- Business Tab ------------------------------------------------------ */
 export default function BusinessTab() {
-  const [expanded, setExpanded] = useState<Set<string>>(new Set(["vsl"]));
+  const workspaceId = useSelector((state: RootState) => state.workspace.selectedId ?? 1);
+  const { token }   = useAuth();
+
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [groupBy1, setGroupBy1] = useState<GroupByOption>("Vertical");
   const [groupBy2, setGroupBy2] = useState<GroupByOption>("Member");
 
+  // Committed month state (only updates on FilterBar "Done")
+  const today = new Date();
+  const [committedYear,   setCommittedYear]   = useState(today.getFullYear());
+  const [committedMonths, setCommittedMonths] = useState<Set<number>>(new Set([today.getMonth()]));
+
+  // API data
+  const [groups,  setGroups]  = useState<GroupItem[]>([]);
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const fetchData = useCallback(async (
+    year    = committedYear,
+    months  = committedMonths,
+    dim1    = groupBy1,
+    dim2    = groupBy2,
+  ) => {
+    if (months.size === 0) return;
+    const sorted     = [...months].sort((a, b) => a - b);
+    const pad        = (n: number) => String(n + 1).padStart(2, "0");
+    const startMonth = `${year}-${pad(sorted[0])}`;
+    const endMonth   = `${year}-${pad(sorted[sorted.length - 1])}`;
+
+    setLoading(true);
+    try {
+      const res = await api.get("/api/v1/planner/scoreboard/dimensions", {
+        params: {
+          workspace_id:        workspaceId,
+          primary_dimension:   OPTION_TO_PARAM[dim1] ?? "vertical",
+          secondary_dimension: OPTION_TO_PARAM[dim2] ?? "member",
+          start_month:         startMonth,
+          end_month:           endMonth,
+        },
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const d = res.data?.data;
+      if (d) {
+        setGroups(d.groups ?? []);
+        setSummary(d.summary ?? null);
+        toast.success(res.data?.message ?? "Scoreboard data loaded");
+      }
+    } catch (err) {
+      const msg = (err as any)?.response?.data?.message ?? "Failed to fetch scoreboard dimensions";
+      console.error("Failed to fetch scoreboard dimensions:", err);
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceId, token]);
+
+
+
+
   const toggle = (id: string) => {
-    setExpanded((prev) => {
+    setExpanded(prev => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
   };
 
-  const totalPct = parseFloat(TOTAL_ROW.progress);
-
   return (
     <div className="flex flex-col gap-4">
-      {/* Toolbar */}
-      <div className="flex items-center gap-2 flex-wrap">
-        {/* Dropdowns */}
-        <GroupByDropdown value={groupBy1} onChange={setGroupBy1} />
-        <GroupByDropdown value={groupBy2} onChange={setGroupBy2} />
-        {/* Action icons */}
-        <div className="flex items-center gap-1.5 ml-1">
-          <button className="p-1.5 rounded-md text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"><TbRefresh size={14} /></button>
-          <button className="p-1.5 rounded-md text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"><LuRefreshCw size={14} /></button>
-          <button className="p-1.5 rounded-md text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"><LuDownload size={14} /></button>
-        </div>
-        {/* FilterBar handles search + date */}
+      {/* Toolbar — relative + z-50 ensures dropdowns render above the table */}
+      <div className="relative z-50 flex items-center gap-2 flex-wrap">
+        <GroupByDropdown value={groupBy1} onChange={setGroupBy1} exclude={groupBy2} />
+        <GroupByDropdown value={groupBy2} onChange={setGroupBy2} exclude={groupBy1} />
+
+        {/* Apply button */}
+        <button
+          type="button"
+          onClick={() => fetchData(committedYear, committedMonths, groupBy1, groupBy2)}
+          disabled={loading}
+          className="flex items-center gap-1.5 rounded-lg bg-[#5750F1] hover:bg-[#4540D0] disabled:opacity-60 px-3 py-1.5 text-[11px] font-semibold text-white transition-colors"
+        >
+          Apply
+        </button>
+
+        {/* FilterBar: month picker + refresh */}
         <div className="flex-1 min-w-0">
-          <FilterBar />
+          <FilterBar
+            defaultYear={committedYear}
+            defaultMonths={committedMonths}
+            isRefreshing={loading}
+            onCommit={(year, months) => {
+              setCommittedYear(year);
+              setCommittedMonths(months);
+              fetchData(year, months, groupBy1, groupBy2);
+            }}
+            onRefresh={() => fetchData(committedYear, committedMonths, groupBy1, groupBy2)}
+          />
         </div>
       </div>
 
@@ -254,51 +350,48 @@ export default function BusinessTab() {
           <thead>
             <tr className="border-b border-[#E6EBF1] dark:border-[#1F2A37] bg-[#F9FAFB] dark:bg-[#0a1018]">
               <th className="px-3 py-2.5 text-left font-medium text-[#6B7280] dark:text-[#9CA3AF] whitespace-nowrap">Group</th>
-              <th className="w-6" />
               <th className="px-3 py-2.5 text-left font-medium text-[#6B7280] dark:text-[#9CA3AF] whitespace-nowrap">Spend</th>
-              <th className="w-6" />
               <th className="px-3 py-2.5 text-left font-medium text-[#6B7280] dark:text-[#9CA3AF] whitespace-nowrap">Revenue</th>
-              <th className="w-6" />
-              <th className="px-3 py-2.5 text-left font-medium text-[#6B7280] dark:text-[#9CA3AF] whitespace-nowrap">X-Revenue</th>
-              <th className="w-6" />
-              <th className="px-3 py-2.5 text-left font-medium text-[#6B7280] dark:text-[#9CA3AF] whitespace-nowrap">Gross Margin</th>
-              <th className="w-6" />
+              <th className="px-3 py-2.5 text-left font-medium text-[#6B7280] dark:text-[#9CA3AF] whitespace-nowrap">Margin</th>
               <th className="px-3 py-2.5 text-left font-medium text-[#6B7280] dark:text-[#9CA3AF] whitespace-nowrap">ROI</th>
-              <th className="w-6" />
+              <th className="px-3 py-2.5 text-left font-medium text-[#6B7280] dark:text-[#9CA3AF] whitespace-nowrap">Share %</th>
               <th className="px-3 py-2.5 text-left font-medium text-[#6B7280] dark:text-[#9CA3AF] whitespace-nowrap">Promise</th>
-              <th className="w-6" />
               <th className="px-3 py-2.5 text-left font-medium text-[#6B7280] dark:text-[#9CA3AF] whitespace-nowrap">Progress</th>
-              <th className="w-6" />
             </tr>
           </thead>
           <tbody>
-            {TABLE_DATA.map((row) => (
-              <TableRow key={row.id} row={row} expanded={expanded} onToggle={toggle} />
-            ))}
-            {/* Total */}
-            <tr className="border-t-2 border-[#E6EBF1] dark:border-[#374151] bg-[#F9FAFB] dark:bg-[#0a1018]">
-              <td className="px-3 py-2.5 text-xs font-bold text-[#111928] dark:text-white">Total</td>
-              <td />
-              <td className="px-3 py-2.5 text-xs font-bold text-[#111928] dark:text-white">{TOTAL_ROW.spend}</td>
-              <td />
-              <td className="px-3 py-2.5 text-xs font-bold text-[#111928] dark:text-white">{TOTAL_ROW.revenue}</td>
-              <td />
-              <td className="px-3 py-2.5 text-xs text-[#6B7280] dark:text-[#9CA3AF]">{TOTAL_ROW.xRevenue}</td>
-              <td />
-              <td className="px-3 py-2.5 text-xs font-bold text-[#2563eb]">{TOTAL_ROW.margin}</td>
-              <td />
-              <td className="px-3 py-2.5 text-xs font-bold text-[#2563eb]">{TOTAL_ROW.roi}</td>
-              <td />
-              <td className="px-3 py-2.5 text-xs font-bold text-[#111928] dark:text-white">{TOTAL_ROW.promise}</td>
-              <td />
-              <td className="px-3 py-2.5">
-                <div className="flex items-center gap-1.5">
-                  <ProgressRing pct={totalPct} neg={TOTAL_ROW.progNeg} />
-                  <span className="text-xs font-bold text-[#2563eb]">{TOTAL_ROW.progress}</span>
-                </div>
-              </td>
-              <td />
-            </tr>
+            {loading ? (
+              <tr>
+                <td colSpan={8} className="py-10 text-center">
+                  <div className="flex items-center justify-center gap-2">
+                    <LuLoader size={16} className="animate-spin text-[#5750F1]" />
+                    <span className="text-xs text-[#9CA3AF]">Loading…</span>
+                  </div>
+                </td>
+              </tr>
+            ) : groups.length === 0 ? (
+              <tr>
+                <td colSpan={8} className="py-10 text-center text-xs text-[#9CA3AF]">No data available</td>
+              </tr>
+            ) : (
+              groups.map(group => (
+                <GroupRow key={group.key} group={group} expanded={expanded} onToggle={toggle} />
+              ))
+            )}
+
+            {/* Summary / Total row */}
+            {!loading && summary && (
+              <tr className="border-t-2 border-[#E6EBF1] dark:border-[#374151] bg-[#F9FAFB] dark:bg-[#0a1018]">
+                <td className="px-3 py-2.5 text-xs font-bold text-[#111928] dark:text-white">Total</td>
+                <td className="px-3 py-2.5 text-xs font-bold text-[#111928] dark:text-white">{fmtMoney(summary.total_spend)}</td>
+                <td className="px-3 py-2.5 text-xs font-bold text-[#111928] dark:text-white">{fmtMoney(summary.total_revenue)}</td>
+                <td className={`px-3 py-2.5 text-xs font-bold ${summary.gross_margin < 0 ? "text-red-500 dark:text-red-400" : "text-[#2563eb]"}`}>{fmtMoney(summary.gross_margin)}</td>
+                <td className={`px-3 py-2.5 text-xs font-bold ${summary.roi_pct < 0 ? "text-red-500 dark:text-red-400" : "text-[#2563eb]"}`}>{fmtPct(summary.roi_pct)}</td>
+                <td className="px-3 py-2.5 text-xs text-[#9CA3AF]">100.0%</td>
+                <td className="px-3 py-2.5 text-xs text-[#9CA3AF]">—</td>
+                <td className="px-3 py-2.5 text-xs text-[#9CA3AF]">—</td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

@@ -6,6 +6,7 @@ import type { RootState } from "@/store";
 import api from "@/app/utils/axios";
 import { useAuth } from "@/context/AuthContext";
 import { LuLoader } from "react-icons/lu";
+import { toast } from "react-toastify";
 import {
   LuPlus, LuCalendar, LuChevronDown,
   LuUsers, LuSearch, LuEllipsisVertical, LuLayoutList, LuTriangle,
@@ -605,8 +606,11 @@ export default function MeetingSection() {
       setTableRows(rows);
       setRawMeetings([...meetings].sort((a, b) => b.id - a.id));
       setRowStatuses(Object.fromEntries(rows.map(r => [r.id, r.status])));
+      toast.success(res.data?.message ?? "Meetings loaded successfully");
     } catch (err: any) {
-      setFetchError(err?.message ?? "Failed to load meetings");
+      const msg = err?.response?.data?.message ?? err?.message ?? "Failed to load meetings";
+      setFetchError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -630,8 +634,11 @@ export default function MeetingSection() {
       });
       const detail: APIMeetingDetail = res.data?.data;
       setSelectedMeeting(mapApiMeetingDetail(detail));
+      toast.success(res.data?.message ?? "Meeting details loaded");
     } catch (err) {
+      const msg = (err as any)?.response?.data?.message ?? "Failed to fetch meeting detail";
       console.error("Failed to fetch meeting detail:", err);
+      toast.error(msg);
       // Keep the basic row data already shown
     } finally {
       setIsDetailLoading(false);
@@ -649,14 +656,17 @@ export default function MeetingSection() {
     // Optimistic UI update
     setRowStatuses(prev => ({ ...prev, [rowId]: newStatus }));
     try {
-      await api.patch(`/api/v1/planner/meetings/${rowId}/status`, {
+      const res = await api.patch(`/api/v1/planner/meetings/${rowId}/status`, {
         workspace_id: workspaceId,
         status: statusMap[newStatus],
       }, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      toast.success((res.data as any)?.message ?? "Status updated");
     } catch (err) {
+      const msg = (err as any)?.response?.data?.message ?? "Failed to update meeting status";
       console.error("Failed to update meeting status:", err);
+      toast.error(msg);
       // Revert on failure
       setRowStatuses(prev => ({ ...prev, [rowId]: rowStatuses[rowId] ?? "Pending" }));
     }

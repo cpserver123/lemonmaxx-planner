@@ -5,6 +5,7 @@ import { useSelector } from "react-redux";
 import type { RootState } from "@/store";
 import api from "@/app/utils/axios";
 import { useAuth } from "@/context/AuthContext";
+import { toast } from "react-toastify";
 import PromiseFilters from "./PromiseFilters";
 import VerticalGrid from "./VerticalGrid";
 import type { VerticalData } from "./VerticalCard";
@@ -69,8 +70,11 @@ export default function PromiseSection() {
         }))
       }));
       setVerticals(mapped);
+      toast.success(res.data?.message ?? "Verticals loaded successfully");
     } catch (err) {
+      const msg = (err as any)?.response?.data?.message ?? "Failed to fetch verticals";
       console.error("Failed to fetch verticals", err);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
