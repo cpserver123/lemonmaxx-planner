@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import {
   LuZap, LuX, LuChevronDown, LuCheck, LuLink2, LuEye,
   LuLink, LuTrash2, LuSave, LuUser, LuPlus,
@@ -11,6 +12,7 @@ import { useSelector } from "react-redux";
 import type { RootState } from "@/store";
 import api from "@/app/utils/axios";
 import { useAuth } from "@/context/AuthContext";
+import { toast } from "react-toastify";
 
 /* --- Types ----------------------------------------------------------- */
 export interface DrawerRow {
@@ -620,6 +622,8 @@ export default function ActionDrawer({
   const [platform, setPlatform] = useState<Platform>("Meta");
 
   const [isSaving, setIsSaving] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeletingAction, setIsDeletingAction] = useState(false);
   // Per-file upload progress tracking
   const [uploadingFiles, setUploadingFiles] = useState<{ name: string; progress: number; error?: string }[]>([]);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
@@ -1387,7 +1391,7 @@ export default function ActionDrawer({
           
           <button
             disabled={isSaving}
-            onClick={() => { onDelete(draft.id); onClose(); }}
+            onClick={() => setShowDeleteConfirm(true)}
             className="flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 text-red-500 px-4 py-2 text-xs font-semibold hover:bg-red-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <LuTrash2 size={13} />
@@ -1496,6 +1500,64 @@ export default function ActionDrawer({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Delete action confirmation modal */}
+      {showDeleteConfirm && draft && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-[#111928] rounded-2xl shadow-2xl border border-[#E6EBF1] dark:border-[#1F2A37] w-full max-w-sm mx-4 p-6">
+            <div className="flex items-center justify-center mb-4">
+              <div className="flex items-center justify-center w-12 h-12 rounded-full bg-red-500/10">
+                <LuTrash2 size={22} className="text-red-500" />
+              </div>
+            </div>
+            <h3 className="text-base font-semibold text-[#111928] dark:text-white text-center mb-2">Delete Action</h3>
+            <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF] text-center mb-6">
+              Are you really want to delete the action? This action cannot be undone.
+            </p>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={isDeletingAction}
+                className="flex-1 rounded-xl border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] px-4 py-2.5 text-sm font-medium text-[#374151] dark:text-[#D1D5DB] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={isDeletingAction}
+                onClick={async () => {
+                  const actionId = draft.actionId;
+                  if (!actionId) {
+                    // No server ID — just remove from local state
+                    onDelete(draft.id);
+                    onClose();
+                    setShowDeleteConfirm(false);
+                    return;
+                  }
+                  setIsDeletingAction(true);
+                  try {
+                    const res = await api.delete(`/api/v1/planner/pathways/actions/${actionId}`, {
+                      headers: { Authorization: `Bearer ${token}` },
+                    });
+                    toast.success((res.data as any)?.message ?? "Action deleted successfully");
+                    onDelete(draft.id);
+                    onClose();
+                  } catch (err) {
+                    const msg = (err as any)?.response?.data?.message ?? "Failed to delete action";
+                    toast.error(msg);
+                  } finally {
+                    setIsDeletingAction(false);
+                    setShowDeleteConfirm(false);
+                  }
+                }}
+                className="flex-1 rounded-xl bg-red-500 hover:bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {isDeletingAction ? <><LuLoader size={14} className="animate-spin" /> Deleting…</> : <><LuTrash2 size={14} /> Delete</>}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </>
   );
