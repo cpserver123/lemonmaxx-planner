@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import { createPortal } from "react-dom";
 import ActionDrawer, { type DrawerRow, type Category, type Platform } from "../../ActionDrawer";
 import {
   useReactTable,
@@ -11,7 +12,7 @@ import {
   type SortingState,
   type ColumnResizeMode,
 } from "@tanstack/react-table";
-import { LuArrowUpDown, LuArrowUp, LuArrowDown, LuLoader } from "react-icons/lu";
+import { LuFlipVertical2, LuShoppingBag, LuFilter, LuArrowUpDown, LuArrowUp, LuArrowDown, LuLoader, LuTrash2 } from "react-icons/lu";
 import { RxDragHandleDots2 } from "react-icons/rx";
 import { useSelector } from "react-redux";
 import type { RootState } from "@/store";
@@ -323,14 +324,18 @@ function PathwayCard({
   onActionsChange,
   onOpenDrawer,
   onEditTitle,
+  onDelete,
 }: {
   pathway: Pathway;
   actions: ActionRow[];
   onActionsChange: (pathwayId: string, actions: ActionRow[]) => void;
   onOpenDrawer: (row: ActionRow) => void;
   onEditTitle: () => void;
+  onDelete: () => void;
 }) {
   const [collapsed, setCollapsed] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Derive pathway status: "Done" only if every action row is "Done", else "Active"
   const derivedStatus = actions.length > 0 && actions.every(a => a.status?.toLowerCase() === "done")
@@ -399,6 +404,13 @@ function PathwayCard({
                     {pathway.title}
                   </h3>
                   <PathwayBadge status={derivedStatus} />
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setShowDeleteModal(true); }}
+                    title="Delete pathway"
+                    className="ml-1 flex items-center justify-center rounded p-1 text-[#9CA3AF] hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                  >
+                    <LuTrash2 size={13} />
+                  </button>
                 </div>
                 <p className="text-[11px] text-[#6B7280] dark:text-[#9CA3AF] mt-0.5 line-clamp-2">{pathway.description}</p>
               </div>
@@ -411,6 +423,40 @@ function PathwayCard({
           </div>
           <ActionsTable data={actions} onAddAction={handleAddAction} />
         </>
+      )}
+
+      {/* Delete confirmation modal */}
+      {showDeleteModal && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-[#111928] rounded-2xl shadow-2xl border border-[#E6EBF1] dark:border-[#1F2A37] w-full max-w-sm mx-4 p-6">
+            <div className="flex items-center justify-center mb-4">
+              <div className="flex items-center justify-center w-12 h-12 rounded-full bg-red-500/10">
+                <LuTrash2 size={22} className="text-red-500" />
+              </div>
+            </div>
+            <h3 className="text-base font-semibold text-[#111928] dark:text-white text-center mb-2">Delete Pathway</h3>
+            <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF] text-center mb-6">
+              Are you really want to delete the pathway? This action cannot be undone.
+            </p>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                disabled={isDeleting}
+                className="flex-1 rounded-xl border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] px-4 py-2.5 text-sm font-medium text-[#374151] dark:text-[#D1D5DB] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => { setIsDeleting(true); await onDelete(); setIsDeleting(false); setShowDeleteModal(false); }}
+                disabled={isDeleting}
+                className="flex-1 rounded-xl bg-red-500 hover:bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {isDeleting ? <><LuLoader size={14} className="animate-spin" /> Deleting…</> : <><LuTrash2 size={14} /> Delete</>}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -624,6 +670,21 @@ export default function CreativeTab({ ownOfferId, selectedMonth, selectedYear }:
     });
   };
 
+  const deletePathway = async (pathwayId: string) => {
+    try {
+      const res = await api.delete(`/api/v1/planner/pathways/${pathwayId}`, {
+        params: { workspace_id: workspaceId },
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      toast.success((res.data as any)?.message ?? "Pathway deleted successfully");
+      await fetchPathways();
+    } catch (err) {
+      const msg = (err as any)?.response?.data?.message ?? "Failed to delete pathway";
+      console.error("Failed to delete pathway:", err);
+      toast.error(msg);
+    }
+  };
+
   return (
     <div className="rounded-xl border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] px-4 pt-4 pb-3 flex flex-col gap-4">
       {loading ? (
@@ -644,6 +705,7 @@ export default function CreativeTab({ ownOfferId, selectedMonth, selectedYear }:
                 onActionsChange={(id, actions) => setPathwayActions(prev => ({ ...prev, [id]: actions }))}
                 onOpenDrawer={(row) => handleOpenDrawer(pathway.id, row)}
                 onEditTitle={() => handleEditTitle(pathway.id)}
+                onDelete={() => deletePathway(pathway.id)}
               />
             ))
           )}

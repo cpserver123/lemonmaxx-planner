@@ -5,7 +5,8 @@ import { useSelector } from "react-redux";
 import type { RootState } from "@/store";
 import api from "@/app/utils/axios";
 import { useAuth } from "@/context/AuthContext";
-import { LuLoader } from "react-icons/lu";
+import { LuLoader, LuTrash2 } from "react-icons/lu";
+import { createPortal } from "react-dom";
 import { toast } from "react-toastify";
 import {
   LuPlus, LuCalendar, LuChevronDown,
@@ -132,6 +133,7 @@ function mapApiMeetingDetail(m: APIMeetingDetail): MeetingRow {
   const recurrenceMap: Record<string, string> = {
     once: "One-time", daily: "Daily", weekly: "Weekly", monthly: "Monthly",
   };
+
   const recurrenceLabel = recurrenceMap[m.recurrence] ?? capitalize(m.recurrence);
   const rawStatus = m.status?.toLowerCase();
   const status: "Pending" | "Active" | "Completed" =
@@ -298,6 +300,7 @@ function MeetingTable({
   onDateRangeChange,
   onDone,
   onClear,
+  onDeleteMeeting,
 }: {
   rows: MeetingRow[];
   onAddMeeting: () => void;
@@ -311,6 +314,7 @@ function MeetingTable({
   onDateRangeChange: (start: Date, end: Date) => void;
   onDone: () => void;
   onClear: () => void;
+  onDeleteMeeting: (row: MeetingRow) => Promise<void>;
 }) {
   const [search, setSearch] = useState("");
   const [meMode, setMeMode] = useState(false);
@@ -318,6 +322,8 @@ function MeetingTable({
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [pendingDeleteRow, setPendingDeleteRow] = useState<MeetingRow | null>(null);
+  const [isDeletingMeeting, setIsDeletingMeeting] = useState(false);
 
   // Build date-range shape for the DateRangePicker
   const dateRange = [{ startDate, endDate, key: "selection" }];
@@ -507,7 +513,16 @@ function MeetingTable({
                   </td>
                   <td className="w-10 px-2 py-2.5 text-xs text-[#9CA3AF] text-center">{(currentPage - 1) * rowsPerPage + i + 1}</td>
                   <td className="px-3 py-2.5 min-w-[220px] flex-1">
-                    <span className="text-sm font-medium text-[#111928] dark:text-white truncate block max-w-[260px] hover:text-[#2563eb] cursor-pointer transition-colors" onClick={() => onNameClick(row)}>{row.name}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-[#111928] dark:text-white truncate block max-w-[220px] hover:text-[#2563eb] cursor-pointer transition-colors" onClick={() => onNameClick(row)}>{row.name}</span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setPendingDeleteRow(row); }}
+                        title="Delete meeting"
+                        className="shrink-0 flex items-center justify-center rounded p-1 text-[#D1D5DB] hover:text-red-500 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all"
+                      >
+                        <LuTrash2 size={13} />
+                      </button>
+                    </div>
                   </td>
                   <td className="px-3 py-2.5 w-[110px] shrink-0">
                     <span className="text-xs font-semibold px-2 py-0.5 rounded" style={{ color: TYPE_COLOR[row.type] ?? "#6B7280", background: (TYPE_COLOR[row.type] ?? "#6B7280") + "18" }}>{row.type}</span>
@@ -548,6 +563,45 @@ function MeetingTable({
             </tbody>
           </table>
         </div>
+
+      {/* Delete meeting confirmation modal */}
+      {pendingDeleteRow && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-[#111928] rounded-2xl shadow-2xl border border-[#E6EBF1] dark:border-[#1F2A37] w-full max-w-sm mx-4 p-6">
+            <div className="flex items-center justify-center mb-4">
+              <div className="flex items-center justify-center w-12 h-12 rounded-full bg-red-500/10">
+                <LuTrash2 size={22} className="text-red-500" />
+              </div>
+            </div>
+            <h3 className="text-base font-semibold text-[#111928] dark:text-white text-center mb-2">Delete Meeting</h3>
+            <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF] text-center mb-6">
+              Are you really want to delete the meeting <span className="font-semibold text-[#111928] dark:text-white">&ldquo;{pendingDeleteRow.name}&rdquo;</span>? This action cannot be undone.
+            </p>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setPendingDeleteRow(null)}
+                disabled={isDeletingMeeting}
+                className="flex-1 rounded-xl border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] px-4 py-2.5 text-sm font-medium text-[#374151] dark:text-[#D1D5DB] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={isDeletingMeeting}
+                onClick={async () => {
+                  setIsDeletingMeeting(true);
+                  await onDeleteMeeting(pendingDeleteRow);
+                  setIsDeletingMeeting(false);
+                  setPendingDeleteRow(null);
+                }}
+                className="flex-1 rounded-xl bg-red-500 hover:bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {isDeletingMeeting ? <><LuLoader size={14} className="animate-spin" /> Deleting…</> : <><LuTrash2 size={14} /> Delete</>}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
         <PaginationFooter
           rowsPerPage={rowsPerPage}
           currentPage={currentPage}
@@ -645,7 +699,20 @@ export default function MeetingSection() {
     }
   };
 
-
+  const handleDeleteMeeting = async (row: MeetingRow) => {
+    try {
+      const res = await api.delete(`/api/v1/planner/meetings/${row.id}`, {
+        params: { workspace_id: workspaceId },
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      toast.success((res.data as any)?.message ?? "Meeting deleted successfully");
+      setTableRows(prev => prev.filter(r => r.id !== row.id));
+    } catch (err) {
+      const msg = (err as any)?.response?.data?.message ?? "Failed to delete meeting";
+      console.error("Failed to delete meeting:", err);
+      toast.error(msg);
+    }
+  };
 
   const handleStatusChange = async (rowId: string, newStatus: MeetingStatus) => {
     const statusMap: Record<MeetingStatus, string> = {
@@ -750,6 +817,7 @@ export default function MeetingSection() {
               setEndDate(e);
               fetchMeetings(s, e);
             }}
+            onDeleteMeeting={handleDeleteMeeting}
           />
         )
       )}

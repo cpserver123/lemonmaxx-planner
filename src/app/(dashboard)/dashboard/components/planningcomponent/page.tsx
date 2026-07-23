@@ -17,7 +17,7 @@ import {
   type ColumnResizeMode,
   type ExpandedState,
 } from "@tanstack/react-table";
-import { LuArrowUpDown, LuArrowUp, LuArrowDown, LuChevronRight, LuChevronDown, LuChevronLeft, LuLayoutGrid, LuCalendar, LuFileText, LuPencil, LuPlus, LuTarget, LuSearch, LuLoader, LuRefreshCw } from "react-icons/lu";
+import { LuArrowUpDown, LuArrowUp, LuArrowDown, LuChevronRight, LuChevronDown, LuChevronLeft, LuLayoutGrid, LuCalendar, LuFileText, LuPencil, LuPlus, LuTarget, LuSearch, LuLoader, LuRefreshCw, LuTrash2 } from "react-icons/lu";
 import GoalAssignModal, { type GoalRow } from "./components/goalassign";
 import PlanSubmissionDrawer from "./components/PlanSubmissionDrawer";
 import EditPlanDrawer from "../promise/editplan";
@@ -531,6 +531,10 @@ function CategoryTable({ category, rows, actualsLabel, actualsLoading, workspace
   const [goalInitialGoals, setGoalInitialGoals] = useState<any[] | undefined>(undefined);
   const [goalPlanTotals, setGoalPlanTotals] = useState<any | undefined>(undefined);
 
+  /** IDs pending delete confirmation */
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<number[] | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const openGoalModal = async (row: GoalRow & { planId?: number }) => {
     setGoalRow(row);
     if (!row.planId) {
@@ -561,6 +565,31 @@ function CategoryTable({ category, rows, actualsLabel, actualsLoading, workspace
   const handleGoalSave = (rowId: string) => {
     setSavedGoalRowIds(prev => new Set(prev).add(rowId));
     onRefresh();
+  };
+
+  const deletePlan = async (planId: number) => {
+    try {
+      const res = await api.delete(`/api/v1/planner/plans/${planId}`, {
+        params: { workspace_id: workspaceId },
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      toast.success((res.data as any)?.message ?? "Plan deleted successfully");
+      onRefresh();
+    } catch (err) {
+      const msg = (err as any)?.response?.data?.message ?? "Failed to delete plan";
+      console.error("Failed to delete plan", err);
+      toast.error(msg);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!pendingDeleteIds || pendingDeleteIds.length === 0) return;
+    setIsDeleting(true);
+    for (const planId of pendingDeleteIds) {
+      await deletePlan(planId);
+    }
+    setIsDeleting(false);
+    setPendingDeleteIds(null);
   };
 
   const toggleRow = (id: string) =>
@@ -633,8 +662,19 @@ function CategoryTable({ category, rows, actualsLabel, actualsLoading, workspace
     <>
     <div className="mb-1">
       {/* Category header */}
-      <div className="px-4 py-2 border-b border-[#E6EBF1] dark:border-[#1F2A37]">
+      <div className="px-4 py-2 border-b border-[#E6EBF1] dark:border-[#1F2A37] flex items-center justify-between">
         <h3 className="text-sm font-semibold text-[#2563eb] dark:text-[#2563eb]">{category}</h3>
+        <button
+          onClick={() => {
+            const planIds = rows.filter(r => !r.isSubTotal && !r.isPromiseNote && r.planId).map(r => r.planId!);
+            if (planIds.length === 0) return;
+            setPendingDeleteIds(planIds);
+          }}
+          title="Delete all plans in this group"
+          className="flex items-center justify-center rounded p-1 text-[#9CA3AF] hover:text-red-500 hover:bg-red-500/10 transition-colors"
+        >
+          <LuTrash2 size={14} />
+        </button>
       </div>
 
       {/* Table */}
@@ -723,6 +763,50 @@ function CategoryTable({ category, rows, actualsLabel, actualsLoading, workspace
       workspaceId={workspaceId}
       token={token}
     />
+
+    {/* Delete confirmation modal */}
+    {pendingDeleteIds && typeof document !== "undefined" && createPortal(
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+        <div className="bg-white dark:bg-[#111928] rounded-2xl shadow-2xl border border-[#E6EBF1] dark:border-[#1F2A37] w-full max-w-sm mx-4 p-6">
+          {/* Icon */}
+          <div className="flex items-center justify-center mb-4">
+            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-red-500/10">
+              <LuTrash2 size={22} className="text-red-500" />
+            </div>
+          </div>
+          {/* Title */}
+          <h3 className="text-base font-semibold text-[#111928] dark:text-white text-center mb-2">
+            Delete Plan
+          </h3>
+          {/* Message */}
+          <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF] text-center mb-6">
+            Are you really want to delete the plan? This action cannot be undone.
+          </p>
+          {/* Actions */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setPendingDeleteIds(null)}
+              disabled={isDeleting}
+              className="flex-1 rounded-xl border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] px-4 py-2.5 text-sm font-medium text-[#374151] dark:text-[#D1D5DB] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={confirmDelete}
+              disabled={isDeleting}
+              className="flex-1 rounded-xl bg-red-500 hover:bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+            >
+              {isDeleting ? (
+                <><LuLoader size={14} className="animate-spin" /> Deleting…</>
+              ) : (
+                <><LuTrash2 size={14} /> Delete</>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body
+    )}
     </>
   );
 }
