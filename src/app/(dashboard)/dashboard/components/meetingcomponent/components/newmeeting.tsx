@@ -85,6 +85,7 @@ export const BLANK: MeetingForm = {
   isPrivate:       false,
   agenda:          "",
   prework:         "",
+  reportScore:     "1",
 };
 
 export const MEETING_TYPES = ["Review", "Planning", "Standup", "1-to-1", "Retrospective", "Workshop", "Follow-up", "Other"];
@@ -1195,6 +1196,7 @@ export default function CreateMeetingModal({
   const [monthlyDates, setMonthlyDates] = useState<Set<number>>(new Set());
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const workspaceId = useSelector((state: RootState) => state.workspace.selectedId ?? 1);
   const { token } = useAuth();
 
@@ -1264,7 +1266,7 @@ export default function CreateMeetingModal({
           recurrence:      initialData.recurrence,
           participants:    String(initialData.participants || ""),
           duration:        initialData.duration === "—" ? "" : initialData.duration.replace(" min", ""),
-          reportScore:     initialData.reportScore || "",
+          reportScore:     initialData.reportScore || "1",
           // Populate extended fields if available
           intention:       initialData.intention      ?? "",
           startDateTime:   initialData.startDateTime  ?? "",
@@ -1403,6 +1405,21 @@ export default function CreateMeetingModal({
       return;
     }
 
+    // ---- Validate required fields ----
+    const errors: Record<string, string> = {};
+    if (!form.type.trim())            errors.type            = "Type is required";
+    if (!form.duration.trim())        errors.duration        = "Duration is required";
+    if (!form.recurrence.trim())      errors.recurrence      = "Recurrence is required";
+    if (!form.dueDate.trim())         errors.dueDate         = "Due Date & Time is required";
+    if (!form.expectedOutcome.trim()) errors.expectedOutcome = "Expected Outcome is required";
+
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      toast.error("Please fill in all required fields.");
+      return;
+    }
+    setFormErrors({});
+
     if (!form.name.trim()) return;
 
     const typeMapping: Record<string, string> = {
@@ -1435,7 +1452,8 @@ export default function CreateMeetingModal({
       agenda:           form.agenda || "",
       prework:          form.prework || "",
       link:             form.location.trim() || "",
-      status:           "pending"
+      status:           "pending",
+      score:            form.reportScore ? parseFloat(form.reportScore) : 1,
     };
 
     setIsSaving(true);
@@ -1520,8 +1538,16 @@ export default function CreateMeetingModal({
                 <div><Label text="Name" /><MInput placeholder="e.g., Weekly Sprint Planning" value={form.name} onChange={set("name")} /></div>
                 <div><Label text="Intention" optional /><textarea value={form.intention} onChange={e => set("intention")(e.target.value)} placeholder="What is the purpose of this meeting?" rows={3} className={`${inputCls} resize-none`} /></div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div><Label text="Type" /><SelectField value={form.type} onChange={set("type")} options={MEETING_TYPES} /></div>
-                  <div><Label text="Duration (min)" /><MInput placeholder="--" value={form.duration} onChange={set("duration")} type="number" /></div>
+                  <div>
+                    <Label text="Type" />
+                    <SelectField value={form.type} onChange={v => { set("type")(v); setFormErrors(p => ({ ...p, type: "" })); }} options={MEETING_TYPES} />
+                    {formErrors.type && <p className="mt-1 text-[11px] text-red-400">{formErrors.type}</p>}
+                  </div>
+                  <div>
+                    <Label text="Duration (min)" />
+                    <MInput placeholder="--" value={form.duration} onChange={v => { set("duration")(v); setFormErrors(p => ({ ...p, duration: "" })); }} type="number" />
+                    {formErrors.duration && <p className="mt-1 text-[11px] text-red-400">{formErrors.duration}</p>}
+                  </div>
                   <div className="relative">
                     <Label text="Participants" optional />
                     <ParticipantsDropdown
@@ -1537,7 +1563,7 @@ export default function CreateMeetingModal({
                 <div>
                   <Label text="Recurrence" />
                   <div className="relative">
-                    <select value={form.recurrence} onChange={e => set("recurrence")(e.target.value)} className={`${inputCls} appearance-none cursor-pointer border-2 border-[#2563eb] focus:border-[#2563eb]`}>
+                    <select value={form.recurrence} onChange={e => { set("recurrence")(e.target.value); setFormErrors(p => ({ ...p, recurrence: "" })); }} className={`${inputCls} appearance-none cursor-pointer border-2 border-[#2563eb] focus:border-[#2563eb]`}>
                       {RECURRENCES.map(r => <option key={r} className="bg-white dark:bg-[#0a1628]">{r}</option>)}
                     </select>
                     <LuChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9CA3AF] pointer-events-none" />
@@ -1685,12 +1711,23 @@ export default function CreateMeetingModal({
                     <input
                       type="datetime-local"
                       value={form.dueDate}
-                      onChange={e => set("dueDate")(e.target.value)}
-                      className={`${inputCls} pl-8 cursor-pointer dark:[color-scheme:dark]`}
+                      onChange={e => { set("dueDate")(e.target.value); setFormErrors(p => ({ ...p, dueDate: "" })); }}
+                      className={`${inputCls} pl-8 cursor-pointer dark:[color-scheme:dark] ${formErrors.dueDate ? "border-red-400" : ""}`}
                     />
                   </div>
+                  {formErrors.dueDate && <p className="mt-1 text-[11px] text-red-400">{formErrors.dueDate}</p>}
                 </div>
-                <div><Label text="Expected Outcome" /><textarea value={form.expectedOutcome} onChange={e => set("expectedOutcome")(e.target.value)} placeholder="What should be achieved in this meeting?" rows={3} className={`${inputCls} resize-none`} /></div>
+                <div>
+                  <Label text="Expected Outcome" />
+                  <textarea
+                    value={form.expectedOutcome}
+                    onChange={e => { set("expectedOutcome")(e.target.value); setFormErrors(p => ({ ...p, expectedOutcome: "" })); }}
+                    placeholder="What should be achieved in this meeting?"
+                    rows={3}
+                    className={`${inputCls} resize-none ${formErrors.expectedOutcome ? "border-red-400" : ""}`}
+                  />
+                  {formErrors.expectedOutcome && <p className="mt-1 text-[11px] text-red-400">{formErrors.expectedOutcome}</p>}
+                </div>
                 {/* <div><Label text="Location" optional /><IconInput placeholder="Room name or address" value={form.location} onChange={set("location")} icon={<LuMapPin size={14} />} /></div> */}
                 <div><Label text="Description / Notes" optional /><textarea value={form.description} onChange={e => set("description")(e.target.value)} placeholder="Paste a Zoom / Google Meet link or any notes for participants" rows={4} className={`${inputCls} resize-none`} /></div>
               
@@ -1700,8 +1737,8 @@ export default function CreateMeetingModal({
             {/* Right panel: always editable (Agenda, Prework, Files) */}
             <div className="w-full lg:w-[550px] shrink-0 lg:overflow-y-auto bg-[#F9FAFB] dark:bg-[#080f1a]">
               <div className="px-5 py-5 flex flex-col gap-6">
-                {/* Score picker — shown for 1-to-1 meetings */}
-                {form.type === "1-to-1" && (
+                {/* Score picker — shown only when editing an existing 1-to-1 meeting */}
+                {isReadOnly && form.type === "1-to-1" && (
                   <>
                     <div className="rounded-xl border border-[#E5E7EB] dark:border-[#1F2A37] bg-white dark:bg-[#0a1628] p-4">
                       <p className="text-[10px] font-bold text-[#6B7280] dark:text-[#9CA3AF] uppercase tracking-widest mb-3">Report Score</p>

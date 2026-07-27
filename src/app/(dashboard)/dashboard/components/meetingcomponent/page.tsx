@@ -490,9 +490,7 @@ function MeetingTable({
           <table className="w-full min-w-[1000px] border-collapse text-sm">
             <thead className="sticky top-0 z-10 bg-[#F9FAFB] dark:bg-[#0a1018]">
               <tr className="border-b border-[#E6EBF1] dark:border-[#1F2A37]">
-                <th className="w-10 px-3 py-3">
-                  <input type="checkbox" checked={allChecked} ref={el => { if (el) el.indeterminate = someChecked && !allChecked; }} onChange={toggleAll} className="h-4 w-4 rounded border-[#D1D5DB] text-[#2563eb] accent-[#2563eb] cursor-pointer" />
-                </th>
+
                 <th className="w-10 px-2 py-3 text-[11px] font-semibold text-[#9CA3AF] text-center">#</th>
                 {cols.map(c => (
                   <th key={c.key} className={`px-3 py-3 text-left ${c.w}`}>
@@ -508,9 +506,7 @@ function MeetingTable({
             <tbody>
               {paginated.map((row, i) => (
                 <tr key={row.id} className="border-b border-[#F3F4F6] dark:border-[#1F2A37]/60 hover:bg-[#F9FAFB] dark:hover:bg-[#0a1018]/60 transition-colors group cursor-pointer">
-                  <td className="w-10 px-3 py-2.5">
-                    <input type="checkbox" checked={selectedRows.has(row.id)} onChange={() => toggleRow(row.id)} onClick={e => e.stopPropagation()} className="h-4 w-4 rounded border-[#D1D5DB] text-[#2563eb] accent-[#2563eb] cursor-pointer" />
-                  </td>
+
                   <td className="w-10 px-2 py-2.5 text-xs text-[#9CA3AF] text-center">{(currentPage - 1) * rowsPerPage + i + 1}</td>
                   <td className="px-3 py-2.5 min-w-[220px] flex-1">
                     <div className="flex items-center gap-2">
