@@ -468,7 +468,7 @@ export default function PlanSubmissionDrawer({
       const data = res.data?.data;
       if (data?.plan_totals) setGoalPlanTotals(data.plan_totals as ApiPlanTotals);
       if (data?.user_goals)  setGoalInitialGoals(data.user_goals as ApiUserGoal[]);
-      toast.success(res.data?.message ?? "Goals loaded successfully");
+
     } catch (err) {
       const msg = (err as any)?.response?.data?.message ?? "Failed to fetch user goals";
       console.error("Failed to fetch user goals", err);
@@ -631,7 +631,7 @@ export default function PlanSubmissionDrawer({
       const byOffer: Record<number, PlanPlatform[]> = {};
       offers.forEach(o => { byOffer[o.own_offer_id] = o.platforms || []; });
       setPlansByOffer(byOffer);
-      toast.success(res.data?.message ?? "Plans loaded");
+
     } catch (err) {
       const msg = (err as any)?.response?.data?.message ?? "Failed to fetch plans";
       console.error("Failed to fetch plans", err);
@@ -737,7 +737,9 @@ export default function PlanSubmissionDrawer({
   /* --- Inline platform dropdown cell for plan table rows -------------- */
   const PlanPlatformCell = ({ planId, value }: { planId: number; value: string }) => {
     const [open, setOpen] = useState(false);
-    const ref = useRef<HTMLDivElement>(null);
+    const ref       = useRef<HTMLDivElement>(null);
+    const buttonRef  = useRef<HTMLButtonElement>(null);
+    const [dropPos,  setDropPos] = useState<{ top: number; left: number } | null>(null);
 
     useEffect(() => {
       if (!open) return;
@@ -793,7 +795,14 @@ export default function PlanSubmissionDrawer({
     return (
       <div ref={ref} className="relative inline-block">
         <button
-          onClick={() => setOpen(p => !p)}
+          ref={buttonRef}
+          onClick={() => {
+            if (!open) {
+              const rect = buttonRef.current?.getBoundingClientRect();
+              if (rect) setDropPos({ top: rect.bottom + 4, left: rect.left });
+            }
+            setOpen(p => !p);
+          }}
           title="Click to change platform"
           className="flex items-center gap-1 group text-xs font-semibold text-[#111928] dark:text-[#D1D5DB] hover:text-[#5750F1] dark:hover:text-[#818CF8] transition-colors rounded px-1 py-0.5 hover:bg-[#EEF2FF] dark:hover:bg-[#1e2a44]"
         >
@@ -801,10 +810,13 @@ export default function PlanSubmissionDrawer({
           <LuChevronDown size={11} className="text-[#9CA3AF] group-hover:text-[#5750F1] transition-colors shrink-0" />
         </button>
 
-        {open && (
+        {open && dropPos && createPortal(
           <>
-            <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-            <div className="absolute left-0 top-full mt-1 z-40 w-36 rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] shadow-xl py-1 overflow-hidden">
+            <div className="fixed inset-0 z-[100]" onClick={() => setOpen(false)} />
+            <div
+              style={{ top: dropPos.top, left: dropPos.left }}
+              className="fixed z-[101] w-36 rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] shadow-xl py-1 overflow-hidden"
+            >
               {PLATFORM_OPTIONS.map(opt => (
                 <button
                   key={opt}
@@ -819,7 +831,8 @@ export default function PlanSubmissionDrawer({
                 </button>
               ))}
             </div>
-          </>
+          </>,
+          document.body
         )}
       </div>
     );

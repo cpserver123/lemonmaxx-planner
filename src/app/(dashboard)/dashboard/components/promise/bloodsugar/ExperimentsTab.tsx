@@ -582,7 +582,7 @@ export default function ExperimentsTab({ ownOfferId, selectedMonth, selectedYear
 
         setExperiments(newExperiments);
         setExperimentActions(newActions);
-        toast.success(res.data?.message ?? "Pathways loaded successfully");
+
       }
     } catch (err) {
       const msg = (err as any)?.response?.data?.message ?? "Failed to fetch pathways";

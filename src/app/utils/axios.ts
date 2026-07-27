@@ -1,6 +1,11 @@
 /* Minimal API utility — uses fetch under the hood, provides an axios-like interface */
 
+import { toast } from "react-toastify";
+
 const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "";
+
+const STORAGE_KEY_TOKEN = "lmp_access_token";
+const STORAGE_KEY_USER  = "lmp_user";
 
 interface ApiResponse<T = any> {
   data: T;
@@ -41,7 +46,32 @@ async function request<T = any>(
   const data = await resp.json().catch(() => ({}));
 
   if (!resp.ok) {
-    const err: any = new Error(data?.message || `Request failed with status ${resp.status}`);
+    // ── Token expired / unauthorised ──────────────────────────────────────
+    if (resp.status === 401) {
+      const msg =
+        data?.message ||
+        data?.detail ||
+        "Session expired. Please log in again.";
+
+      toast.error(msg);
+
+      // Clear auth storage (mirrors AuthContext.logout)
+      try {
+        localStorage.removeItem(STORAGE_KEY_TOKEN);
+        localStorage.removeItem(STORAGE_KEY_USER);
+      } catch {
+        // ignore
+      }
+
+      // Hard-redirect to login (module-level — no React router available here)
+      if (typeof window !== "undefined") {
+        window.location.href = "/login";
+      }
+    }
+
+    const err: any = new Error(
+      data?.message || `Request failed with status ${resp.status}`,
+    );
     err.response = { data, status: resp.status };
     throw err;
   }
@@ -50,20 +80,39 @@ async function request<T = any>(
 }
 
 const api = {
-  get: <T = any>(url: string, config?: { headers?: Record<string, string>; params?: Record<string, string | number | boolean> }) =>
-    request<T>("GET", url, config),
+  get: <T = any>(
+    url: string,
+    config?: {
+      headers?: Record<string, string>;
+      params?: Record<string, string | number | boolean>;
+    },
+  ) => request<T>("GET", url, config),
 
-  post: <T = any>(url: string, data?: unknown, config?: { headers?: Record<string, string> }) =>
-    request<T>("POST", url, { ...config, data }),
+  post: <T = any>(
+    url: string,
+    data?: unknown,
+    config?: { headers?: Record<string, string> },
+  ) => request<T>("POST", url, { ...config, data }),
 
-  put: <T = any>(url: string, data?: unknown, config?: { headers?: Record<string, string> }) =>
-    request<T>("PUT", url, { ...config, data }),
+  put: <T = any>(
+    url: string,
+    data?: unknown,
+    config?: { headers?: Record<string, string> },
+  ) => request<T>("PUT", url, { ...config, data }),
 
-  patch: <T = any>(url: string, data?: unknown, config?: { headers?: Record<string, string> }) =>
-    request<T>("PATCH", url, { ...config, data }),
+  patch: <T = any>(
+    url: string,
+    data?: unknown,
+    config?: { headers?: Record<string, string> },
+  ) => request<T>("PATCH", url, { ...config, data }),
 
-  delete: <T = any>(url: string, config?: { headers?: Record<string, string>; params?: Record<string, string | number | boolean> }) =>
-    request<T>("DELETE", url, config),
+  delete: <T = any>(
+    url: string,
+    config?: {
+      headers?: Record<string, string>;
+      params?: Record<string, string | number | boolean>;
+    },
+  ) => request<T>("DELETE", url, config),
 };
 
 export default api;

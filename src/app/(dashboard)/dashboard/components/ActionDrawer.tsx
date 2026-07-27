@@ -6,7 +6,7 @@ import {
   LuZap, LuX, LuChevronDown, LuCheck, LuLink2, LuEye,
   LuLink, LuTrash2, LuSave, LuUser, LuPlus,
   LuHeading1, LuHeading2, LuBold, LuItalic, LuList, LuListOrdered,
-  LuQuote, LuTable, LuUndo2, LuRedo2, LuPaperclip, LuFile, LuLoader, LuDownload,
+  LuQuote, LuTable, LuUndo2, LuRedo2, LuPaperclip, LuFile, LuLoader, LuDownload, LuMaximize2,
 } from "react-icons/lu";
 import { useSelector } from "react-redux";
 import type { RootState } from "@/store";
@@ -615,6 +615,7 @@ export default function ActionDrawer({
   const [isViewAllOpen, setIsViewAllOpen] = useState(false);
   const [deletingIdx, setDeletingIdx] = useState<number | null>(null);
   const [downloadingIdx, setDownloadingIdx] = useState<number | null>(null);
+  const [previewFile, setPreviewFile] = useState<{ name: string; size: number; url?: string | null; key?: string | null; contentType?: string | null } | null>(null);
 
   // Performance / Category / Platform state
   const [perfTab, setPerfTab] = useState<PerformanceTab>(initialPerformance ?? "numbers");
@@ -1245,14 +1246,6 @@ export default function ActionDrawer({
                 <LuPaperclip size={13} /> Attachments
               </span>
               <div className="flex items-center gap-3">
-                {attachments.length > 0 && (
-                  <button
-                    onClick={() => setIsViewAllOpen(true)}
-                    className="text-[11px] text-[#5750F1] hover:opacity-80"
-                  >
-                    View All
-                  </button>
-                )}
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   className="text-[11px] text-[#5750F1] hover:opacity-80"
@@ -1280,20 +1273,13 @@ export default function ActionDrawer({
                     ) : (
                       <LuFile size={12} className="text-[#5750F1] shrink-0" />
                     )}
-                    <span className="text-[11px] text-[#111928] dark:text-[#D1D5DB] flex-1 truncate">
-                      {file.url ? (
-                        <a 
-                          href={file.url} 
-                          target="_blank" 
-                          rel="noreferrer" 
-                          className="hover:text-[#5750F1] dark:hover:text-[#7c78f3] hover:underline"
-                        >
-                          {file.name}
-                        </a>
-                      ) : (
-                        file.name
-                      )}
-                    </span>
+                    <button
+                      onClick={() => setPreviewFile(file)}
+                      className="text-[11px] text-[#111928] dark:text-[#D1D5DB] flex-1 truncate text-left hover:text-[#5750F1] dark:hover:text-[#7c78f3] hover:underline cursor-pointer"
+                      title={`Preview: ${file.name}`}
+                    >
+                      {file.name}
+                    </button>
                     <span className="text-[10px] text-[#9CA3AF] shrink-0">{formatFileSize(file.size)}</span>
                     {/* Download button — via backend presigned URL */}
                     {file.key ? (
@@ -1557,6 +1543,89 @@ export default function ActionDrawer({
             </div>
           </div>
         </div>,
+        document.body
+      )}
+
+      {/* File Preview Modal */}
+      {previewFile && createPortal(
+        <>
+          <div
+            className="fixed inset-0 z-[200] bg-black/70 backdrop-blur-sm"
+            onClick={() => setPreviewFile(null)}
+          />
+          <div className="fixed left-1/2 top-1/2 z-[201] -translate-x-1/2 -translate-y-1/2 w-[90vw] max-w-4xl max-h-[90vh] flex flex-col rounded-2xl border border-[#1F2A37] bg-[#0d1520] shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1F2A37] shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <LuFile size={14} className="text-[#5750F1] shrink-0" />
+                <span className="text-sm font-semibold text-white truncate">{previewFile.name}</span>
+                <span className="text-xs text-[#9CA3AF] shrink-0">{formatFileSize(previewFile.size)}</span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0 ml-4">
+                {previewFile.url && (
+                  <a
+                    href={previewFile.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-1 text-xs text-[#9CA3AF] hover:text-white transition-colors"
+                    title="Open in new tab"
+                  >
+                    <LuMaximize2 size={13} />
+                  </a>
+                )}
+                <button
+                  onClick={() => setPreviewFile(null)}
+                  className="text-[#9CA3AF] hover:text-white transition-colors"
+                >
+                  <LuX size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* Preview body */}
+            <div className="flex-1 overflow-auto flex items-center justify-center bg-[#060d14] p-4">
+              {previewFile.url ? (
+                (previewFile.contentType?.startsWith("image/") || /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(previewFile.name)) ? (
+                  <img
+                    src={previewFile.url}
+                    alt={previewFile.name}
+                    className="max-w-full max-h-[70vh] object-contain rounded-lg shadow-xl"
+                  />
+                ) : (previewFile.contentType === "application/pdf" || /\.pdf$/i.test(previewFile.name)) ? (
+                  <iframe
+                    src={previewFile.url}
+                    title={previewFile.name}
+                    className="w-full h-[70vh] rounded border border-[#1F2A37]"
+                  />
+                ) : (previewFile.contentType?.startsWith("text/") || /\.(txt|md|csv|json|xml|html|js|ts|tsx|jsx|css)$/i.test(previewFile.name)) ? (
+                  <iframe
+                    src={previewFile.url}
+                    title={previewFile.name}
+                    className="w-full h-[70vh] rounded border border-[#1F2A37] bg-white"
+                  />
+                ) : (
+                  <div className="flex flex-col items-center gap-4 text-center">
+                    <LuFile size={48} className="text-[#5750F1]" />
+                    <p className="text-sm text-[#9CA3AF]">Preview not available for this file type.</p>
+                    <a
+                      href={previewFile.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center gap-2 rounded-lg bg-[#5750F1] hover:bg-[#4742d4] px-4 py-2 text-sm font-medium text-white transition-colors"
+                    >
+                      <LuDownload size={14} /> Open File
+                    </a>
+                  </div>
+                )
+              ) : (
+                <div className="flex flex-col items-center gap-3 text-center">
+                  <LuFile size={48} className="text-[#374151]" />
+                  <p className="text-sm text-[#9CA3AF]">File is still uploading or URL is unavailable.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </>,
         document.body
       )}
     </>

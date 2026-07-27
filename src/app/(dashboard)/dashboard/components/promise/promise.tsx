@@ -70,7 +70,7 @@ export default function PromiseSection() {
         }))
       }));
       setVerticals(mapped);
-      toast.success(res.data?.message ?? "Verticals loaded successfully");
+
     } catch (err) {
       const msg = (err as any)?.response?.data?.message ?? "Failed to fetch verticals";
       console.error("Failed to fetch verticals", err);

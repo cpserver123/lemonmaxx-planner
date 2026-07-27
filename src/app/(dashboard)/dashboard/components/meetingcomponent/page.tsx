@@ -660,7 +660,7 @@ export default function MeetingSection() {
       setTableRows(rows);
       setRawMeetings([...meetings].sort((a, b) => b.id - a.id));
       setRowStatuses(Object.fromEntries(rows.map(r => [r.id, r.status])));
-      toast.success(res.data?.message ?? "Meetings loaded successfully");
+
     } catch (err: any) {
       const msg = err?.response?.data?.message ?? err?.message ?? "Failed to load meetings";
       setFetchError(msg);
@@ -688,7 +688,7 @@ export default function MeetingSection() {
       });
       const detail: APIMeetingDetail = res.data?.data;
       setSelectedMeeting(mapApiMeetingDetail(detail));
-      toast.success(res.data?.message ?? "Meeting details loaded");
+
     } catch (err) {
       const msg = (err as any)?.response?.data?.message ?? "Failed to fetch meeting detail";
       console.error("Failed to fetch meeting detail:", err);

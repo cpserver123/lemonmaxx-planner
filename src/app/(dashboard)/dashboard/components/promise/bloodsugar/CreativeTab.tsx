@@ -523,7 +523,7 @@ export default function CreativeTab({ ownOfferId, selectedMonth, selectedYear }:
 
         setPathways(newPathways);
         setPathwayActions(newActions);
-        toast.success(res.data?.message ?? "Pathways loaded successfully");
+
       }
     } catch (err) {
       const msg = (err as any)?.response?.data?.message ?? "Failed to fetch pathways";

@@ -514,7 +514,7 @@ export default function NumbersTab({ ownOfferId, selectedMonth, selectedYear }: 
 
         setStrategies(newStrategies);
         setStrategyActions(newActions);
-        toast.success(res.data?.message ?? "Pathways loaded successfully");
+
       }
     } catch (err) {
       const msg = (err as any)?.response?.data?.message ?? "Failed to fetch pathways";

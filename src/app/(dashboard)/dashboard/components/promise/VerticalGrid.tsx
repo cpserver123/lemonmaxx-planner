@@ -8,7 +8,7 @@ import { useAuth } from "@/context/AuthContext";
 import { toast } from "react-toastify";
 import type { VerticalData } from "./VerticalCard";
 import PromiseFilters from "./PromiseFilters";
-import { LuPlus, LuX, LuChevronDown, LuTriangleAlert, LuPencil, LuSearch, LuLoader } from "react-icons/lu";
+import { LuPlus, LuX, LuChevronDown, LuTriangleAlert, LuPencil, LuSearch, LuLoader, LuTrash2 } from "react-icons/lu";
 
 /* --- Create Vertical Modal --------------------------------------------- */
 export function CreateVerticalModal({
@@ -211,9 +211,10 @@ export function CreateOfferModal({
   const verticalDropRef = useRef<HTMLDivElement>(null);
 
   // API-fetched offers
-  const [apiOffers, setApiOffers] = useState<{ id: string; title: string }[]>([]);
+  const [apiOffers, setApiOffers] = useState<{ id: string; title: string; is_assigned: boolean }[]>([]);
   const [offersLoading, setOffersLoading] = useState(false);
   const [offersError, setOffersError] = useState<string | null>(null);
+  const [showAssignedOnly, setShowAssignedOnly] = useState(false);
 
   const fetchOffers = useCallback(async () => {
     setOffersLoading(true);
@@ -223,7 +224,7 @@ export function CreateOfferModal({
         params: { workspace_id: workspaceId, type: "offer" },
         headers: { Authorization: `Bearer ${token}` },
       });
-      const fetched: { id: string; title: string }[] = res.data?.data?.offers ?? [];
+      const fetched: { id: string; title: string; is_assigned: boolean }[] = res.data?.data?.offers ?? [];
       setApiOffers(fetched);
       return fetched;
     } catch {
@@ -261,6 +262,7 @@ export function CreateOfferModal({
       setSelectedOffers([]);
       setOffersOpen(false);
       setOffersSearch("");
+      setShowAssignedOnly(false);
       setVerticalOpen(false);
       setVerticalSearch("");
       // Pre-fill vertical when opened from tree edit button
@@ -298,7 +300,9 @@ export function CreateOfferModal({
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const filteredOffers    = apiOffers.filter(o => o.title.toLowerCase().includes(offersSearch.toLowerCase()));
+  const filteredOffers = apiOffers
+    .filter(o => !showAssignedOnly || o.is_assigned)
+    .filter(o => o.title.toLowerCase().includes(offersSearch.toLowerCase()));
   const filteredVerticals = apiVerticals.filter(v => v.name.toLowerCase().includes(verticalSearch.toLowerCase()));
 
   const [saving, setSaving] = useState(false);
@@ -377,13 +381,41 @@ export function CreateOfferModal({
 
         {/* Offers dropdown */}
         <div className="mb-4">
-          <label className="block text-xs font-semibold text-[#111928] dark:text-white mb-1.5">Offers</label>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="block text-xs font-semibold text-[#111928] dark:text-white">Offers</label>
+            {/* Assigned-only toggle */}
+            <button
+              type="button"
+              onClick={() => setShowAssignedOnly(prev => !prev)}
+              className="flex items-center gap-1.5 text-[10px] font-medium select-none"
+              title={showAssignedOnly ? "Showing assigned offers only" : "Showing all offers"}
+            >
+              <span className={`text-[#6B7280] dark:text-[#9CA3AF] ${showAssignedOnly ? "text-[#5750F1] dark:text-[#5750F1]" : ""}`}>
+                Assigned only
+              </span>
+              {/* pill toggle */}
+              <span
+                className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors duration-200 ${
+                  showAssignedOnly ? "bg-[#5750F1]" : "bg-[#D1D5DB] dark:bg-[#374151]"
+                }`}
+              >
+                <span
+                  className={`inline-block h-3 w-3 rounded-full bg-white shadow transition-transform duration-200 ${
+                    showAssignedOnly ? "translate-x-3.5" : "translate-x-0.5"
+                  }`}
+                />
+              </span>
+            </button>
+          </div>
           <div className="relative" ref={offersDropRef}>
             <div
               onClick={() => !offersLoading && setOffersOpen(!offersOpen)}
               className="w-full flex items-center justify-between rounded-lg border border-[#E6EBF1] dark:border-[#374151] bg-[#F9FAFB] dark:bg-[#0a1018] px-3 py-2 text-sm text-[#111928] dark:text-white outline-none focus:border-[#5750F1] transition-colors cursor-pointer"
             >
-              <span className={`truncate ${selectedOffers.length ? "" : "text-[#9CA3AF]"}`}>
+              <span
+                title={selectedOffers.length ? selectedOffers.join(", ") : undefined}
+                className={`truncate ${selectedOffers.length ? "" : "text-[#9CA3AF]"}`}
+              >
                 {offersLoading ? "Loading..." : (selectedOffers.length ? selectedOffers.join(", ") : "Select offers...")}
               </span>
               {offersLoading
@@ -410,7 +442,7 @@ export function CreateOfferModal({
                       <button onClick={fetchOffers} className="text-xs text-[#5750F1] underline">Retry</button>
                     </div>
                   ) : filteredOffers.length > 0 ? filteredOffers.map(o => (
-                    <label key={o.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332]">
+                    <label key={o.id} title={o.title} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332]">
                       <input
                         type="checkbox"
                         checked={selectedOffers.includes(o.title)}
@@ -526,10 +558,12 @@ function VerticalTree({
   vertical,
   onOfferClick,
   onEditOffer,
+  onDeleteOffer,
 }: {
   vertical: VerticalData;
   onOfferClick: (verticalId: string, offerId: string) => void;
   onEditOffer: (offerName: string, verticalName: string, offerIds: string[], ownOfferId: string, verticalNumericId: number) => void;
+  onDeleteOffer: (ownOfferId: string, offerName: string) => void;
 }) {
   const offers = vertical.offers ?? [];
 
@@ -616,6 +650,14 @@ function VerticalTree({
                       >
                         <LuPencil size={8} />
                       </button>
+                      {/* Delete button */}
+                      <button
+                        onClick={e => { e.stopPropagation(); onDeleteOffer(offer.id, offer.name); }}
+                        className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-[#E6EBF1] dark:border-[#374151] text-[#6B7280] hover:border-red-400/50 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                        title="Delete offer"
+                      >
+                        <LuTrash2 size={8} />
+                      </button>
                     </div>
 
                     {/* Always-visible details */}
@@ -672,6 +714,14 @@ export default function VerticalGrid({
   const [editOwnOfferVerticalId, setEditOwnOfferVerticalId] = useState<number | null>(null);
   const [showEditOfferModal, setShowEditOfferModal] = useState(false);
 
+  // Delete offer confirmation state
+  const workspaceId = useSelector((state: RootState) => state.workspace.selectedId ?? 1);
+  const { token } = useAuth();
+  const [deleteOfferId,   setDeleteOfferId]   = useState<string | null>(null);
+  const [deleteOfferName, setDeleteOfferName] = useState("");
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting,        setDeleting]        = useState(false);
+
   const handleEditOffer = (offerName: string, verticalName: string, offerIds: string[], ownOfferId: string, verticalNumericId: number) => {
     setEditOfferName(offerName);
     setEditOfferVertical(verticalName);
@@ -679,6 +729,36 @@ export default function VerticalGrid({
     setEditOwnOfferId(ownOfferId);
     setEditOwnOfferVerticalId(verticalNumericId);
     setShowEditOfferModal(true);
+  };
+
+  const handleDeleteOffer = (ownOfferId: string, offerName: string) => {
+    setDeleteOfferId(ownOfferId);
+    setDeleteOfferName(offerName);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDeleteOffer = async () => {
+    if (!deleteOfferId) return;
+    setDeleting(true);
+    try {
+      await (api as any).delete(`/api/v1/planner/own-offers/${deleteOfferId}`, {
+        data: { workspace_id: workspaceId },
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      toast.success("Offer deleted successfully");
+      // Remove from local state
+      setLocalVerticals(prev =>
+        prev.map(v => ({ ...v, offers: (v.offers ?? []).filter(o => o.id !== deleteOfferId) }))
+      );
+      // Also trigger a full refresh so prop verticals are updated
+      onRefresh?.();
+      setShowDeleteModal(false);
+    } catch (err) {
+      const msg = (err as any)?.response?.data?.message ?? "Failed to delete offer";
+      toast.error(msg);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   /** Renames an existing offer in place (does NOT create a new one). */
@@ -802,6 +882,7 @@ export default function VerticalGrid({
             vertical={v}
             onOfferClick={(id, offerId) => onSelect?.(id, offerId)}
             onEditOffer={handleEditOffer}
+            onDeleteOffer={handleDeleteOffer}
           />
         ))}
       </div>
@@ -818,6 +899,39 @@ export default function VerticalGrid({
         ownOfferId={editOwnOfferId}
         ownOfferVerticalId={editOwnOfferVerticalId}
       />
+
+      {/* Delete Offer confirmation modal */}
+      {showDeleteModal && (
+        <>
+          <div className="fixed inset-0 z-40 bg-black/50" onClick={() => !deleting && setShowDeleteModal(false)} />
+          <div className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 w-[340px] rounded-2xl border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] shadow-2xl p-6">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold text-[#111928] dark:text-white">Delete Offer</h3>
+              <button onClick={() => setShowDeleteModal(false)} disabled={deleting} className="text-[#9CA3AF] hover:text-[#111928] dark:hover:text-white transition-colors"><LuX size={15} /></button>
+            </div>
+            <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mb-5">
+              Are you sure you want to delete <span className="font-semibold text-[#111928] dark:text-white">{deleteOfferName}</span>? This action cannot be undone.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                disabled={deleting}
+                className="px-4 py-2 text-xs font-medium rounded-lg border border-[#E6EBF1] dark:border-[#374151] text-[#6B7280] dark:text-[#9CA3AF] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteOffer}
+                disabled={deleting}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors disabled:opacity-50"
+              >
+                {deleting ? <LuLoader size={12} className="animate-spin" /> : <LuTrash2 size={12} />}
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
