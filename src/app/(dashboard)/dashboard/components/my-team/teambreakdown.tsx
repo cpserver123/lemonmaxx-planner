@@ -27,7 +27,7 @@ const BREAKDOWNS: Breakdown[] = [
   {
     id: 1,
     title: "Bruno Strategy on Catalog",
-    desc: "I will make catalog testing profitable on Memory 3 winning creatives + 1 winning offer through catalog distribution, achieving ≥30% ROI at ≥$5K spend with 5-day consistency, generating $50K GM by June 30, 2026",
+    desc: " 3 winning creatives + 1 winning offer through catalog distribution, achieving ≥30% ROI at ≥$5K spend with 5-day consistency, generating $50K GM by June 30, 2026",
     actions: [
       { label: "For ABO 1$ Spending Issue - Launch Campaign Manually in 2 accounts", status: "Open", date: "09 Jun", initials: "MK", member: "Mukesh Kumar" },
     ],

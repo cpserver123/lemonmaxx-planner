@@ -3,6 +3,10 @@
 import { useState } from "react";
 import DashboardTab from "./components/scoreboard/DashboardTab";
 import BusinessTabs from "./components/scoreboard/BusinessTabs";
+import TeamTab from "./components/scoreboard/TeamTab";
+import MemberTab from "./components/scoreboard/MemberTab";
+import WeekTab from "./components/scoreboard/WeekTab";
+import DailyTab from "./components/scoreboard/DailyTab";
 
 type ScoreboardTab = "Dashboard" | "Business" | "Team" | "Member" | "Week" | "Daily";
 
@@ -37,11 +41,10 @@ export default function PerformanceTracking() {
       <div className="flex-1 min-h-0 min-w-0 overflow-y-auto pr-2 pb-8">
         {activeTab === "Dashboard" && <DashboardTab />}
         {activeTab === "Business" && <BusinessTabs />}
-        {activeTab !== "Dashboard" && activeTab !== "Business" && (
-          <div className="flex items-center justify-center h-48 text-[#6B7280] dark:text-[#9CA3AF]">
-            {activeTab} view coming soon...
-          </div>
-        )}
+        {activeTab === "Team" && <TeamTab />}
+        {activeTab === "Member" && <MemberTab />}
+        {activeTab === "Week" && <WeekTab />}
+        {activeTab === "Daily" && <DailyTab />}
       </div>
     </div>
   );
