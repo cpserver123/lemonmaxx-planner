@@ -314,7 +314,7 @@ export default function DashboardTab() {
         setSummary(d.summary ?? null);
         setVerticals(d.verticals ?? []);
         setDailyTrend(d.daily_trend ?? []);
-        toast.success(res.data?.message ?? "Scoreboard loaded successfully");
+
       }
     } catch (err) {
       const msg = (err as any)?.response?.data?.message ?? "Failed to fetch scoreboard";

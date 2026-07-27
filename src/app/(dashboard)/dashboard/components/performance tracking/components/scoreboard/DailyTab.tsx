@@ -217,7 +217,7 @@ export default function DailyTab() {
       if (d) {
         setGroups(d.groups ?? []);
         setSummary(d.summary ?? null);
-        toast.success(res.data?.message ?? "Daily scoreboard loaded");
+
       }
     } catch (err) {
       const msg = (err as any)?.response?.data?.message ?? "Failed to fetch daily scoreboard";

@@ -217,7 +217,7 @@ export default function MemberTab() {
       if (d) {
         setGroups(d.groups ?? []);
         setSummary(d.summary ?? null);
-        toast.success(res.data?.message ?? "Member scoreboard loaded");
+
       }
     } catch (err) {
       const msg = (err as any)?.response?.data?.message ?? "Failed to fetch member scoreboard";

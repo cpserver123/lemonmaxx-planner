@@ -553,7 +553,7 @@ function CategoryTable({ category, rows, actualsLabel, actualsLoading, workspace
       const data = res.data?.data;
       if (data?.plan_totals) setGoalPlanTotals(data.plan_totals);
       if (data?.user_goals)  setGoalInitialGoals(data.user_goals);
-      toast.success(res.data?.message ?? "Goals loaded successfully");
+
     } catch (err) {
       const msg = (err as any)?.response?.data?.message ?? "Failed to fetch user goals";
       console.error("Failed to fetch user goals", err);
@@ -993,7 +993,7 @@ export default function PlanningSection() {
 
         // After plans are loaded, also fetch actuals (if we have a vertical)
         fetchAndMergeActuals(rows, vertical.id, actualsYear, actualsMonth, planningYear, planningMonth);
-        toast.success(res.data?.message ?? "Plans loaded successfully");
+
       } catch (err) {
         const msg = (err as any)?.response?.data?.message ?? "Failed to fetch plans";
         console.error("Failed to fetch plans", err);
@@ -1174,13 +1174,13 @@ export default function PlanningSection() {
         <Dropdown value={vslFilter} options={verticalsList} onChange={setVslFilter} />
 
         {/* Edit button */}
-        <button
+        {/* <button
           onClick={() => setShowEditPlan(true)}
           className="flex items-center gap-1.5 rounded-md border border-[#E6EBF1] dark:border-[#374151] bg-white dark:bg-[#0d1520] px-3 py-1.5 text-xs font-medium text-[#111928] dark:text-white hover:border-[#5750F1]/40 transition-colors"
         >
           <LuPencil size={13} />
           Edit
-        </button>
+        </button> */}
 
         {/* Plan Creation button — hidden for role=user */}
         {!isUser && (
@@ -1189,7 +1189,7 @@ export default function PlanningSection() {
             className="flex items-center gap-1.5 rounded-md border border-[#4B5563] dark:border-[#2563eb] px-3 py-1.5 text-xs font-medium text-[#111928] dark:text-[#2563eb] hover:bg-[#2563eb]/10 transition-colors"
           >
             <LuFileText size={13} />
-            Plan Creation
+            Plan Management
           </button>
         )}
       </div>

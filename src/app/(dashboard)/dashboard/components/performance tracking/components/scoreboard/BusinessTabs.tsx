@@ -327,7 +327,7 @@ export default function BusinessTab() {
       if (d) {
         setGroups(d.groups ?? []);
         setSummary(d.summary ?? null);
-        toast.success(res.data?.message ?? "Scoreboard data loaded");
+
       }
     } catch (err) {
       const msg = (err as any)?.response?.data?.message ?? "Failed to fetch scoreboard dimensions";
@@ -418,7 +418,7 @@ export default function BusinessTab() {
               </tr>
             ) : groups.length === 0 ? (
               <tr>
-                <td colSpan={8} className="py-10 text-center text-xs text-[#9CA3AF]">No data available</td>
+                <td colSpan={8} className="py-10 text-center text-xs text-[#9CA3AF]">No data available (click on Apply button to get the data)</td>
               </tr>
             ) : (
               paginatedGroups.map(group => (
