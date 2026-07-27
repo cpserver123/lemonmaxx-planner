@@ -4,12 +4,153 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useSelector } from "react-redux";
 import type { RootState } from "@/store";
 import api from "@/app/utils/axios";
-import { LuCalendar, LuChevronLeft, LuChevronRight, LuChevronDown, LuStar, LuClipboardCheck, LuZap, LuRefreshCw, LuSearch } from "react-icons/lu";
-import MyTeamPanel from "../my-team/MyTeamPanel";
+import { LuCalendar, LuChevronLeft, LuChevronRight, LuChevronDown, LuStar, LuClipboardCheck, LuRefreshCw, LuSearch, LuX, LuTag, LuMonitor, LuClock } from "react-icons/lu";
 import { useAuth } from "@/context/AuthContext";
 import CheckIn from "../dashboardcomponent/components/checkin";
 import ActionDrawer, { type DrawerRow } from "../ActionDrawer";
 import { toast } from "react-toastify";
+
+/* --- Actions Preview Modal ------------------------------------------- */
+type ModalCategory = "breakdowns" | "escalations" | "requests";
+
+const CATEGORY_LABELS: Record<ModalCategory, string> = {
+  breakdowns:  "Breakdowns",
+  escalations: "Escalations",
+  requests:    "Requests",
+};
+
+const STATUS_COLORS: Record<string, string> = {
+  breakdown:  "bg-orange-400/15 text-orange-400",
+  escalation: "bg-red-400/15 text-red-400",
+  request:    "bg-blue-400/15 text-blue-400",
+  planned:    "bg-gray-400/15 text-gray-400",
+  active:     "bg-green-400/15 text-green-400",
+  completed:  "bg-emerald-400/15 text-emerald-400",
+  overdue:    "bg-red-500/15 text-red-500",
+};
+
+function statusColor(status: string) {
+  return STATUS_COLORS[status.toLowerCase()] ?? "bg-gray-400/15 text-gray-400";
+}
+
+function ActionsPreviewModal({
+  category,
+  items,
+  onClose,
+}: {
+  category: ModalCategory;
+  items: ActionItem[];
+  onClose: () => void;
+}) {
+  // Close on Escape
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  const label = CATEGORY_LABELS[category];
+  const accentMap: Record<ModalCategory, string> = {
+    breakdowns:  "text-orange-400",
+    escalations: "text-red-400",
+    requests:    "text-blue-400",
+  };
+  const accent = accentMap[category];
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
+        onClick={onClose}
+      />
+
+      {/* Panel */}
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+        <div
+          className="pointer-events-auto w-full max-w-2xl max-h-[80vh] flex flex-col rounded-2xl border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] shadow-2xl"
+          onClick={e => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between px-5 py-4 border-b border-[#E6EBF1] dark:border-[#1F2A37] shrink-0">
+            <div>
+              <h2 className="text-base font-semibold text-[#111928] dark:text-white">{label}</h2>
+              <p className={`text-[11px] mt-0.5 ${accent}`}>{items.length} item{items.length !== 1 ? "s" : ""}</p>
+            </div>
+            <button
+              onClick={onClose}
+              className="flex items-center justify-center w-8 h-8 rounded-lg border border-[#E6EBF1] dark:border-[#374151] text-[#6B7280] hover:text-[#111928] dark:hover:text-white hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332] transition-colors"
+            >
+              <LuX size={14} />
+            </button>
+          </div>
+
+          {/* Body */}
+          <div className="overflow-y-auto flex-1 px-5 py-3">
+            {items.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <span className="text-3xl mb-2">🎉</span>
+                <p className="text-sm font-medium text-[#111928] dark:text-white">No {label.toLowerCase()} found</p>
+                <p className="text-[11px] text-[#9CA3AF] mt-1">All clear for this period.</p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {items.map((item) => (
+                  <div
+                    key={item.action_id}
+                    className="rounded-xl border border-[#E6EBF1] dark:border-[#1F2A37] bg-[#F9FAFB] dark:bg-[#0a1018] p-4 flex flex-col gap-2.5 hover:border-[#5750F1]/40 transition-colors"
+                  >
+                    {/* Title row */}
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-[13px] font-semibold text-[#111928] dark:text-white leading-snug flex-1 min-w-0">
+                        {item.title}
+                      </p>
+                      <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-semibold capitalize ${statusColor(item.status)}`}>
+                        {item.status}
+                      </span>
+                    </div>
+
+                    {/* Meta row */}
+                    <div className="flex items-center flex-wrap gap-x-4 gap-y-1.5">
+                      {/* Category */}
+                      <div className="flex items-center gap-1.5">
+                        <LuTag size={11} className="text-[#9CA3AF] shrink-0" />
+                        <span className="text-[11px] text-[#6B7280] dark:text-[#9CA3AF] capitalize">{item.category}</span>
+                      </div>
+
+                      {/* Platform */}
+                      <div className="flex items-center gap-1.5">
+                        <LuMonitor size={11} className="text-[#9CA3AF] shrink-0" />
+                        <span className="text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">{item.platform}</span>
+                      </div>
+
+                      {/* Due date */}
+                      <div className="flex items-center gap-1.5">
+                        <LuClock size={11} className="text-[#9CA3AF] shrink-0" />
+                        <span className="text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">
+                          {item.due_date ? new Date(item.due_date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "No due date"}
+                        </span>
+                      </div>
+
+                      {/* Age badge */}
+                      <span className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                        category === "breakdowns" ? "bg-orange-400/15 text-orange-400"
+                        : category === "escalations" ? "bg-red-400/15 text-red-400"
+                        : "bg-blue-400/15 text-blue-400"
+                      }`}>
+                        {item.age_days}d old
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
 
 
 
@@ -345,7 +486,7 @@ interface SummaryData {
 /* --- Performance Dashboard ------------------------------------------- */
 export default function PerformanceSection() {
   const now = new Date();
-  const [showBreakdowns, setShowBreakdowns] = useState(false);
+  const [viewAllModal, setViewAllModal] = useState<ModalCategory | null>(null);
   const [showCheckIn,    setShowCheckIn]    = useState(false);
   const [selectedUser,   setSelectedUser]   = useState("");
   const [users,          setUsers]          = useState<{ id: number; name: string; role: string }[]>([]);
@@ -465,14 +606,6 @@ export default function PerformanceSection() {
 
   if (showCheckIn) {
     return <CheckIn onClose={() => setShowCheckIn(false)} />;
-  }
-
-  if (showBreakdowns) {
-    return (
-      <div className="fixed inset-0 z-50 bg-[#F3F4F6] dark:bg-[#020d1a]">
-        <MyTeamPanel initialTab="breakdown" onClose={() => setShowBreakdowns(false)} />
-      </div>
-    );
   }
 
   return (
@@ -646,7 +779,7 @@ export default function PerformanceSection() {
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-[#111928] dark:text-white">Breakdowns</h3>
             <button
-              onClick={() => setShowBreakdowns(true)}
+              onClick={() => setViewAllModal("breakdowns")}
               className="text-[11px] text-[#5750F1] hover:underline"
             >
               View all
@@ -677,7 +810,7 @@ export default function PerformanceSection() {
         <div className="rounded-xl border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] p-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-[#111928] dark:text-white">Escalations</h3>
-            <button className="text-[11px] text-[#5750F1] hover:underline">View all</button>
+            <button onClick={() => setViewAllModal("escalations")} className="text-[11px] text-[#5750F1] hover:underline">View all</button>
           </div>
           <div className="flex flex-col gap-2">
             {actionsLoading ? (
@@ -704,7 +837,7 @@ export default function PerformanceSection() {
         <div className="rounded-xl border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0d1520] p-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-[#111928] dark:text-white">Requests</h3>
-            <button className="text-[11px] text-[#5750F1] hover:underline">View all</button>
+            <button onClick={() => setViewAllModal("requests")} className="text-[11px] text-[#5750F1] hover:underline">View all</button>
           </div>
           <div className="flex flex-col gap-2">
             {actionsLoading ? (
@@ -770,6 +903,15 @@ export default function PerformanceSection() {
             setDrawerRow(null);
             setPendingStrategyId(null);
           }}
+        />
+      )}
+
+      {/* Actions Preview Modal */}
+      {viewAllModal && (
+        <ActionsPreviewModal
+          category={viewAllModal}
+          items={actionsData?.[viewAllModal] ?? []}
+          onClose={() => setViewAllModal(null)}
         />
       )}
     </div>

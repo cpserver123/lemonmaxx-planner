@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { LuChevronDown, LuChevronRight, LuCheck, LuX, LuLoader } from "react-icons/lu";
 import FilterBar from "./FilterBar";
 import { useSelector } from "react-redux";
@@ -40,6 +40,53 @@ function fmtMoney(n: number) {
   return n < 0 ? `-${str}` : str;
 }
 function fmtPct(n: number) { return `${n.toFixed(1)}%`; }
+
+/* --- Pagination -------------------------------------------------------- */
+const ROW_OPTIONS = [10, 25, 50, 100];
+
+function PaginationFooter({
+  rowsPerPage, currentPage, totalRows, onRowsPerPageChange, onPageChange,
+}: {
+  rowsPerPage: number; currentPage: number; totalRows: number;
+  onRowsPerPageChange: (v: number) => void; onPageChange: (p: number) => void;
+}) {
+  const totalPages = Math.max(1, Math.ceil(totalRows / rowsPerPage));
+  const maxV = 5, half = Math.floor(maxV / 2);
+  let s = Math.max(1, currentPage - half);
+  let e = s + maxV - 1;
+  if (e > totalPages) { e = totalPages; s = Math.max(1, e - maxV + 1); }
+  const pages = Array.from({ length: Math.max(0, e - s + 1) }, (_, i) => s + i);
+  const display: Array<number | "ellipsis"> = [];
+  if (totalPages <= maxV + 2) { for (let p = 1; p <= totalPages; p++) display.push(p); }
+  else {
+    display.push(1);
+    if (s > 2) display.push("ellipsis");
+    for (const p of pages) if (p !== 1 && p !== totalPages) display.push(p);
+    if (e < totalPages - 1) display.push("ellipsis");
+    display.push(totalPages);
+  }
+  return (
+    <div className="flex items-center justify-between gap-1 border-t border-[#E6EBF1] dark:border-[#1F2A37] px-4 py-3 text-xs">
+      <div className="flex items-center gap-2">
+        <select value={rowsPerPage} onChange={e => onRowsPerPageChange(Number(e.target.value))}
+          className="rounded-md border border-[#E6EBF1] dark:border-[#1F2A37] bg-white dark:bg-[#0a0f1a] px-3 py-1.5 text-xs text-[#374151] dark:text-[#9CA3AF] shadow-sm focus:border-[#5750F1] focus:outline-none focus:ring-1 focus:ring-[#5750F1]">
+          {ROW_OPTIONS.map(o => <option key={o} value={o}>{o} Rows</option>)}
+        </select>
+      </div>
+      <div className="flex items-center gap-1">
+        <button type="button" disabled={currentPage <= 1} onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+          className="px-2 py-1 text-[#6B7280] hover:text-[#111928] dark:text-[#9CA3AF] dark:hover:text-white disabled:cursor-not-allowed disabled:opacity-30 transition-colors">«</button>
+        {display.map((p, i) => p === "ellipsis"
+          ? <span key={`e${i}`} className="flex h-7 w-7 items-center justify-center text-[#6B7280] dark:text-[#9CA3AF]">...</span>
+          : <button key={p} type="button" onClick={() => onPageChange(p)}
+              className={p === currentPage ? "flex h-7 w-7 items-center justify-center rounded-full bg-[#5750F1] text-white text-xs font-semibold" : "flex h-7 w-7 items-center justify-center rounded-full text-[#374151] dark:text-[#9CA3AF] hover:bg-[#F3F4F6] dark:hover:bg-[#1F2A37] transition-colors"}>{p}</button>
+        )}
+        <button type="button" disabled={currentPage >= totalPages} onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+          className="px-2 py-1 text-[#6B7280] hover:text-[#111928] dark:text-[#9CA3AF] dark:hover:text-white disabled:cursor-not-allowed disabled:opacity-30 transition-colors">»</button>
+      </div>
+    </div>
+  );
+}
 
 /* --- Dropdown option → API param map ----------------------------------- */
 const OPTION_TO_PARAM: Record<string, string> = {
@@ -121,31 +168,21 @@ function GroupByDropdown({
           }}
           className="rounded-xl border border-[#E6EBF1] dark:border-[#27303E] bg-white dark:bg-[#111927] shadow-xl py-1 overflow-hidden"
         >
-          {GROUP_BY_OPTIONS.map(opt => {
+          {GROUP_BY_OPTIONS.filter(opt => opt !== exclude).map(opt => {
             const isSelected = opt === value;
-            const isExcluded = opt === exclude;
             return (
               <button
                 key={opt}
                 type="button"
-                disabled={isExcluded}
-                onClick={() => { if (!isExcluded) { onChange(opt); setOpen(false); } }}
-                title={isExcluded ? "Already selected in the other group-by" : undefined}
+                onClick={() => { onChange(opt); setOpen(false); }}
                 className={`w-full flex items-center gap-2 px-3 py-2 text-[12px] font-medium transition-colors text-left ${
                   isSelected
                     ? "bg-[#CCFF00] text-black"
-                    : isExcluded
-                    ? "opacity-35 cursor-not-allowed text-[#111928] dark:text-[#D1D5DB]"
                     : "text-[#111928] dark:text-[#D1D5DB] hover:bg-[#F3F4F6] dark:hover:bg-[#1a2332]"
                 }`}
               >
-                {isSelected
-                  ? <LuCheck size={12} className="shrink-0" />
-                  : isExcluded
-                  ? <LuX size={12} className="shrink-0 opacity-50" />
-                  : <span className="w-3 shrink-0" />}
+                {isSelected ? <LuCheck size={12} className="shrink-0" /> : <span className="w-3 shrink-0" />}
                 {opt}
-                {isExcluded && <span className="ml-auto text-[9px] text-[#9CA3AF]">in use</span>}
               </button>
             );
           })}
@@ -249,6 +286,8 @@ export default function BusinessTab() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [groupBy1, setGroupBy1] = useState<GroupByOption>("Vertical");
   const [groupBy2, setGroupBy2] = useState<GroupByOption>("Member");
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Committed month state (only updates on FilterBar "Done")
   const today = new Date();
@@ -302,6 +341,14 @@ export default function BusinessTab() {
 
 
 
+
+  const paginatedGroups = useMemo(() => {
+    const start = (currentPage - 1) * rowsPerPage;
+    return groups.slice(start, start + rowsPerPage);
+  }, [groups, currentPage, rowsPerPage]);
+
+  // Reset to page 1 when data or rowsPerPage changes
+  useEffect(() => { setCurrentPage(1); }, [groups, rowsPerPage]);
 
   const toggle = (id: string) => {
     setExpanded(prev => {
@@ -374,7 +421,7 @@ export default function BusinessTab() {
                 <td colSpan={8} className="py-10 text-center text-xs text-[#9CA3AF]">No data available</td>
               </tr>
             ) : (
-              groups.map(group => (
+              paginatedGroups.map(group => (
                 <GroupRow key={group.key} group={group} expanded={expanded} onToggle={toggle} />
               ))
             )}
@@ -394,6 +441,13 @@ export default function BusinessTab() {
             )}
           </tbody>
         </table>
+        <PaginationFooter
+          rowsPerPage={rowsPerPage}
+          currentPage={currentPage}
+          totalRows={groups.length}
+          onRowsPerPageChange={(v) => { setRowsPerPage(v); setCurrentPage(1); }}
+          onPageChange={setCurrentPage}
+        />
       </div>
     </div>
   );
