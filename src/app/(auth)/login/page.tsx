@@ -537,12 +537,11 @@ export default function Login() {
             <span className="text-2xl font-bold text-foreground">Lemonmaxx</span>
           </div>
           <h1 className="text-4xl font-bold text-foreground leading-tight">
-            Welcome back to the
-            <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent"> Complete Marketing </span>
-            Ecosystem
+            Welcome to the
+            <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent"> Lemonmaxx Planner</span>
           </h1>
           <p className="text-xl text-muted-foreground">
-            Continue managing your campaigns across Facebook, Google, TikTok, and more - all in one powerful platform.
+            Simplify your daily operations with an all-in-one workspace designed for marketing teams. Plan campaigns, organize knowledge, manage meetings, track tasks, and collaborate seamlessly from a single platform.
           </p>
         </div>
 
@@ -553,8 +552,8 @@ export default function Login() {
               <Target className="w-5 h-5 text-green-500" />
             </div>
             <div>
-              <h3 className="font-semibold text-foreground">Ad Management Control</h3>
-              <p className="text-sm text-muted-foreground">Turn ads on/off, adjust budgets instantly</p>
+              <h3 className="font-semibold text-foreground">Media Planning</h3>
+              <p className="text-sm text-muted-foreground">Build, organize, and manage media plans for every campaign with ease.</p>
             </div>
           </div>
           <div className="flex items-center gap-3 p-4 bg-card/50 rounded-xl border">
@@ -562,8 +561,8 @@ export default function Login() {
               <Zap className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <h3 className="font-semibold text-foreground">AI-Powered Automation</h3>
-              <p className="text-sm text-muted-foreground">Smart rules and instant WhatsApp alerts</p>
+              <h3 className="font-semibold text-foreground">Knowledge Base</h3>
+              <p className="text-sm text-muted-foreground">Store SOPs, documents, playbooks, and team resources in one centralized hub.</p>
             </div>
           </div>
           <div className="flex items-center gap-3 p-4 bg-card/50 rounded-xl border">
@@ -571,8 +570,17 @@ export default function Login() {
               <Users className="w-5 h-5 text-accent" />
             </div>
             <div>
-              <h3 className="font-semibold text-foreground"> Features</h3>
-              <p className="text-sm text-muted-foreground">Features based on your selected plan</p>
+              <h3 className="font-semibold text-foreground"> Meetings</h3>
+              <p className="text-sm text-muted-foreground">Schedule meetings, share agendas, and keep your team aligned.</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 p-4 bg-card/50 rounded-xl border">
+            <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+              <Zap className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-foreground">Task Management</h3>
+              <p className="text-sm text-muted-foreground">Create to-do lists, assign tasks, track progress, and never miss a deadline.</p>
             </div>
           </div>
         </div>
